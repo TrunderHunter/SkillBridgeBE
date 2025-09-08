@@ -1,0 +1,39 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import dotenv from 'dotenv';
+import { errorHandler } from './middlewares/error.middleware';
+import routes from './routes/index';
+
+dotenv.config();
+
+const app = express();
+
+// Security middlewares
+app.use(helmet());
+app.use(cors());
+
+// Logging
+app.use(morgan('combined'));
+
+// Body parsing
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Routes
+app.use('/api', routes);
+
+// Health check root route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'SkillBridge API is running!',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Error handling
+app.use(errorHandler);
+
+export default app;
