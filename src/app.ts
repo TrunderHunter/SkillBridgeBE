@@ -1,12 +1,11 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import { errorHandler } from './middlewares/error.middleware';
 import routes from './routes/index';
-
-dotenv.config();
 
 const app = express();
 
@@ -27,7 +26,7 @@ app.use('/api', routes);
 // Health check root route
 app.get('/', (req, res) => {
   res.json({
-    message: 'SkillBridge API is running!',
+    message: `${process.env.SMTP_PASS || 'SkillBridge'} API is running`,
     version: '1.0.0',
     timestamp: new Date().toISOString(),
   });

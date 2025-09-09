@@ -48,3 +48,14 @@ export const sendError = (
 ): void => {
   sendResponse(res, statusCode, false, message, undefined, error);
 };
+
+export const createErrorResponse = (
+  message: string,
+  statusCode: number = 400,
+  data?: any
+) => ({
+  success: false,
+  message,
+  statusCode,
+  data,
+});
