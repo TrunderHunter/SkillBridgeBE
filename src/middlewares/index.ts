@@ -1,4 +1,9 @@
-import { errorHandler } from './error.middleware';
-import { handleValidationErrors } from './validation.middleware';
-
-export { errorHandler, handleValidationErrors };
+export { errorHandler } from './error.middleware';
+export { handleValidationErrors } from './validation.middleware';
+export { 
+  authenticateToken, 
+  requireRole, 
+  requireAdmin, 
+  requireTutorOrAdmin, 
+  optionalAuth 
+} from './auth.middleware';
