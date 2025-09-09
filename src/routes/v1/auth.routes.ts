@@ -4,6 +4,11 @@ import {
   registerValidator,
   verifyOTPValidator,
   resendOTPValidator,
+  loginValidator,
+  forgotPasswordValidator,
+  resetPasswordValidator,
+  refreshTokenValidator,
+  logoutValidator,
 } from '../../validators';
 import { handleValidationErrors } from '../../middlewares';
 
@@ -19,6 +24,18 @@ router.post(
   registerValidator,
   handleValidationErrors,
   authController.register
+);
+
+/**
+ * @route   POST /api/v1/auth/login
+ * @desc    Login user
+ * @access  Public
+ */
+router.post(
+  '/login',
+  loginValidator,
+  handleValidationErrors,
+  authController.login
 );
 
 /**
@@ -43,6 +60,54 @@ router.post(
   resendOTPValidator,
   handleValidationErrors,
   authController.resendOTP
+);
+
+/**
+ * @route   POST /api/v1/auth/forgot-password
+ * @desc    Send password reset OTP to email
+ * @access  Public
+ */
+router.post(
+  '/forgot-password',
+  forgotPasswordValidator,
+  handleValidationErrors,
+  authController.forgotPassword
+);
+
+/**
+ * @route   POST /api/v1/auth/reset-password
+ * @desc    Reset password with OTP
+ * @access  Public
+ */
+router.post(
+  '/reset-password',
+  resetPasswordValidator,
+  handleValidationErrors,
+  authController.resetPassword
+);
+
+/**
+ * @route   POST /api/v1/auth/refresh-token
+ * @desc    Refresh access token
+ * @access  Public
+ */
+router.post(
+  '/refresh-token',
+  refreshTokenValidator,
+  handleValidationErrors,
+  authController.refreshToken
+);
+
+/**
+ * @route   POST /api/v1/auth/logout
+ * @desc    Logout user (revoke refresh token)
+ * @access  Public
+ */
+router.post(
+  '/logout',
+  logoutValidator,
+  handleValidationErrors,
+  authController.logout
 );
 
 export { router as authRoutes };

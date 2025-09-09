@@ -50,5 +50,50 @@ export interface IOTPRecord {
   otp_code: string;
   expires_at: Date;
   is_used: boolean;
+  otp_type: OTPType;
+  created_at?: Date;
+}
+
+export enum OTPType {
+  REGISTRATION = 'registration',
+  PASSWORD_RESET = 'password_reset',
+}
+
+export interface ILoginInput {
+  email: string;
+  password: string;
+}
+
+export interface ITokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}
+
+export interface ILoginResponse {
+  user: IUserResponse;
+  tokens: ITokenResponse;
+}
+
+export interface IForgotPasswordInput {
+  email: string;
+}
+
+export interface IResetPasswordInput {
+  email: string;
+  otp_code: string;
+  new_password: string;
+}
+
+export interface IRefreshTokenInput {
+  refresh_token: string;
+}
+
+export interface IRefreshToken {
+  _id?: string;
+  user_id: string;
+  token: string;
+  expires_at: Date;
+  is_revoked: boolean;
   created_at?: Date;
 }

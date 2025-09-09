@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-import { IOTPRecord } from '../types/user.types';
+import { IOTPRecord, OTPType } from '../types/user.types';
 
 export interface IOTPDocument extends IOTPRecord, Document {
   _id: string;
@@ -26,11 +26,17 @@ const otpSchema = new Schema<IOTPDocument>(
     expires_at: {
       type: Date,
       required: true,
-      default: () => new Date(Date.now() + 5 * 60 * 1000), // 5 minutes from now
+      default: () => new Date(Date.now() + 10 * 60 * 1000), // 10 minutes from now
     },
     is_used: {
       type: Boolean,
       default: false,
+    },
+    otp_type: {
+      type: String,
+      enum: Object.values(OTPType),
+      required: true,
+      default: OTPType.REGISTRATION,
     },
   },
   {
@@ -40,7 +46,7 @@ const otpSchema = new Schema<IOTPDocument>(
 );
 
 // Index for better performance and auto-cleanup
-otpSchema.index({ email: 1 });
+otpSchema.index({ email: 1, otp_type: 1 });
 otpSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 }); // Auto delete expired docs
 
 export const OTP = mongoose.model<IOTPDocument>('OTP', otpSchema);
