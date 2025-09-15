@@ -26,7 +26,7 @@ const otpSchema = new Schema<IOTPDocument>(
     expires_at: {
       type: Date,
       required: true,
-      default: () => new Date(Date.now() + 10 * 60 * 1000), // 10 minutes from now
+      default: () => new Date(Date.now() + 5 * 60 * 1000), // 5 minutes from now
     },
     is_used: {
       type: Boolean,

@@ -63,6 +63,18 @@ router.post(
 );
 
 /**
+ * @route   POST /api/v1/auth/otp-status
+ * @desc    Get OTP status and remaining time
+ * @access  Public
+ */
+router.post(
+  '/otp-status',
+  resendOTPValidator, // Using same validator as it only needs email
+  handleValidationErrors,
+  authController.getOTPStatus
+);
+
+/**
  * @route   POST /api/v1/auth/forgot-password
  * @desc    Send password reset OTP to email
  * @access  Public

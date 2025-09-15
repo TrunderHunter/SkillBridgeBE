@@ -7,6 +7,7 @@ import {
   IForgotPasswordInput,
   IResetPasswordInput,
   IRefreshTokenInput,
+  OTPType,
 } from '../../types';
 import { logger } from '../../utils/logger';
 
@@ -46,6 +47,13 @@ export interface LogoutRequest extends Request {
 export interface ResendOTPRequest extends Request {
   body: {
     email: string;
+  };
+}
+
+export interface OTPStatusRequest extends Request {
+  body: {
+    email: string;
+    otp_type?: string;
   };
 }
 
@@ -138,6 +146,33 @@ class AuthController {
         undefined,
         500
       );
+    }
+  }
+
+  async getOTPStatus(req: OTPStatusRequest, res: Response): Promise<void> {
+    try {
+      const { email, otp_type } = req.body;
+
+      logger.info(
+        `Get OTP status for email: ${email}, type: ${otp_type || 'REGISTRATION'}`
+      );
+
+      // Default to REGISTRATION if not specified
+      const otpTypeEnum =
+        otp_type === 'PASSWORD_RESET'
+          ? OTPType.PASSWORD_RESET
+          : OTPType.REGISTRATION;
+
+      const result = await authService.getOTPStatus(email, otpTypeEnum);
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error) {
+      logger.error('Get OTP status controller error:', error);
+      sendError(res, 'Không thể lấy trạng thái OTP.', undefined, 500);
     }
   }
 

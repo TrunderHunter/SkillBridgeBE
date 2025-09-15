@@ -61,6 +61,17 @@ export interface RefreshTokenResponse {
   data?: ITokenResponse;
 }
 
+export interface OTPStatusResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    email: string;
+    remainingSeconds: number;
+    expiresAt: Date;
+    canResend: boolean;
+  };
+}
+
 class AuthService {
   private generateOTP(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -307,6 +318,32 @@ class AuthService {
         };
       }
 
+      // Check if there's a recent OTP and enforce cooldown
+      const recentOTP = await OTP.findOne({
+        email,
+        otp_type: OTPType.REGISTRATION,
+        expires_at: { $gt: new Date() },
+      }).sort({ created_at: -1 });
+
+      if (recentOTP) {
+        const now = new Date();
+        const createdAt = recentOTP.created_at
+          ? new Date(recentOTP.created_at)
+          : now;
+        const timeSinceCreation = now.getTime() - createdAt.getTime();
+        const cooldownPeriod = 60 * 1000; // 1 minute cooldown
+
+        if (timeSinceCreation < cooldownPeriod) {
+          const remainingCooldown = Math.ceil(
+            (cooldownPeriod - timeSinceCreation) / 1000
+          );
+          return {
+            success: false,
+            message: `Vui lòng đợi ${remainingCooldown} giây trước khi gửi lại mã OTP`,
+          };
+        }
+      }
+
       // Generate new OTP
       const otpCode = this.generateOTP();
 
@@ -351,6 +388,58 @@ class AuthService {
       return {
         success: false,
         message: 'Gửi lại mã OTP thất bại. Vui lòng thử lại sau.',
+      };
+    }
+  }
+
+  async getOTPStatus(
+    email: string,
+    otpType: OTPType = OTPType.REGISTRATION
+  ): Promise<OTPStatusResponse> {
+    try {
+      // Find the most recent valid OTP for this email and type
+      const otpRecord = await OTP.findOne({
+        email,
+        is_used: false,
+        otp_type: otpType,
+        expires_at: { $gt: new Date() },
+      }).sort({ created_at: -1 });
+
+      if (!otpRecord) {
+        return {
+          success: false,
+          message: 'Không có mã OTP hợp lệ',
+        };
+      }
+
+      const now = new Date();
+      const expiresAt = new Date(otpRecord.expires_at);
+      const remainingMs = expiresAt.getTime() - now.getTime();
+      const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+
+      // Allow resend if less than 9 minutes remaining (1 minute cooldown after OTP creation)
+      const createdAt = otpRecord.created_at
+        ? new Date(otpRecord.created_at)
+        : now;
+      const timeSinceCreation = now.getTime() - createdAt.getTime();
+      const cooldownPeriod = 60 * 1000; // 1 minute cooldown
+      const canResend = timeSinceCreation >= cooldownPeriod;
+
+      return {
+        success: true,
+        message: 'Trạng thái OTP',
+        data: {
+          email,
+          remainingSeconds,
+          expiresAt,
+          canResend,
+        },
+      };
+    } catch (error) {
+      logger.error('Get OTP status failed:', error);
+      return {
+        success: false,
+        message: 'Không thể lấy trạng thái OTP',
       };
     }
   }
@@ -446,15 +535,11 @@ class AuthService {
       // Find user
       const user = await User.findOne({ email });
       if (!user) {
-        // Don't reveal if email exists or not for security
+        // Return error when email doesn't exist
         return {
-          success: true,
+          success: false,
           message:
-            'Nếu email tồn tại trong hệ thống, mã OTP đã được gửi đến email của bạn.',
-          data: {
-            email,
-            otpSent: false,
-          },
+            'Email này không tồn tại trong hệ thống. Vui lòng kiểm tra lại email.',
         };
       }
 
@@ -464,6 +549,32 @@ class AuthService {
           message:
             'Tài khoản chưa được xác thực, không thể sử dụng chức năng này',
         };
+      }
+
+      // Check if there's a recent password reset OTP and enforce cooldown
+      const recentOTP = await OTP.findOne({
+        email,
+        otp_type: OTPType.PASSWORD_RESET,
+        expires_at: { $gt: new Date() },
+      }).sort({ created_at: -1 });
+
+      if (recentOTP) {
+        const now = new Date();
+        const createdAt = recentOTP.created_at
+          ? new Date(recentOTP.created_at)
+          : now;
+        const timeSinceCreation = now.getTime() - createdAt.getTime();
+        const cooldownPeriod = 60 * 1000; // 1 minute cooldown
+
+        if (timeSinceCreation < cooldownPeriod) {
+          const remainingCooldown = Math.ceil(
+            (cooldownPeriod - timeSinceCreation) / 1000
+          );
+          return {
+            success: false,
+            message: `Vui lòng đợi ${remainingCooldown} giây trước khi gửi lại mã OTP`,
+          };
+        }
       }
 
       // Generate OTP
