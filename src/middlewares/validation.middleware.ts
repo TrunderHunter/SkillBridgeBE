@@ -34,10 +34,10 @@ export const handleValidationErrors = (
       return;
     }
 
-    // If there are multiple errors, return the list
+    // If there are multiple errors, return the first error's message as main message
     res
       .status(400)
-      .json(createErrorResponse('Dữ liệu không hợp lệ', 400, uniqueErrors));
+      .json(createErrorResponse(uniqueErrors[0].message, 400, uniqueErrors));
     return;
   }
 

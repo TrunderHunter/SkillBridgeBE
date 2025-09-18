@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-import { IUser, UserRole, UserStatus } from '../types/user.types';
+import { IUser, UserRole, UserStatus, Gender } from '../types/user.types';
 
 export interface IUserDocument extends IUser, Document {
   _id: string;
@@ -46,6 +46,21 @@ const userSchema = new Schema<IUserDocument>(
       type: String,
       default: null,
     },
+    gender: {
+      type: String,
+      enum: Object.values(Gender),
+      default: null,
+    },
+    date_of_birth: {
+      type: Date,
+      default: null,
+    },
+    address: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'Address cannot exceed 500 characters'],
+      default: null,
+    },
     role: {
       type: String,
       enum: Object.values(UserRole),
@@ -64,6 +79,40 @@ const userSchema = new Schema<IUserDocument>(
     versionKey: false,
   }
 );
+
+// Middleware to auto-create TutorProfile when User is created with TUTOR role
+userSchema.post('save', async function (doc) {
+  // Only create TutorProfile for TUTOR role users
+  if (doc.role === UserRole.TUTOR) {
+    try {
+      // Import TutorProfile here to avoid circular dependency
+      const { TutorProfile } = await import('./TutorProfile');
+
+      // Check if TutorProfile already exists
+      const existingProfile = await TutorProfile.findOne({ user_id: doc._id });
+
+      if (!existingProfile) {
+        // Create new TutorProfile
+        await TutorProfile.create({
+          user_id: doc._id,
+          headline: '',
+          introduction: '',
+          teaching_experience: '',
+          student_levels: '',
+          video_intro_link: '',
+          cccd_images: [],
+        });
+
+        console.log(`TutorProfile created for user: ${doc._id}`);
+      }
+    } catch (error) {
+      console.error(
+        `Failed to create TutorProfile for user ${doc._id}:`,
+        error
+      );
+    }
+  }
+});
 
 // Indexes for better performance
 userSchema.index({ email: 1 });

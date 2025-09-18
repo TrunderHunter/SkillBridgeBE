@@ -11,6 +11,12 @@ export enum UserStatus {
   PENDING_VERIFICATION = 'pending_verification',
 }
 
+export enum Gender {
+  MALE = 'male',
+  FEMALE = 'female',
+  OTHER = 'other',
+}
+
 export interface IUser {
   _id?: string;
   full_name: string;
@@ -18,6 +24,9 @@ export interface IUser {
   password_hash: string;
   phone_number?: string;
   avatar_url?: string;
+  gender?: Gender;
+  date_of_birth?: Date;
+  address?: string;
   role: UserRole;
   status: UserStatus;
   created_at?: Date;
@@ -38,6 +47,9 @@ export interface IUserResponse {
   email: string;
   phone_number?: string;
   avatar_url?: string;
+  gender?: Gender;
+  date_of_birth?: Date;
+  address?: string;
   role: UserRole;
   status: UserStatus;
   created_at: Date;
@@ -96,4 +108,39 @@ export interface IRefreshToken {
   expires_at: Date;
   is_revoked: boolean;
   created_at?: Date;
+}
+
+// Tutor Profile Types
+export interface ITutorProfile {
+  _id?: string;
+  user_id: string;
+  headline?: string;
+  introduction?: string;
+  teaching_experience?: string;
+  student_levels?: string;
+  video_intro_link?: string;
+  cccd_images: string[];
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+export interface ITutorProfileInput {
+  headline?: string;
+  introduction?: string;
+  teaching_experience?: string;
+  student_levels?: string;
+  video_intro_link?: string;
+}
+
+export interface ITutorProfileResponse {
+  id: string;
+  user_id: string;
+  headline?: string;
+  introduction?: string;
+  teaching_experience?: string;
+  student_levels?: string;
+  video_intro_link?: string;
+  cccd_images: string[];
+  created_at: Date;
+  updated_at: Date;
 }
