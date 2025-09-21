@@ -1,20 +1,53 @@
 import 'module-alias/register';
+import http from 'http';
 import app from './app';
-import { connectDB } from './config/index';
+import {
+  connectDB,
+  initializeSocket,
+  setSocketInstance,
+  connectRedis,
+} from './config/index';
 import { logger } from './utils/logger';
+import { disconnectRedis } from './config/redis';
 
 const PORT = process.env.PORT || 3000;
+
+// Handle graceful shutdown
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`📱 Received ${signal}. Starting graceful shutdown...`);
+
+  try {
+    await disconnectRedis();
+    logger.info('✅ Graceful shutdown completed');
+    process.exit(0);
+  } catch (error) {
+    logger.error('❌ Error during graceful shutdown:', error);
+    process.exit(1);
+  }
+};
 
 const startServer = async () => {
   try {
     // Connect to database
     await connectDB();
 
+    // Connect to Redis
+    await connectRedis();
+
+    // Create HTTP server
+    const server = http.createServer(app);
+
+    // Initialize Socket.IO
+    const io = initializeSocket(server);
+    setSocketInstance(io);
+
     // Start server
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📊 Environment: ${process.env.NODE_ENV}`);
       logger.info(`🌐 API URL: http://localhost:${PORT}/api/v1`);
+      logger.info(`⚡ Socket.IO initialized`);
+      logger.info(`🔄 Notification queue ready`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
@@ -33,5 +66,9 @@ process.on('uncaughtException', (err: Error) => {
   logger.error('Uncaught Exception:', err);
   process.exit(1);
 });
+
+// Handle graceful shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 startServer();
