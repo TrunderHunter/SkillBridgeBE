@@ -269,6 +269,93 @@ class AuthController {
       sendError(res, 'Đăng xuất thất bại.', undefined, 500);
     }
   }
+
+  async registerParent(req: RegisterRequest, res: Response): Promise<void> {
+    try {
+      const { 
+        full_name, 
+        email, 
+        password, 
+        phone_number, 
+        address 
+      } = req.body;
+
+      logger.info(`Parent registration attempt for email: ${email}`);
+
+      const result = await authService.registerParent({
+        full_name,
+        email,
+        password,
+        phone_number: phone_number || '',
+        address
+      });
+
+      sendSuccess(
+        res,
+        result.message,
+        {
+          email: result.email,
+          requires_otp: result.requires_otp,
+          next_step: 'verify_otp'
+        },
+        201
+      );
+
+    } catch (error: any) {
+      logger.error('Parent registration controller error:', error);
+
+      if (error.message.includes('Email đã được sử dụng')) {
+        sendError(res, 'Email đã được sử dụng', undefined, 400);
+        return;
+      }
+
+      if (error.message.includes('Số điện thoại đã được sử dụng')) {
+        sendError(res, 'Số điện thoại đã được sử dụng', undefined, 400);
+        return;
+      }
+
+      sendError(res, error.message || 'Đăng ký phụ huynh thất bại. Vui lòng thử lại sau.', undefined, 500);
+    }
+  }
+
+  async verifyParentOTP(req: VerifyOTPRequest, res: Response): Promise<void> {
+    try {
+      const { email, otp_code } = req.body;
+
+      logger.info(`Parent OTP verification attempt for email: ${email}`);
+
+      const result = await authService.verifyParentOTP(email, otp_code);
+
+      // Set HTTP-only cookie for refresh token
+      res.cookie('refreshToken', result.tokens.refresh_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+
+      sendSuccess(
+        res,
+        'Xác thực tài khoản phụ huynh thành công. Chào mừng đến với SkillBridge!',
+        {
+          user: result.user,
+          access_token: result.tokens.access_token,
+          expires_in: result.tokens.expires_in
+        },
+        200
+      );
+
+    } catch (error: any) {
+      logger.error('Parent OTP verification controller error:', error);
+
+      if (error.message.includes('Mã OTP không hợp lệ')) {
+        sendError(res, 'Mã OTP không hợp lệ hoặc đã hết hạn', undefined, 400);
+        return;
+      }
+
+      sendError(res, error.message || 'Xác thực OTP thất bại. Vui lòng thử lại.', undefined, 500);
+    }
+  }
 }
 
 export const authController = new AuthController();

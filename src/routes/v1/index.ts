@@ -1,13 +1,31 @@
-import express from 'express';
-import { authRoutes } from './auth.routes';
+import { Router } from 'express';
+import {authRoutes} from './auth.routes';
 import protectedRoutes from './protected.routes';
+import studentRoutes from './student.routes';
 
-const router = express.Router();
+const router = Router();
 
-// Auth routes
-router.use('/auth', authRoutes);
+// ===========================================
+// LOGGING MIDDLEWARE - TRACE REQUESTS
+// ===========================================
+router.use((req, res, next) => {
+  next();
+});
 
-// Protected routes (demonstration)
-router.use('/protected', protectedRoutes);
+// ===========================================
+// V1 API ROUTES
+// ===========================================
+
+router.use('/auth', (req, res, next) => {
+  next();
+}, authRoutes);
+
+router.use('/protected', (req, res, next) => {
+  next();
+}, protectedRoutes);
+
+router.use('/students', (req, res, next) => {
+  next();
+}, studentRoutes);
 
 export default router;

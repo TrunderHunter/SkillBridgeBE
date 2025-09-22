@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { User, OTP, RefreshToken } from '../../models';
 import { emailService } from '../email';
@@ -7,6 +8,7 @@ import {
   IUserInput,
   IUserResponse,
   UserStatus,
+  UserRole,
   ILoginInput,
   ILoginResponse,
   ITokenResponse,
@@ -760,6 +762,160 @@ class AuthService {
         success: false,
         message: 'Đăng xuất thất bại',
       };
+    }
+  }
+
+  async registerParent(parentData: {
+    full_name: string;
+    email: string;
+    password: string;
+    phone_number: string;
+    address?: string;
+  }): Promise<{
+    message: string;
+    email: string;
+    requires_otp: boolean;
+  }> {
+    try {
+      // 1. Check if user already exists
+      const existingUser = await User.findOne({
+        $or: [
+          { email: parentData.email },
+          { phone_number: parentData.phone_number },
+        ],
+      });
+
+      if (existingUser) {
+        if (existingUser.email === parentData.email) {
+          throw new Error('Email đã được sử dụng');
+        }
+        if (existingUser.phone_number === parentData.phone_number) {
+          throw new Error('Số điện thoại đã được sử dụng');
+        }
+      }
+
+      // 2. Hash password
+      const hashedPassword = await this.hashPassword(parentData.password);
+
+      // 3. Create parent user với status PENDING (chờ verify OTP)
+      const parent = new User({
+        _id: uuidv4(),
+        full_name: parentData.full_name,
+        email: parentData.email,
+        password_hash: hashedPassword,
+        phone_number: parentData.phone_number,
+        address: parentData.address,
+        role: UserRole.PARENT,
+        status: UserStatus.PENDING_VERIFICATION, // Chờ verify OTP
+      });
+
+      await parent.save();
+
+      // 4. Generate OTP for parent registration
+      const otpCode = this.generateOTP();
+
+      // 5. Save OTP with type REGISTRATION
+      const otpRecord = new OTP({
+        _id: uuidv4(),
+        email: parentData.email,
+        otp_code: otpCode,
+        otp_type: OTPType.REGISTRATION,
+        expires_at: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+      });
+
+      await otpRecord.save();
+
+      // 6. Send OTP email
+      await emailService.sendOTPEmail(parentData.email, otpCode, parentData.full_name);
+
+      logger.info(`Parent registration OTP sent to: ${parentData.email}`);
+
+      return {
+        message: 'Đăng ký thành công. Vui lòng kiểm tra email để xác thực tài khoản.',
+        email: parentData.email,
+        requires_otp: true
+      };
+
+    } catch (error: any) {
+      logger.error('Register parent failed:', error);
+      
+      if (error.code === 11000) {
+        if (error.keyPattern?.email) {
+          throw new Error('Email đã được sử dụng');
+        }
+        if (error.keyPattern?.phone_number) {
+          throw new Error('Số điện thoại đã được sử dụng');
+        }
+      }
+      
+      throw error;
+    }
+  }
+
+  async verifyParentOTP(email: string, otpCode: string): Promise<{
+    user: IUserResponse;
+    tokens: ITokenResponse;
+  }> {
+    try {
+      // 1. Find and validate OTP
+      const otpRecord = await OTP.findOne({
+        email: email.toLowerCase(),
+        otp_code: otpCode,
+        otp_type: OTPType.REGISTRATION,
+        is_used: false,
+        expires_at: { $gte: new Date() }
+      });
+
+      if (!otpRecord) {
+        throw new Error('Mã OTP không hợp lệ hoặc đã hết hạn');
+      }
+
+      // 2. Find pending parent user
+      const parent = await User.findOne({
+        email: email.toLowerCase(),
+        role: UserRole.PARENT,
+        status: UserStatus.PENDING_VERIFICATION
+      });
+
+      if (!parent) {
+        throw new Error('Không tìm thấy tài khoản phụ huynh đang chờ xác thực');
+      }
+
+      // 3. Activate parent account
+      parent.status = UserStatus.ACTIVE;
+      await parent.save();
+
+      // 4. Mark OTP as used
+      otpRecord.is_used = true;
+      await otpRecord.save();
+
+      // 5. Generate tokens
+      const tokens = await this.createTokens(parent._id, parent.email);
+
+      // 6. Prepare response
+      const userResponse: IUserResponse = {
+        id: parent._id,
+        full_name: parent.full_name,
+        email: parent.email,
+        phone_number: parent.phone_number,
+        avatar_url: parent.avatar_url,
+        role: parent.role,
+        status: parent.status,
+        address: parent.address,
+        created_at: parent.created_at!,
+        updated_at: parent.updated_at!,
+      };
+
+      logger.info(`Parent OTP verified successfully: ${email}`);
+
+      return {
+        user: userResponse,
+        tokens
+      };
+
+    } catch (error: any) {
+      logger.error('Verify parent OTP failed:', error);
+      throw error;
     }
   }
 }

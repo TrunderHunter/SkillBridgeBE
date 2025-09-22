@@ -59,3 +59,14 @@ export const createErrorResponse = (
   statusCode,
   data,
 });
+
+export const createSuccessResponse = <T>(
+  data?: T,
+  message: string = 'Thành công',
+  statusCode: number = 200
+) => ({
+  success: true,
+  message,
+  statusCode,
+  data,
+});

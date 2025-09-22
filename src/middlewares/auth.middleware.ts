@@ -5,6 +5,21 @@ import { RefreshToken } from '../models/RefreshToken';
 import { createErrorResponse } from '../utils/response';
 import { logger } from '../utils/logger';
 
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        email: string;
+        role: string;
+        status: string;
+      };
+    }
+  }
+}
+
+
 export const authenticateToken = async (
   req: Request,
   res: Response,
@@ -67,7 +82,7 @@ export const authenticateToken = async (
 
     // Add user info to request object
     req.user = {
-      id: user.id,
+      id: user._id, // ← SỬA: Dùng _id
       email: user.email,
       role: user.role,
       status: user.status,
@@ -182,7 +197,7 @@ export const optionalAuth = async (
 
     if (user && user.status === 'active') {
       req.user = {
-        id: user.id,
+        id: user._id, // ← SỬA: Dùng _id
         email: user.email,
         role: user.role,
         status: user.status,

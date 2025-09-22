@@ -108,3 +108,48 @@ export const resendOTPValidator: ValidationChain[] = [
     .isEmail()
     .withMessage('Email không hợp lệ'),
 ];
+
+// Validation cho đăng ký PARENT
+export const registerParentValidation = [
+  body('full_name')
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Tên phải có từ 2-100 ký tự')
+    .notEmpty()
+    .withMessage('Tên là bắt buộc'),
+
+  body('email')
+    .isEmail()
+    .withMessage('Email không hợp lệ')
+    .normalizeEmail(),
+
+  body('password')
+    .isLength({ min: 6 })
+    .withMessage('Mật khẩu phải có ít nhất 6 ký tự')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage('Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường và 1 số'),
+
+  body('phone_number')
+    .matches(/^(\+84|0)[3|5|7|8|9][0-9]{8}$/)
+    .withMessage('Số điện thoại không hợp lệ (phải là số điện thoại Việt Nam)'),
+
+  body('address')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Địa chỉ không được quá 500 ký tự'),
+];
+
+// THÊM validator cho verify parent OTP:
+export const verifyParentOTPValidation = [
+  body('email')
+    .isEmail()
+    .withMessage('Email không hợp lệ')
+    .normalizeEmail(),
+
+  body('otp_code')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('Mã OTP phải có 6 ký tự')
+    .isNumeric()
+    .withMessage('Mã OTP chỉ chứa số'),
+];

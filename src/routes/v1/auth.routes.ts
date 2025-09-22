@@ -9,8 +9,10 @@ import {
   resetPasswordValidator,
   refreshTokenValidator,
   logoutValidator,
+  registerParentValidation
 } from '../../validators';
 import { handleValidationErrors } from '../../middlewares';
+import { body } from 'express-validator';
 
 const router = Router();
 
@@ -120,6 +122,40 @@ router.post(
   logoutValidator,
   handleValidationErrors,
   authController.logout
+);
+
+/**
+ * @route   POST /api/v1/auth/register/parent
+ * @desc    Register a new parent
+ * @access  Public
+ */
+router.post(
+  '/register/parent',
+  registerParentValidation,
+  handleValidationErrors,
+  authController.registerParent
+);
+
+/**
+ * @route   POST /api/v1/auth/verify-parent-otp
+ * @desc    Verify OTP cho đăng ký phụ huynh
+ * @access  Public
+ */
+router.post(
+  '/verify-parent-otp',
+  [
+    body('email')
+      .isEmail()
+      .withMessage('Email không hợp lệ')
+      .normalizeEmail(),
+    body('otp_code')
+      .isLength({ min: 6, max: 6 })
+      .withMessage('Mã OTP phải có 6 ký tự')
+      .isNumeric()
+      .withMessage('Mã OTP chỉ chứa số')
+  ],
+  handleValidationErrors,
+  authController.verifyParentOTP
 );
 
 export { router as authRoutes };
