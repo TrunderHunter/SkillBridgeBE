@@ -23,7 +23,7 @@ router.get('/', EducationController.getEducation);
 // POST /education - Create education record
 router.post(
   '/',
-  upload.single('degreeImage'), // Field name for degree image upload
+  upload.single('degree_image'), // Field name for degree image upload
   createEducationValidator,
   handleValidationErrors,
   EducationController.createEducation
@@ -32,7 +32,7 @@ router.post(
 // PUT /education/:educationId - Update education record
 router.put(
   '/:educationId',
-  upload.single('degreeImage'), // Field name for degree image upload
+  upload.single('degree_image'), // Field name for degree image upload
   updateEducationValidator,
   handleValidationErrors,
   EducationController.updateEducation

@@ -5,6 +5,7 @@ import tutorProfileRoutes from './tutorProfile.routes';
 import educationRoutes from './education.routes';
 import certificatesRoutes from './certificates.routes';
 import achievementsRoutes from './achievements.routes';
+import verificationRoutes from './verification.routes';
 
 const router = express.Router();
 
@@ -25,5 +26,8 @@ router.use('/certificates', certificatesRoutes);
 
 // Achievements routes
 router.use('/achievements', achievementsRoutes);
+
+// Verification routes
+router.use('/verification', verificationRoutes);
 
 export default router;

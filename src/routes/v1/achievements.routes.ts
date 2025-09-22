@@ -34,7 +34,7 @@ router.get(
 // POST /achievements - Create achievement record
 router.post(
   '/',
-  upload.single('achievementImage'), // Field name for achievement image upload
+  upload.single('achievement_image'), // Field name for achievement image upload
   createAchievementValidator,
   handleValidationErrors,
   AchievementController.createAchievement
@@ -43,7 +43,7 @@ router.post(
 // PUT /achievements/:achievementId - Update achievement record
 router.put(
   '/:achievementId',
-  upload.single('achievementImage'), // Field name for achievement image upload
+  upload.single('achievement_image'), // Field name for achievement image upload
   updateAchievementValidator,
   handleValidationErrors,
   AchievementController.updateAchievement

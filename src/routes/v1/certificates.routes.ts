@@ -28,7 +28,7 @@ router.get(
 // POST /certificates - Create certificate record
 router.post(
   '/',
-  upload.single('certificateImage'), // Field name for certificate image upload
+  upload.single('certificate_image'), // Field name for certificate image upload
   createCertificateValidator,
   handleValidationErrors,
   CertificateController.createCertificate
@@ -37,7 +37,7 @@ router.post(
 // PUT /certificates/:certificateId - Update certificate record
 router.put(
   '/:certificateId',
-  upload.single('certificateImage'), // Field name for certificate image upload
+  upload.single('certificate_image'), // Field name for certificate image upload
   updateCertificateValidator,
   handleValidationErrors,
   CertificateController.updateCertificate

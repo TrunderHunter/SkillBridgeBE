@@ -18,6 +18,7 @@ export interface IEducation {
   end_year: string;
   degree_image_url?: string;
   degree_image_public_id?: string;
+  is_verified: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -70,6 +71,10 @@ const educationSchema = new Schema<IEducationDocument>(
     degree_image_public_id: {
       type: String,
       default: null,
+    },
+    is_verified: {
+      type: Boolean,
+      default: false,
     },
   },
   {
