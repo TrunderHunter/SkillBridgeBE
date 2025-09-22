@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
+import { ApiError } from '../utils/response';
 
 export interface CustomError extends Error {
   statusCode?: number;
@@ -7,7 +8,7 @@ export interface CustomError extends Error {
 }
 
 export const errorHandler = (
-  err: CustomError,
+  err: CustomError | ApiError,
   req: Request,
   res: Response,
   next: NextFunction
@@ -17,6 +18,16 @@ export const errorHandler = (
 
   // Log error
   logger.error(err);
+
+  // Handle custom ApiError
+  if (err instanceof ApiError) {
+    res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+      data: err.data || null,
+    });
+    return;
+  }
 
   // Mongoose bad ObjectId
   if (err.name === 'CastError') {
@@ -42,8 +53,28 @@ export const errorHandler = (
     };
   }
 
+  // JWT errors
+  if (err.name === 'JsonWebTokenError') {
+    const message = 'Invalid token';
+    error = { name: 'JsonWebTokenError', message, statusCode: 401 };
+  }
+
+  if (err.name === 'TokenExpiredError') {
+    const message = 'Token expired';
+    error = { name: 'TokenExpiredError', message, statusCode: 401 };
+  }
+
+  // Multer errors
+  if (err.name === 'MulterError') {
+    let message = 'File upload error';
+    if ((err as any).code === 'LIMIT_FILE_SIZE') {
+      message = 'File too large';
+    }
+    error = { name: 'MulterError', message, statusCode: 400 };
+  }
+
   res.status(error.statusCode || 500).json({
     success: false,
-    error: error.message || 'Server Error',
+    message: error.message || 'Server Error',
   });
 };
