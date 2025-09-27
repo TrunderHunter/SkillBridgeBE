@@ -31,16 +31,16 @@ const CertificateSchema = new Schema<ICertificate>(
     tutorId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: [true, 'ID gia sư không được để trống'],
     },
     name: {
       type: String,
-      required: true,
+      required: [true, 'Tên chứng chỉ không được để trống'],
       trim: true,
     },
     issuingOrganization: {
       type: String,
-      required: true,
+      required: [true, 'Tên tổ chức cấp không được để trống'],
       trim: true,
     },
     description: {
@@ -49,19 +49,18 @@ const CertificateSchema = new Schema<ICertificate>(
     },
     issueDate: {
       type: Date,
-      required: true,
+      required: [true, 'Ngày cấp chứng chỉ không được để trống'],
     },
     expiryDate: {
       type: Date,
     },
     imageUrl: {
       type: String,
-      required: true,
     },
     status: {
       type: String,
       enum: Object.values(VerificationStatus),
-      default: VerificationStatus.PENDING,
+      default: VerificationStatus.DRAFT,
     },
     rejectionReason: {
       type: String,

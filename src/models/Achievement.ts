@@ -38,35 +38,41 @@ const AchievementSchema = new Schema<IAchievement>(
     tutorId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: [true, 'ID gia sư không được để trống'],
     },
     name: {
       type: String,
-      required: true,
+      required: [true, 'Tên thành tích không được để trống'],
       trim: true,
     },
     level: {
       type: String,
-      enum: Object.values(AchievementLevel),
-      required: true,
+      enum: {
+        values: Object.values(AchievementLevel),
+        message: 'Cấp độ thành tích không hợp lệ',
+      },
+      required: [true, 'Cấp độ thành tích không được để trống'],
     },
     achievedDate: {
       type: Date,
-      required: true,
+      required: [true, 'Ngày đạt được thành tích không được để trống'],
     },
     awardingOrganization: {
       type: String,
-      required: true,
+      required: [true, 'Tên tổ chức trao tặng không được để trống'],
       trim: true,
     },
     type: {
       type: String,
-      enum: Object.values(AchievementType),
-      required: true,
+      enum: {
+        values: Object.values(AchievementType),
+        message: 'Loại thành tích không hợp lệ',
+      },
+      required: [true, 'Loại thành tích không được để trống'],
     },
     field: {
       type: String,
-      required: true,
+      required: [true, 'Lĩnh vực không được để trống'],
       trim: true,
     },
     imgUrl: {
@@ -79,7 +85,7 @@ const AchievementSchema = new Schema<IAchievement>(
     status: {
       type: String,
       enum: Object.values(VerificationStatus),
-      default: VerificationStatus.PENDING,
+      default: VerificationStatus.DRAFT,
     },
     rejectionReason: {
       type: String,

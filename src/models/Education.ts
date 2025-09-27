@@ -33,22 +33,24 @@ const EducationSchema = new Schema<IEducation>(
     tutorId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: [true, 'ID gia sư không được để trống'],
       unique: true, // 1-1 relationship with Tutor
     },
     level: {
       type: String,
-      enum: Object.values(EducationLevel),
-      required: true,
+      enum: {
+        values: Object.values(EducationLevel),
+        message: 'Trình độ học vấn không hợp lệ',
+      },
+      required: [true, 'Trình độ học vấn không được để trống'],
     },
     school: {
       type: String,
-      required: true,
+      required: [true, 'Tên trường không được để trống'],
       trim: true,
     },
     major: {
       type: String,
-      required: true,
       trim: true,
     },
     imgUrl: {
@@ -56,20 +58,26 @@ const EducationSchema = new Schema<IEducation>(
     },
     startYear: {
       type: Number,
-      required: true,
-      min: 1950,
-      max: new Date().getFullYear(),
+      required: [true, 'Năm bắt đầu không được để trống'],
+      min: [1950, 'Năm bắt đầu phải từ năm 1950 trở đi'],
+      max: [
+        new Date().getFullYear(),
+        `Năm bắt đầu không được vượt quá năm ${new Date().getFullYear()}`,
+      ],
     },
     endYear: {
       type: Number,
-      required: true,
-      min: 1950,
-      max: new Date().getFullYear() + 10,
+      required: [true, 'Năm kết thúc không được để trống'],
+      min: [1950, 'Năm kết thúc phải từ năm 1950 trở đi'],
+      max: [
+        new Date().getFullYear() + 10,
+        `Năm kết thúc không được vượt quá năm ${new Date().getFullYear() + 10}`,
+      ],
     },
     status: {
       type: String,
       enum: Object.values(VerificationStatus),
-      default: VerificationStatus.PENDING,
+      default: VerificationStatus.DRAFT,
     },
     rejectionReason: {
       type: String,

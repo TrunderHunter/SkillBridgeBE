@@ -2,6 +2,8 @@ import express from 'express';
 import { authRoutes } from './auth.routes';
 import protectedRoutes from './protected.routes';
 import tutorProfileRoutes from './tutorProfile.routes';
+import { tutorQualificationRoutes } from './tutor-qualification.routes';
+import { adminVerificationRoutes } from './admin-verification.routes';
 
 const router = express.Router();
 
@@ -13,5 +15,11 @@ router.use('/protected', protectedRoutes);
 
 // Tutor profile routes
 router.use('/tutor', tutorProfileRoutes);
+
+// Tutor qualification routes
+router.use('/tutor', tutorQualificationRoutes);
+
+// Admin verification routes
+router.use('/admin', adminVerificationRoutes);
 
 export default router;

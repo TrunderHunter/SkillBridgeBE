@@ -1,5 +1,6 @@
 // Enum cho trạng thái xác thực của từng thông tin
 export enum VerificationStatus {
+  DRAFT = 'DRAFT', // Bản nháp (mới thêm)
   PENDING = 'PENDING', // Đang chờ xác thực
   VERIFIED = 'VERIFIED', // Đã được xác thực
   REJECTED = 'REJECTED', // Đã bị từ chối

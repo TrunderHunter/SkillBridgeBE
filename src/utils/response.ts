@@ -1,9 +1,19 @@
 import { Response } from 'express';
 
+export interface QualificationInfo {
+  isQualified: boolean;
+  canSubmitVerification: boolean;
+  hasChangesNeedVerification: boolean;
+  pendingVerificationCount: number;
+  missingRequirements: string[];
+  suggestion: string;
+}
+
 export interface ApiResponse<T = any> {
   success: boolean;
   message: string;
   data?: T;
+  qualification?: QualificationInfo;
   error?: string;
 }
 
@@ -13,6 +23,7 @@ export const sendResponse = <T>(
   success: boolean,
   message: string,
   data?: T,
+  qualification?: QualificationInfo,
   error?: string
 ): void => {
   const response: ApiResponse<T> = {
@@ -22,6 +33,10 @@ export const sendResponse = <T>(
 
   if (data !== undefined) {
     response.data = data;
+  }
+
+  if (qualification) {
+    response.qualification = qualification;
   }
 
   if (error) {
@@ -40,13 +55,23 @@ export const sendSuccess = <T>(
   sendResponse(res, statusCode, true, message, data);
 };
 
+export const sendSuccessWithQualification = <T>(
+  res: Response,
+  message: string,
+  data?: T,
+  qualification?: QualificationInfo,
+  statusCode: number = 200
+): void => {
+  sendResponse(res, statusCode, true, message, data, qualification);
+};
+
 export const sendError = (
   res: Response,
   message: string,
   error?: string,
   statusCode: number = 400
 ): void => {
-  sendResponse(res, statusCode, false, message, undefined, error);
+  sendResponse(res, statusCode, false, message, undefined, undefined, error);
 };
 
 export const createErrorResponse = (
