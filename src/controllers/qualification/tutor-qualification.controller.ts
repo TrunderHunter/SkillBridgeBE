@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { Types } from 'mongoose';
 import {
   QualificationService,
   QualificationSuggestionService,
@@ -16,7 +15,6 @@ import {
   sendSuccess,
   sendSuccessWithQualification,
   sendError,
-  toObjectId,
 } from '../../utils';
 
 export class TutorQualificationController {
@@ -25,7 +23,7 @@ export class TutorQualificationController {
    */
   static async getQualifications(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
+      const tutorId = req.user!.id;
 
       const [qualifications, qualificationSuggestion] = await Promise.all([
         QualificationService.getTutorQualifications(tutorId),
@@ -48,7 +46,7 @@ export class TutorQualificationController {
    */
   static async createEducation(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
+      const tutorId = req.user!.id;
       const file = req.file;
 
       // Kiểm tra đã có education chưa (1-1 relationship)
@@ -103,7 +101,7 @@ export class TutorQualificationController {
    */
   static async updateEducation(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
+      const tutorId = req.user!.id;
       const file = req.file;
 
       const education = await Education.findOne({ tutorId });
@@ -120,7 +118,7 @@ export class TutorQualificationController {
       const canModify = await QualificationService.canModifyInfo(
         tutorId,
         VerificationTargetType.EDUCATION,
-        education._id as Types.ObjectId
+        education._id
       );
 
       if (!canModify) {
@@ -170,7 +168,7 @@ export class TutorQualificationController {
    */
   static async createCertificate(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
+      const tutorId = req.user!.id;
       const file = req.file;
 
       // Upload ảnh nếu có
@@ -214,8 +212,8 @@ export class TutorQualificationController {
    */
   static async updateCertificate(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
-      const certificateId = new Types.ObjectId(req.params.id);
+      const tutorId = req.user!.id;
+      const certificateId = req.params.id;
       const file = req.file;
 
       const certificate = await Certificate.findOne({
@@ -280,8 +278,8 @@ export class TutorQualificationController {
    */
   static async deleteCertificate(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
-      const certificateId = new Types.ObjectId(req.params.id);
+      const tutorId = req.user!.id;
+      const certificateId = req.params.id;
 
       const certificate = await Certificate.findOne({
         _id: certificateId,
@@ -312,7 +310,7 @@ export class TutorQualificationController {
    */
   static async createAchievement(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
+      const tutorId = req.user!.id;
       const file = req.file;
 
       // Upload ảnh nếu có
@@ -356,8 +354,8 @@ export class TutorQualificationController {
    */
   static async updateAchievement(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
-      const achievementId = new Types.ObjectId(req.params.id);
+      const tutorId = req.user!.id;
+      const achievementId = req.params.id;
       const file = req.file;
 
       const achievement = await Achievement.findOne({
@@ -422,8 +420,8 @@ export class TutorQualificationController {
    */
   static async deleteAchievement(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
-      const achievementId = new Types.ObjectId(req.params.id);
+      const tutorId = req.user!.id;
+      const achievementId = req.params.id;
 
       const achievement = await Achievement.findOne({
         _id: achievementId,
@@ -446,20 +444,14 @@ export class TutorQualificationController {
    */
   static async createVerificationRequest(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
+      const tutorId = req.user!.id;
       const { educationId, certificateIds, achievementIds } = req.body;
 
       const verificationRequest =
         await QualificationService.createVerificationRequest(tutorId, {
-          educationId: educationId
-            ? new Types.ObjectId(educationId)
-            : undefined,
-          certificateIds: certificateIds?.map(
-            (id: string) => new Types.ObjectId(id)
-          ),
-          achievementIds: achievementIds?.map(
-            (id: string) => new Types.ObjectId(id)
-          ),
+          educationId: educationId || undefined,
+          certificateIds: certificateIds || [],
+          achievementIds: achievementIds || [],
         });
 
       return sendSuccess(
@@ -478,7 +470,7 @@ export class TutorQualificationController {
    */
   static async getVerificationRequests(req: Request, res: Response) {
     try {
-      const tutorId = toObjectId(req.user!.id);
+      const tutorId = req.user!.id;
       const { page = 1, limit = 10 } = req.query;
 
       const skip = (Number(page) - 1) * Number(limit);

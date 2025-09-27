@@ -1,4 +1,5 @@
 import { Schema, model, Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import { RequestType, VerificationStatus } from '../types/verification.types';
 
 // Enum cho loại đối tượng được xác thực
@@ -9,14 +10,15 @@ export enum VerificationTargetType {
 }
 
 export interface IVerificationDetail extends Document {
-  requestId: Schema.Types.ObjectId;
+  _id: string;
+  requestId: string;
   targetType: VerificationTargetType;
-  targetId: Schema.Types.ObjectId;
+  targetId: string;
   requestType: RequestType;
   status: VerificationStatus;
   rejectionReason?: string;
   reviewedAt?: Date;
-  reviewedBy?: Schema.Types.ObjectId;
+  reviewedBy?: string;
   createdAt: Date;
   updatedAt: Date;
 
@@ -26,8 +28,12 @@ export interface IVerificationDetail extends Document {
 
 const VerificationDetailSchema = new Schema<IVerificationDetail>(
   {
+    _id: {
+      type: String,
+      default: uuidv4,
+    },
     requestId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       ref: 'VerificationRequest',
       required: true,
     },
@@ -37,7 +43,7 @@ const VerificationDetailSchema = new Schema<IVerificationDetail>(
       required: true,
     },
     targetId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       required: true,
     },
     requestType: {
@@ -58,7 +64,7 @@ const VerificationDetailSchema = new Schema<IVerificationDetail>(
       type: Date,
     },
     reviewedBy: {
-      type: Schema.Types.ObjectId,
+      type: String,
       ref: 'User',
     },
     dataSnapshot: {

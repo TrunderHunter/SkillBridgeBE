@@ -2,6 +2,10 @@ import { Router } from 'express';
 import { AdminVerificationController } from '../../controllers/qualification';
 import { QualificationValidator } from '../../validators/qualification.validator';
 import { handleValidationErrors } from '../../middlewares/validation.middleware';
+import {
+  authenticateToken,
+  requireAdmin,
+} from '../../middlewares/auth.middleware';
 
 const router = Router();
 
@@ -10,6 +14,8 @@ const router = Router();
  */
 router.get(
   '/verification-requests',
+  authenticateToken,
+  requireAdmin,
   QualificationValidator.queryParams(),
   handleValidationErrors,
   AdminVerificationController.getVerificationRequests
@@ -20,7 +26,9 @@ router.get(
  */
 router.get(
   '/verification-requests/:id',
-  QualificationValidator.mongoIdParam('id'),
+  authenticateToken,
+  requireAdmin,
+  QualificationValidator.uuidParam('id'),
   handleValidationErrors,
   AdminVerificationController.getVerificationRequestDetail
 );
@@ -30,6 +38,9 @@ router.get(
  */
 router.put(
   '/verification-requests/:id',
+  authenticateToken,
+  requireAdmin,
+  QualificationValidator.uuidParam('id'),
   QualificationValidator.processVerificationRequest(),
   handleValidationErrors,
   AdminVerificationController.processVerificationRequest
@@ -40,6 +51,8 @@ router.put(
  */
 router.get(
   '/verification-history',
+  authenticateToken,
+  requireAdmin,
   QualificationValidator.queryParams(),
   handleValidationErrors,
   AdminVerificationController.getVerificationHistory
@@ -50,6 +63,8 @@ router.get(
  */
 router.get(
   '/verification-stats',
+  authenticateToken,
+  requireAdmin,
   AdminVerificationController.getVerificationStats
 );
 

@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
-import { Types } from 'mongoose';
 import { AdminVerificationService } from '../../services/qualification';
 import {
   RequestStatus,
   VerificationStatus,
 } from '../../types/verification.types';
 import { VerificationTargetType } from '../../models/VerificationDetail';
-import { sendSuccess, sendError, toObjectId } from '../../utils';
+import { sendSuccess, sendError } from '../../utils';
 
 export class AdminVerificationController {
   /**
@@ -18,7 +17,7 @@ export class AdminVerificationController {
 
       const filters: any = {};
       if (status) filters.status = status as RequestStatus;
-      if (tutorId) filters.tutorId = toObjectId(tutorId as string);
+      if (tutorId) filters.tutorId = tutorId as string;
       if (page) filters.page = Number(page);
       if (limit) filters.limit = Number(limit);
 
@@ -40,7 +39,7 @@ export class AdminVerificationController {
    */
   static async getVerificationRequestDetail(req: Request, res: Response) {
     try {
-      const requestId = new Types.ObjectId(req.params.id);
+      const requestId = req.params.id;
 
       const result =
         await AdminVerificationService.getVerificationRequestDetail(requestId);
@@ -60,8 +59,8 @@ export class AdminVerificationController {
    */
   static async processVerificationRequest(req: Request, res: Response) {
     try {
-      const requestId = new Types.ObjectId(req.params.id);
-      const adminId = new Types.ObjectId(req.user!.id);
+      const requestId = req.params.id;
+      const adminId = req.user!.id;
       const { decisions, adminNote } = req.body;
 
       // Validate decisions
@@ -113,7 +112,7 @@ export class AdminVerificationController {
 
       // Process decisions
       const processedDecisions = decisions.map((d: any) => ({
-        detailId: new Types.ObjectId(d.detailId),
+        detailId: d.detailId,
         status: d.status,
         rejectionReason: d.rejectionReason,
       }));
@@ -139,7 +138,7 @@ export class AdminVerificationController {
       const { tutorId, targetType, page, limit } = req.query;
 
       const filters: any = {};
-      if (tutorId) filters.tutorId = new Types.ObjectId(tutorId as string);
+      if (tutorId) filters.tutorId = tutorId as string;
       if (targetType) filters.targetType = targetType as VerificationTargetType;
       if (page) filters.page = Number(page);
       if (limit) filters.limit = Number(limit);

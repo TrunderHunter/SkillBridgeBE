@@ -1,11 +1,13 @@
 import { Schema, model, Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import {
   EducationLevel,
   VerificationStatus,
 } from '../types/verification.types';
 
 export interface IEducation extends Document {
-  tutorId: Schema.Types.ObjectId;
+  _id: string;
+  tutorId: string;
   level: EducationLevel;
   school: string;
   major: string;
@@ -30,8 +32,12 @@ export interface IEducation extends Document {
 
 const EducationSchema = new Schema<IEducation>(
   {
+    _id: {
+      type: String,
+      default: uuidv4,
+    },
     tutorId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       ref: 'User',
       required: [true, 'ID gia sư không được để trống'],
       unique: true, // 1-1 relationship with Tutor
@@ -125,5 +131,14 @@ EducationSchema.pre('save', function (next) {
 // Index cho tìm kiếm nhanh
 EducationSchema.index({ tutorId: 1 });
 EducationSchema.index({ status: 1 });
+
+// Transform output to match API response format
+EducationSchema.set('toJSON', {
+  transform: function (doc: any, ret: any) {
+    ret.id = ret._id;
+    delete ret._id;
+    return ret;
+  },
+});
 
 export const Education = model<IEducation>('Education', EducationSchema);

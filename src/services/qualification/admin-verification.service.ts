@@ -1,4 +1,3 @@
-import { Types } from 'mongoose';
 import {
   VerificationRequest,
   VerificationDetail,
@@ -20,7 +19,7 @@ export class AdminVerificationService {
   static async getVerificationRequests(
     filters: {
       status?: RequestStatus;
-      tutorId?: Types.ObjectId;
+      tutorId?: string;
       page?: number;
       limit?: number;
     } = {}
@@ -38,6 +37,10 @@ export class AdminVerificationService {
         VerificationRequest.find(query)
           .populate('tutorId', 'fullName email')
           .populate('reviewedBy', 'fullName email')
+          .populate({
+            path: 'details',
+            options: { sort: { createdAt: 1 } },
+          })
           .sort({ submittedAt: -1 })
           .skip(skip)
           .limit(limit),
@@ -61,7 +64,7 @@ export class AdminVerificationService {
   /**
    * Lấy chi tiết một yêu cầu xác thực
    */
-  static async getVerificationRequestDetail(requestId: Types.ObjectId) {
+  static async getVerificationRequestDetail(requestId: string) {
     try {
       const request = await VerificationRequest.findById(requestId)
         .populate('tutorId', 'fullName email')
@@ -100,7 +103,7 @@ export class AdminVerificationService {
       );
 
       return {
-        request,
+        ...request.toObject(),
         details: populatedDetails,
       };
     } catch (error: any) {
@@ -112,10 +115,10 @@ export class AdminVerificationService {
    * 5. Xử lý yêu cầu xác thực (chấp nhận/từ chối từng mục)
    */
   static async processVerificationRequest(
-    requestId: Types.ObjectId,
-    adminId: Types.ObjectId,
+    requestId: string,
+    adminId: string,
     decisions: {
-      detailId: Types.ObjectId;
+      detailId: string;
       status: VerificationStatus.VERIFIED | VerificationStatus.REJECTED;
       rejectionReason?: string;
     }[],
@@ -151,7 +154,7 @@ export class AdminVerificationService {
         // Cập nhật trạng thái target object
         await this.updateTargetStatus(
           detail.targetType,
-          new Types.ObjectId(detail.targetId.toString()),
+          detail.targetId,
           decision.status,
           decision.rejectionReason
         );
@@ -192,7 +195,7 @@ export class AdminVerificationService {
    */
   private static async updateTargetStatus(
     targetType: VerificationTargetType,
-    targetId: Types.ObjectId,
+    targetId: string,
     status: VerificationStatus,
     rejectionReason?: string
   ) {
@@ -207,9 +210,13 @@ export class AdminVerificationService {
         updateData.rejectionReason = undefined;
         updateData.verifiedData = undefined; // Clear backup data
       } else if (status === VerificationStatus.REJECTED) {
-        // 5.2. Khôi phục dữ liệu đã xác thực nếu bị từ chối
-        await QualificationService.restoreVerifiedData(targetType, targetId);
-        return; // Exit early as restoreVerifiedData handles the update
+        // Only restore verified data if the current status was MODIFIED_PENDING
+        // For NEW requests, just update the status normally
+        const currentTarget = await this.getCurrentTarget(targetType, targetId);
+        if (currentTarget?.status === VerificationStatus.MODIFIED_PENDING) {
+          await QualificationService.restoreVerifiedData(targetType, targetId);
+          return; // Exit early as restoreVerifiedData handles the update
+        }
       }
 
       switch (targetType) {
@@ -229,11 +236,34 @@ export class AdminVerificationService {
   }
 
   /**
+   * Helper function to get current target object
+   */
+  private static async getCurrentTarget(
+    targetType: VerificationTargetType,
+    targetId: string
+  ) {
+    try {
+      switch (targetType) {
+        case VerificationTargetType.EDUCATION:
+          return await Education.findById(targetId);
+        case VerificationTargetType.CERTIFICATE:
+          return await Certificate.findById(targetId);
+        case VerificationTargetType.ACHIEVEMENT:
+          return await Achievement.findById(targetId);
+        default:
+          return null;
+      }
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
    * Lấy lịch sử xác thực
    */
   static async getVerificationHistory(
     filters: {
-      tutorId?: Types.ObjectId;
+      tutorId?: string;
       targetType?: VerificationTargetType;
       page?: number;
       limit?: number;

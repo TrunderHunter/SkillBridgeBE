@@ -1,4 +1,3 @@
-import { Types } from 'mongoose';
 import {
   Education,
   Certificate,
@@ -21,7 +20,7 @@ export class QualificationSuggestionService {
    * Kiểm tra trạng thái qualification và tạo gợi ý cho user
    */
   static async getQualificationSuggestion(
-    tutorId: Types.ObjectId
+    tutorId: string
   ): Promise<QualificationSuggestion> {
     // Lấy tất cả thông tin qualification
     const [education, certificates, achievements, pendingRequest] =
@@ -178,7 +177,7 @@ export class QualificationSuggestionService {
    * Kiểm tra xem có nên hiển thị gợi ý gửi yêu cầu xác thực không
    */
   static async shouldShowVerificationSuggestion(
-    tutorId: Types.ObjectId
+    tutorId: string
   ): Promise<boolean> {
     const suggestion = await this.getQualificationSuggestion(tutorId);
     return suggestion.canSubmitVerification;

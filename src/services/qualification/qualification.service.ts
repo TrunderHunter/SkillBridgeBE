@@ -1,4 +1,3 @@
-import { Types } from 'mongoose';
 import {
   Education,
   Certificate,
@@ -20,7 +19,7 @@ export class QualificationService {
   /**
    * 3.1. Kiểm tra tình trạng đủ điều kiện hành nghề
    */
-  static async isTutorQualified(tutorId: Types.ObjectId): Promise<boolean> {
+  static async isTutorQualified(tutorId: string): Promise<boolean> {
     try {
       // Kiểm tra có trình độ học vấn đã xác thực
       const education = await Education.findOne({
@@ -43,7 +42,7 @@ export class QualificationService {
   /**
    * Lấy toàn bộ thông tin trình độ của gia sư
    */
-  static async getTutorQualifications(tutorId: Types.ObjectId) {
+  static async getTutorQualifications(tutorId: string) {
     try {
       const [education, certificates, achievements] = await Promise.all([
         Education.findOne({ tutorId }),
@@ -68,9 +67,9 @@ export class QualificationService {
    * Chuyển trạng thái từ DRAFT sang PENDING khi gửi yêu cầu xác thực
    */
   static async submitDraftForVerification(
-    tutorId: Types.ObjectId,
+    tutorId: string,
     targetType: VerificationTargetType,
-    targetId: Types.ObjectId
+    targetId: string
   ): Promise<void> {
     try {
       let target: any;
@@ -108,11 +107,11 @@ export class QualificationService {
    * 3.2. Tạo yêu cầu xác thực
    */
   static async createVerificationRequest(
-    tutorId: Types.ObjectId,
+    tutorId: string,
     data: {
-      educationId?: Types.ObjectId;
-      certificateIds?: Types.ObjectId[];
-      achievementIds?: Types.ObjectId[];
+      educationId?: string;
+      certificateIds?: string[];
+      achievementIds?: string[];
     }
   ) {
     try {
@@ -301,9 +300,9 @@ export class QualificationService {
    * 3.3. Kiểm tra có thể sửa đổi thông tin không
    */
   static async canModifyInfo(
-    tutorId: Types.ObjectId,
+    tutorId: string,
     targetType: VerificationTargetType,
-    targetId: Types.ObjectId
+    targetId: string
   ): Promise<boolean> {
     try {
       let currentStatus: VerificationStatus | undefined;
@@ -346,8 +345,8 @@ export class QualificationService {
    * 3.4. Kiểm tra có thể xóa chứng chỉ không
    */
   static async canDeleteCertificate(
-    tutorId: Types.ObjectId,
-    certificateId: Types.ObjectId
+    tutorId: string,
+    certificateId: string
   ): Promise<{ canDelete: boolean; message?: string }> {
     try {
       // Lấy chứng chỉ cần xóa
@@ -384,7 +383,7 @@ export class QualificationService {
    */
   static async restoreVerifiedData(
     targetType: VerificationTargetType,
-    targetId: Types.ObjectId
+    targetId: string
   ) {
     try {
       switch (targetType) {

@@ -117,8 +117,8 @@ export class QualificationValidator {
     return [
       body('educationId')
         .optional()
-        .isMongoId()
-        .withMessage('Education ID không hợp lệ'),
+        .isUUID(4)
+        .withMessage('Education ID không hợp lệ (phải là UUID v4)'),
 
       body('certificateIds')
         .optional()
@@ -126,8 +126,8 @@ export class QualificationValidator {
         .withMessage('Certificate IDs phải là mảng'),
 
       body('certificateIds.*')
-        .isMongoId()
-        .withMessage('Certificate ID không hợp lệ'),
+        .isUUID(4)
+        .withMessage('Certificate ID không hợp lệ (phải là UUID v4)'),
 
       body('achievementIds')
         .optional()
@@ -135,8 +135,8 @@ export class QualificationValidator {
         .withMessage('Achievement IDs phải là mảng'),
 
       body('achievementIds.*')
-        .isMongoId()
-        .withMessage('Achievement ID không hợp lệ'),
+        .isUUID(4)
+        .withMessage('Achievement ID không hợp lệ (phải là UUID v4)'),
     ];
   }
 
@@ -145,15 +145,17 @@ export class QualificationValidator {
    */
   static processVerificationRequest(): ValidationChain[] {
     return [
-      param('id').isMongoId().withMessage('Request ID không hợp lệ'),
+      param('id')
+        .isUUID(4)
+        .withMessage('Request ID không hợp lệ (phải là UUID v4)'),
 
       body('decisions')
         .isArray({ min: 1 })
         .withMessage('Phải có ít nhất một quyết định'),
 
       body('decisions.*.detailId')
-        .isMongoId()
-        .withMessage('Detail ID không hợp lệ'),
+        .isUUID(4)
+        .withMessage('Detail ID không hợp lệ (phải là UUID v4)'),
 
       body('decisions.*.status')
         .isIn(['VERIFIED', 'REJECTED'])
@@ -188,17 +190,30 @@ export class QualificationValidator {
 
       query('tutorId')
         .optional()
-        .isMongoId()
-        .withMessage('Tutor ID không hợp lệ'),
+        .isUUID(4)
+        .withMessage('Tutor ID không hợp lệ (phải là UUID v4)'),
     ];
   }
 
   /**
-   * Validator cho MongoDB ObjectId params
+   * Validator cho UUID params
+   */
+  static uuidParam(paramName: string = 'id'): ValidationChain[] {
+    return [
+      param(paramName)
+        .isUUID(4)
+        .withMessage(`${paramName} không hợp lệ (phải là UUID v4)`),
+    ];
+  }
+
+  /**
+   * Validator cho MongoDB ObjectId params (deprecated - use uuidParam instead)
    */
   static mongoIdParam(paramName: string = 'id'): ValidationChain[] {
     return [
-      param(paramName).isMongoId().withMessage(`${paramName} không hợp lệ`),
+      param(paramName)
+        .isUUID(4)
+        .withMessage(`${paramName} không hợp lệ (phải là UUID v4)`),
     ];
   }
 }

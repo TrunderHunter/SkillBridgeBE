@@ -1,4 +1,5 @@
 import { Schema, model, Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import {
   AchievementLevel,
   AchievementType,
@@ -6,7 +7,8 @@ import {
 } from '../types/verification.types';
 
 export interface IAchievement extends Document {
-  tutorId: Schema.Types.ObjectId;
+  _id: string;
+  tutorId: string;
   name: string;
   level: AchievementLevel;
   achievedDate: Date;
@@ -35,8 +37,12 @@ export interface IAchievement extends Document {
 
 const AchievementSchema = new Schema<IAchievement>(
   {
+    _id: {
+      type: String,
+      default: uuidv4,
+    },
     tutorId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       ref: 'User',
       required: [true, 'ID gia sư không được để trống'],
     },
@@ -143,6 +149,15 @@ AchievementSchema.index({ status: 1 });
 AchievementSchema.index({ tutorId: 1, status: 1 });
 AchievementSchema.index({ type: 1 });
 AchievementSchema.index({ level: 1 });
+
+// Transform output to match API response format
+AchievementSchema.set('toJSON', {
+  transform: function (doc: any, ret: any) {
+    ret.id = ret._id;
+    delete ret._id;
+    return ret;
+  },
+});
 
 export const Achievement = model<IAchievement>(
   'Achievement',

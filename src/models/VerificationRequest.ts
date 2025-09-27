@@ -1,12 +1,14 @@
 import { Schema, model, Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import { RequestStatus } from '../types/verification.types';
 
 export interface IVerificationRequest extends Document {
-  tutorId: Schema.Types.ObjectId;
+  _id: string;
+  tutorId: string;
   status: RequestStatus;
   submittedAt: Date;
   reviewedAt?: Date;
-  reviewedBy?: Schema.Types.ObjectId;
+  reviewedBy?: string;
   adminNote?: string;
   result?: string;
   createdAt: Date;
@@ -15,8 +17,12 @@ export interface IVerificationRequest extends Document {
 
 const VerificationRequestSchema = new Schema<IVerificationRequest>(
   {
+    _id: {
+      type: String,
+      default: uuidv4,
+    },
     tutorId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       ref: 'User',
       required: true,
     },
@@ -33,7 +39,7 @@ const VerificationRequestSchema = new Schema<IVerificationRequest>(
       type: Date,
     },
     reviewedBy: {
-      type: Schema.Types.ObjectId,
+      type: String,
       ref: 'User',
     },
     adminNote: {
@@ -63,8 +69,15 @@ VerificationRequestSchema.virtual('details', {
   foreignField: 'requestId',
 });
 
-// Đảm bảo virtual fields được include khi convert sang JSON
-VerificationRequestSchema.set('toJSON', { virtuals: true });
+// Transform output to match API response format
+VerificationRequestSchema.set('toJSON', {
+  transform: function (doc: any, ret: any) {
+    ret.id = ret._id;
+    delete ret._id;
+    return ret;
+  },
+  virtuals: true,
+});
 VerificationRequestSchema.set('toObject', { virtuals: true });
 
 export const VerificationRequest = model<IVerificationRequest>(

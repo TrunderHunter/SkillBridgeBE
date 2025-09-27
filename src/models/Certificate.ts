@@ -1,8 +1,10 @@
 import { Schema, model, Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import { VerificationStatus } from '../types/verification.types';
 
 export interface ICertificate extends Document {
-  tutorId: Schema.Types.ObjectId;
+  _id: string;
+  tutorId: string;
   name: string;
   issuingOrganization: string;
   description?: string;
@@ -28,8 +30,12 @@ export interface ICertificate extends Document {
 
 const CertificateSchema = new Schema<ICertificate>(
   {
+    _id: {
+      type: String,
+      default: uuidv4,
+    },
     tutorId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       ref: 'User',
       required: [true, 'ID gia sư không được để trống'],
     },
@@ -110,6 +116,15 @@ CertificateSchema.pre('save', function (next) {
 CertificateSchema.index({ tutorId: 1 });
 CertificateSchema.index({ status: 1 });
 CertificateSchema.index({ tutorId: 1, status: 1 });
+
+// Transform output to match API response format
+CertificateSchema.set('toJSON', {
+  transform: function (doc: any, ret: any) {
+    ret.id = ret._id;
+    delete ret._id;
+    return ret;
+  },
+});
 
 export const Certificate = model<ICertificate>(
   'Certificate',
