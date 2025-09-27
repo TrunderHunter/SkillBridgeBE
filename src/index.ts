@@ -1,14 +1,8 @@
 import 'module-alias/register';
 import http from 'http';
 import app from './app';
-import {
-  connectDB,
-  initializeSocket,
-  setSocketInstance,
-  connectRedis,
-} from './config/index';
+import { connectDB, initializeSocket, setSocketInstance } from './config/index';
 import { logger } from './utils/logger';
-import { disconnectRedis } from './config/redis';
 
 const PORT = process.env.PORT || 3000;
 
@@ -17,7 +11,6 @@ const gracefulShutdown = async (signal: string) => {
   logger.info(`📱 Received ${signal}. Starting graceful shutdown...`);
 
   try {
-    await disconnectRedis();
     logger.info('✅ Graceful shutdown completed');
     process.exit(0);
   } catch (error) {
@@ -30,9 +23,6 @@ const startServer = async () => {
   try {
     // Connect to database
     await connectDB();
-
-    // Connect to Redis
-    await connectRedis();
 
     // Create HTTP server
     const server = http.createServer(app);
@@ -47,7 +37,7 @@ const startServer = async () => {
       logger.info(`📊 Environment: ${process.env.NODE_ENV}`);
       logger.info(`🌐 API URL: http://localhost:${PORT}/api/v1`);
       logger.info(`⚡ Socket.IO initialized`);
-      logger.info(`🔄 Notification queue ready`);
+      logger.info(`🔔 Notification service ready`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

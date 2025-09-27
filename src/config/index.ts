@@ -5,13 +5,6 @@ import {
   setSocketInstance,
   getSocketInstance,
 } from './socket';
-import { redisClient, connectRedis } from './redis';
-import {
-  notificationQueue,
-  addNotificationJob,
-  NotificationJobData,
-  JOB_OPTIONS,
-} from './queue';
 
 export {
   connectDB,
@@ -21,10 +14,4 @@ export {
   initializeSocket,
   setSocketInstance,
   getSocketInstance,
-  redisClient,
-  connectRedis,
-  notificationQueue,
-  addNotificationJob,
-  NotificationJobData,
-  JOB_OPTIONS,
 };
