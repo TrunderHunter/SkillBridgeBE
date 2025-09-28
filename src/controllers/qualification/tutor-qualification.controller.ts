@@ -11,6 +11,7 @@ import {
   VerificationRequest,
 } from '../../models';
 import { VerificationTargetType } from '../../models/VerificationDetail';
+import { VerificationStatus } from '../../types/verification.types';
 import {
   sendSuccess,
   sendSuccessWithQualification,
@@ -18,6 +19,33 @@ import {
 } from '../../utils';
 
 export class TutorQualificationController {
+  /**
+   * Helper function để xử lý status change khi update item
+   */
+  private static async handleStatusChangeOnUpdate(
+    item: any,
+    targetType: VerificationTargetType
+  ): Promise<void> {
+    // Nếu item hiện tại có status REJECTED, chuyển thành MODIFIED_AFTER_REJECTION
+    if (item.status === VerificationStatus.REJECTED) {
+      item.status = VerificationStatus.MODIFIED_AFTER_REJECTION;
+      // Lưu thông tin cũ vào verifiedData để backup
+      item.verifiedData = {
+        ...item.toObject(),
+        status: VerificationStatus.REJECTED,
+      };
+    }
+    // Nếu item hiện tại có status VERIFIED, chuyển thành MODIFIED_PENDING
+    else if (item.status === VerificationStatus.VERIFIED) {
+      item.status = VerificationStatus.MODIFIED_PENDING;
+      // Lưu thông tin đã verified vào verifiedData để backup
+      item.verifiedData = {
+        ...item.toObject(),
+        status: VerificationStatus.VERIFIED,
+      };
+    }
+  }
+
   /**
    * GET /api/tutor/qualifications - Lấy toàn bộ thông tin trình độ với gợi ý
    */
@@ -142,6 +170,12 @@ export class TutorQualificationController {
         imgUrl = req.body.imgUrl; // Cập nhật từ body nếu có
       }
 
+      // Xử lý status change trước khi update
+      await TutorQualificationController.handleStatusChangeOnUpdate(
+        education,
+        VerificationTargetType.EDUCATION
+      );
+
       // Cập nhật thông tin
       Object.assign(education, { ...req.body, imgUrl });
       await education.save();
@@ -251,6 +285,12 @@ export class TutorQualificationController {
       } else if (req.body.imageUrl !== undefined) {
         imageUrl = req.body.imageUrl; // Cập nhật từ body nếu có
       }
+
+      // Xử lý status change trước khi update
+      await TutorQualificationController.handleStatusChangeOnUpdate(
+        certificate,
+        VerificationTargetType.CERTIFICATE
+      );
 
       // Cập nhật thông tin
       Object.assign(certificate, { ...req.body, imageUrl });
@@ -393,6 +433,12 @@ export class TutorQualificationController {
       } else if (req.body.imgUrl !== undefined) {
         imgUrl = req.body.imgUrl; // Cập nhật từ body nếu có
       }
+
+      // Xử lý status change trước khi update
+      await TutorQualificationController.handleStatusChangeOnUpdate(
+        achievement,
+        VerificationTargetType.ACHIEVEMENT
+      );
 
       // Cập nhật thông tin
       Object.assign(achievement, { ...req.body, imgUrl });

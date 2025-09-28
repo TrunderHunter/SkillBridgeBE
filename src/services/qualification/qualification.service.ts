@@ -329,12 +329,13 @@ export class QualificationService {
         return false;
       }
 
-      // Cho phép sửa nếu là DRAFT, REJECTED, hoặc VERIFIED
+      // Cho phép sửa nếu là DRAFT, REJECTED, VERIFIED, hoặc MODIFIED_AFTER_REJECTION
       // Không cho phép sửa nếu đang chờ xác thực
       return (
         currentStatus === VerificationStatus.DRAFT ||
         currentStatus === VerificationStatus.REJECTED ||
-        currentStatus === VerificationStatus.VERIFIED
+        currentStatus === VerificationStatus.VERIFIED ||
+        currentStatus === VerificationStatus.MODIFIED_AFTER_REJECTION
       );
     } catch (error: any) {
       throw new Error(`Lỗi kiểm tra quyền sửa đổi: ${error.message}`);

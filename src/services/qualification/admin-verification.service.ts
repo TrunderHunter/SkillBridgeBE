@@ -219,6 +219,17 @@ export class AdminVerificationService {
         }
       }
 
+      // Handle MODIFIED_AFTER_REJECTION status
+      if (status === VerificationStatus.VERIFIED) {
+        const currentTarget = await this.getCurrentTarget(targetType, targetId);
+        if (
+          currentTarget?.status === VerificationStatus.MODIFIED_AFTER_REJECTION
+        ) {
+          // Clear verifiedData backup since it's now approved
+          updateData.verifiedData = undefined;
+        }
+      }
+
       switch (targetType) {
         case VerificationTargetType.EDUCATION:
           await Education.findByIdAndUpdate(targetId, updateData);

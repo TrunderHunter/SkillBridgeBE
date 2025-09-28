@@ -5,6 +5,7 @@ export enum VerificationStatus {
   VERIFIED = 'VERIFIED', // Đã được xác thực
   REJECTED = 'REJECTED', // Đã bị từ chối
   MODIFIED_PENDING = 'MODIFIED_PENDING', // Thông tin đã được xác thực trước đó đang chờ xác thực thay đổi
+  MODIFIED_AFTER_REJECTION = 'MODIFIED_AFTER_REJECTION', // Thông tin bị từ chối đã được sửa đổi và cần xác thực lại
 }
 
 // Enum cho trạng thái yêu cầu xác thực

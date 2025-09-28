@@ -50,12 +50,14 @@ export class QualificationSuggestionService {
     const pendingEducation = education?.status === VerificationStatus.PENDING;
     const draftEducation = education?.status === VerificationStatus.DRAFT;
     const modifiedEducation =
-      education?.status === VerificationStatus.MODIFIED_PENDING;
+      education?.status === VerificationStatus.MODIFIED_PENDING ||
+      education?.status === VerificationStatus.MODIFIED_AFTER_REJECTION;
 
     const pendingCertificates = certificates.filter(
       (cert) =>
         cert.status === VerificationStatus.PENDING ||
-        cert.status === VerificationStatus.MODIFIED_PENDING
+        cert.status === VerificationStatus.MODIFIED_PENDING ||
+        cert.status === VerificationStatus.MODIFIED_AFTER_REJECTION
     );
     const draftCertificates = certificates.filter(
       (cert) => cert.status === VerificationStatus.DRAFT
@@ -64,7 +66,8 @@ export class QualificationSuggestionService {
     const pendingAchievements = achievements.filter(
       (ach) =>
         ach.status === VerificationStatus.PENDING ||
-        ach.status === VerificationStatus.MODIFIED_PENDING
+        ach.status === VerificationStatus.MODIFIED_PENDING ||
+        ach.status === VerificationStatus.MODIFIED_AFTER_REJECTION
     );
     const draftAchievements = achievements.filter(
       (ach) => ach.status === VerificationStatus.DRAFT
