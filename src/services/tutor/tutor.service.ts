@@ -1,4 +1,4 @@
-import { User, TutorProfile } from '../../models';
+import { User, TutorProfile, Province, District, Ward } from '../../models';
 import { uploadToCloudinary } from '../../config';
 import { ITutorProfileInput, Gender } from '../../types/user.types';
 import { logger } from '../../utils/logger';
@@ -30,6 +30,12 @@ export interface PersonalInfoInput {
   gender?: Gender;
   date_of_birth?: string;
   address?: string;
+  structured_address?: {
+    province_code?: string;
+    district_code?: string;
+    ward_code?: string;
+    detail_address?: string;
+  };
 }
 
 class TutorService {
@@ -51,12 +57,40 @@ class TutorService {
     try {
       logger.info(`Getting tutor profile for user: ${userId}`);
 
-      // Get user data
+      // Get user data with populated structured_address
       const user = await User.findById(userId).select('-password_hash');
       if (!user) {
         return {
           success: false,
           message: 'Không tìm thấy người dùng',
+        };
+      }
+
+      // Populate structured_address with full address information
+      let populatedUser = user.toJSON();
+      if (user.structured_address) {
+        // Models are already imported at the top
+
+        const [province, district, ward] = await Promise.all([
+          user.structured_address.province_code
+            ? Province.findOne({ code: user.structured_address.province_code })
+            : null,
+          user.structured_address.district_code
+            ? District.findOne({ code: user.structured_address.district_code })
+            : null,
+          user.structured_address.ward_code
+            ? Ward.findOne({ code: user.structured_address.ward_code })
+            : null,
+        ]);
+
+        populatedUser = {
+          ...populatedUser,
+          structured_address: {
+            ...user.structured_address,
+            province_info: province,
+            district_info: district,
+            ward_info: ward,
+          },
         };
       }
 
@@ -81,7 +115,7 @@ class TutorService {
         success: true,
         message: 'Lấy thông tin hồ sơ thành công',
         data: {
-          user: user.toJSON(),
+          user: populatedUser,
           profile: tutorProfile.toJSON(),
         },
       };
@@ -105,8 +139,14 @@ class TutorService {
     try {
       logger.info(`Updating personal info for user: ${userId}`);
 
-      const { full_name, phone_number, gender, date_of_birth, address } =
-        personalInfo;
+      const {
+        full_name,
+        phone_number,
+        gender,
+        date_of_birth,
+        address,
+        structured_address,
+      } = personalInfo;
 
       // Prepare update data
       const updateData: any = {};
@@ -118,6 +158,8 @@ class TutorService {
       }
       if (date_of_birth) updateData.date_of_birth = new Date(date_of_birth);
       if (address) updateData.address = address;
+      if (structured_address)
+        updateData.structured_address = structured_address;
 
       // Handle avatar upload
       if (avatarFile) {
@@ -151,11 +193,43 @@ class TutorService {
         };
       }
 
+      // Populate structured_address with full address information
+      let populatedUser = updatedUser.toJSON();
+      if (updatedUser.structured_address) {
+        // Models are already imported at the top
+
+        const [province, district, ward] = await Promise.all([
+          updatedUser.structured_address.province_code
+            ? Province.findOne({
+                code: updatedUser.structured_address.province_code,
+              })
+            : null,
+          updatedUser.structured_address.district_code
+            ? District.findOne({
+                code: updatedUser.structured_address.district_code,
+              })
+            : null,
+          updatedUser.structured_address.ward_code
+            ? Ward.findOne({ code: updatedUser.structured_address.ward_code })
+            : null,
+        ]);
+
+        populatedUser = {
+          ...populatedUser,
+          structured_address: {
+            ...updatedUser.structured_address,
+            province_info: province,
+            district_info: district,
+            ward_info: ward,
+          },
+        };
+      }
+
       logger.info(`Personal info updated successfully for user: ${userId}`);
       return {
         success: true,
         message: 'Cập nhật thông tin cá nhân thành công',
-        data: updatedUser.toJSON(),
+        data: populatedUser,
       };
     } catch (error: any) {
       logger.error('Update personal info error:', error);

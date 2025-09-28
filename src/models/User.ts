@@ -61,6 +61,30 @@ const userSchema = new Schema<IUserDocument>(
       maxlength: [500, 'Address cannot exceed 500 characters'],
       default: null,
     },
+    // Structured address for better address management
+    structured_address: {
+      province_code: {
+        type: String,
+        ref: 'Province',
+        default: null,
+      },
+      district_code: {
+        type: String,
+        ref: 'District',
+        default: null,
+      },
+      ward_code: {
+        type: String,
+        ref: 'Ward',
+        default: null,
+      },
+      detail_address: {
+        type: String,
+        trim: true,
+        maxlength: [200, 'Detail address cannot exceed 200 characters'],
+        default: null,
+      },
+    },
     role: {
       type: String,
       enum: Object.values(UserRole),

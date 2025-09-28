@@ -17,6 +17,13 @@ export enum Gender {
   OTHER = 'other',
 }
 
+export interface IStructuredAddress {
+  province_code?: string;
+  district_code?: string;
+  ward_code?: string;
+  detail_address?: string;
+}
+
 export interface IUser {
   _id?: string;
   full_name: string;
@@ -27,6 +34,7 @@ export interface IUser {
   gender?: Gender;
   date_of_birth?: Date;
   address?: string;
+  structured_address?: IStructuredAddress;
   role: UserRole;
   status: UserStatus;
   created_at?: Date;
@@ -50,6 +58,7 @@ export interface IUserResponse {
   gender?: Gender;
   date_of_birth?: Date;
   address?: string;
+  structured_address?: IStructuredAddress;
   role: UserRole;
   status: UserStatus;
   created_at: Date;

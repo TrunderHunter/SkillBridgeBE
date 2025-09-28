@@ -7,3 +7,6 @@ export { Certificate } from './Certificate';
 export { Achievement } from './Achievement';
 export { VerificationRequest } from './VerificationRequest';
 export { VerificationDetail } from './VerificationDetail';
+export { Province } from './Province';
+export { District } from './District';
+export { Ward } from './Ward';

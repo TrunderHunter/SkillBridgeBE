@@ -61,12 +61,24 @@ export class TutorProfileController {
 
       logger.info(`Updating personal info for user: ${userId}`);
 
+      // Parse structured_address if it's a JSON string
+      let structured_address = req.body.structured_address;
+      if (typeof structured_address === 'string') {
+        try {
+          structured_address = JSON.parse(structured_address);
+        } catch (error) {
+          console.error('Error parsing structured_address:', error);
+          structured_address = null;
+        }
+      }
+
       const personalInfoData = {
         full_name: req.body.full_name,
         phone_number: req.body.phone_number,
         gender: req.body.gender,
         date_of_birth: req.body.date_of_birth,
         address: req.body.address,
+        structured_address: structured_address,
       };
 
       // Handle avatar file if present

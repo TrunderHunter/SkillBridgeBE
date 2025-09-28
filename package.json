@@ -12,7 +12,8 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "format": "prettier --write src/**/*.ts"
+    "format": "prettier --write src/**/*.ts",
+    "import:address": "ts-node -r tsconfig-paths/register src/scripts/importAddressData.ts"
   },
   "keywords": [
     "nodejs",
