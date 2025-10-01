@@ -12,3 +12,4 @@ export { District } from './District';
 export { Ward } from './Ward';
 export { Subject } from './Subject';
 export { TutorPost } from './TutorPost';
+export { Post, PostType, PostStatus } from './Post';

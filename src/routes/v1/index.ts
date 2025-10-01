@@ -7,23 +7,16 @@ import { adminVerificationRoutes } from './admin-verification.routes';
 import addressRoutes from './address.routes';
 import subjectRoutes from './subject.routes';
 import tutorPostRoutes from './tutorPost.routes';
+import postRoutes from './post.routes';
 
 const router = express.Router();
 
-// Auth routes
 router.use('/auth', authRoutes);
-
-// Protected routes (demonstration)
 router.use('/protected', protectedRoutes);
-
-// Tutor profile routes
-router.use('/tutor', tutorProfileRoutes);
-
-// Tutor qualification routes
-router.use('/tutor', tutorQualificationRoutes);
-
-// Admin verification routes
-router.use('/admin', adminVerificationRoutes);
+router.use('/tutor/profile', tutorProfileRoutes);
+router.use('/tutor/qualification', tutorQualificationRoutes);
+router.use('/admin/verification', adminVerificationRoutes);
+router.use('/posts', postRoutes);
 
 // Address routes
 router.use('/address', addressRoutes);
