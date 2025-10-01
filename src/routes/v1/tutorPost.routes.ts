@@ -53,6 +53,10 @@ router.get(
   handleValidationErrors,
   tutorPostController.getMyTutorPosts.bind(tutorPostController)
 );
+router.get(
+  '/eligibility/check',
+  tutorPostController.checkEligibility.bind(tutorPostController)
+);
 
 // Tutor post management routes (require ownership)
 router.put(

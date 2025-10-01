@@ -9,6 +9,21 @@ import { User } from '../../models/User';
 import { Education } from '../../models/Education';
 import { Types } from 'mongoose';
 
+// Interface for tutor eligibility checking
+export interface ITutorEligibilityRequirement {
+  id: string;
+  title: string;
+  description: string;
+  status: 'completed' | 'pending' | 'missing';
+  actionText?: string;
+  actionPath?: string;
+}
+
+export interface ITutorEligibilityResponse {
+  isEligible: boolean;
+  requirements: ITutorEligibilityRequirement[];
+}
+
 export interface ICreateTutorPostInput {
   title: string;
   description: string;
@@ -58,17 +73,33 @@ export class TutorPostService {
     data: ICreateTutorPostInput
   ): Promise<ITutorPost> {
     try {
-      // Kiểm tra tutor có được xác thực không
+      // 1. Validate tutor qualifications - CRITICAL CHECK
       await this.validateTutorQualification(tutorId);
 
+      // 2. Additional business logic validations
+      await this.validatePostData(data);
+
+      // 3. Check for duplicate schedule conflicts
+      await this.validateScheduleConflicts(tutorId, data.teachingSchedule);
+
+      // 4. Determine initial status based on qualification completeness
+      const initialStatus = await this.determineInitialPostStatus(tutorId);
+
+      // 5. Create the post
       const tutorPost = new TutorPost({
         ...data,
         tutorId: new Types.ObjectId(tutorId),
         subjects: data.subjects.map((id) => new Types.ObjectId(id)),
+        status: initialStatus,
       });
 
-      return await tutorPost.save();
+      const savedPost = await tutorPost.save();
+      
+      console.log(`📝 Tutor post created: ${savedPost._id} with status ${initialStatus} by tutor ${tutorId}`);
+      
+      return savedPost;
     } catch (error) {
+      console.error(`❌ Failed to create tutor post for ${tutorId}:`, error);
       throw error;
     }
   }
@@ -298,32 +329,286 @@ export class TutorPostService {
   }
 
   private async validateTutorQualification(tutorId: string): Promise<void> {
-    // Kiểm tra user có role TUTOR
-    const user = await User.findById(tutorId);
-    if (!user || user.role !== 'TUTOR') {
-      throw new Error('User must be a tutor to create posts');
+    try {
+      // 1. Kiểm tra user tồn tại và có role TUTOR
+      const user = await User.findById(tutorId).select('role status');
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (user.role !== 'TUTOR') {
+        throw new Error('User must have TUTOR role to create posts');
+      }
+
+      // 2. Kiểm tra TutorProfile đã được xác thực
+      const tutorProfile = await TutorProfile.findOne({ 
+        user_id: new Types.ObjectId(tutorId) 
+      }).select('status verified_at cccd_images');
+      
+      if (!tutorProfile) {
+        throw new Error('Tutor profile not found. Please complete your profile first.');
+      }
+
+      if (tutorProfile.status !== 'VERIFIED') {
+        const statusMessages = {
+          'DRAFT': 'Please complete and submit your tutor profile for verification.',
+          'PENDING': 'Your tutor profile is pending verification. Please wait for admin approval.',
+          'REJECTED': 'Your tutor profile was rejected. Please update and resubmit.',
+          'MODIFIED_PENDING': 'Your profile modifications are pending verification.',
+          'MODIFIED_AFTER_REJECTION': 'Please address the rejection feedback and resubmit.'
+        };
+        
+        throw new Error(
+          statusMessages[tutorProfile.status as keyof typeof statusMessages] || 
+          'Tutor profile must be verified to create posts'
+        );
+      }
+
+      // 3. Kiểm tra có ít nhất một trình độ học vấn được xác thực
+      const verifiedEducations = await Education.find({
+        tutorId: new Types.ObjectId(tutorProfile._id),
+        status: 'VERIFIED',
+      }).select('_id level school major');
+
+      if (verifiedEducations.length === 0) {
+        throw new Error(
+          'At least one education qualification must be verified. Please add and verify your educational background.'
+        );
+      }
+
+      // 4. Kiểm tra CCCD images (không được rỗng - bảo mật)
+      if (!tutorProfile.cccd_images || tutorProfile.cccd_images.length === 0) {
+        throw new Error(
+          'Identity verification is required. Please upload your ID documents.'
+        );
+      }
+
+      // 5. Log successful validation
+      console.log(`✅ Tutor qualification validated for user ${tutorId}:`, {
+        profileStatus: tutorProfile.status,
+        verifiedEducations: verifiedEducations.length,
+        hasIdDocuments: tutorProfile.cccd_images.length > 0,
+        verifiedAt: tutorProfile.verified_at
+      });
+
+    } catch (error) {
+      // Log validation failure
+      console.log(`❌ Tutor qualification validation failed for user ${tutorId}:`, error);
+      throw error;
+    }
+  }
+
+  private async validatePostData(data: ICreateTutorPostInput): Promise<void> {
+    // Validate address requirement for offline teaching
+    if ((data.teachingMode === 'OFFLINE' || data.teachingMode === 'BOTH') && !data.address) {
+      throw new Error('Address is required for offline or hybrid teaching mode');
     }
 
-    // Kiểm tra TutorProfile đã được xác thực
-    const tutorProfile = await TutorProfile.findOne({ user_id: tutorId });
-    if (!tutorProfile) {
-      throw new Error('Tutor profile not found');
+    // Validate schedule slots
+    if (!data.teachingSchedule || data.teachingSchedule.length === 0) {
+      throw new Error('At least one teaching schedule slot is required');
     }
 
-    if (tutorProfile.status !== 'VERIFIED') {
-      throw new Error('Personal information must be verified to create posts');
+    // Validate price range
+    if (data.pricePerSession < 100000 || data.pricePerSession > 10000000) {
+      throw new Error('Price per session must be between 100,000 and 10,000,000 VND');
     }
 
-    // Kiểm tra có ít nhất một trình độ học vấn được xác thực
-    const verifiedEducations = await Education.find({
-      tutorId: tutorProfile._id,
-      status: 'VERIFIED',
-    });
+    // Validate session duration
+    const validDurations = [60, 90, 120, 150, 180];
+    if (!validDurations.includes(data.sessionDuration)) {
+      throw new Error('Session duration must be 60, 90, 120, 150, or 180 minutes');
+    }
+  }
 
-    if (verifiedEducations.length === 0) {
-      throw new Error(
-        'At least one education qualification must be verified to create posts'
-      );
+  private async validateScheduleConflicts(
+    tutorId: string, 
+    newSchedule: ITeachingSchedule[]
+  ): Promise<void> {
+    // Get existing active posts from this tutor
+    const existingPosts = await TutorPost.find({
+      tutorId: new Types.ObjectId(tutorId),
+      status: 'ACTIVE'
+    }).select('teachingSchedule');
+
+    // Check for conflicts
+    for (const existingPost of existingPosts) {
+      for (const existingSlot of existingPost.teachingSchedule) {
+        for (const newSlot of newSchedule) {
+          if (this.isScheduleConflict(existingSlot, newSlot)) {
+            throw new Error(
+              `Schedule conflict detected: ${this.formatScheduleSlot(newSlot)} overlaps with existing post`
+            );
+          }
+        }
+      }
+    }
+  }
+
+  private isScheduleConflict(slot1: ITeachingSchedule, slot2: ITeachingSchedule): boolean {
+    if (slot1.dayOfWeek !== slot2.dayOfWeek) return false;
+    
+    const start1 = this.timeToMinutes(slot1.startTime);
+    const end1 = this.timeToMinutes(slot1.endTime);
+    const start2 = this.timeToMinutes(slot2.startTime);
+    const end2 = this.timeToMinutes(slot2.endTime);
+
+    return !(end1 <= start2 || end2 <= start1);
+  }
+
+  private timeToMinutes(time: string): number {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  }
+
+  private formatScheduleSlot(slot: ITeachingSchedule): string {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return `${days[slot.dayOfWeek]} ${slot.startTime}-${slot.endTime}`;
+  }
+
+  private async determineInitialPostStatus(tutorId: string): Promise<'ACTIVE' | 'PENDING'> {
+    try {
+      // If all validations pass, the post can be ACTIVE immediately
+      // This assumes validateTutorQualification already passed
+      return 'ACTIVE';
+    } catch (error) {
+      // If there are issues, set to PENDING for admin review
+      return 'PENDING';
+    }
+  }
+
+  // Public method for frontend to check eligibility
+  async checkTutorEligibility(tutorId: string): Promise<ITutorEligibilityResponse> {
+    const requirements: ITutorEligibilityRequirement[] = [];
+
+    try {
+      // Check user role
+      const user = await User.findById(tutorId).select('role status');
+      const userRequirement: ITutorEligibilityRequirement = {
+        id: 'user-role',
+        title: 'Tài khoản gia sư',
+        description: 'Tài khoản phải có quyền gia sư',
+        status: (user && user.role === 'TUTOR') ? 'completed' : 'missing' as 'completed' | 'pending' | 'missing'
+      };
+      if (!user || user.role !== 'TUTOR') {
+        userRequirement.actionText = 'Đăng ký làm gia sư';
+        userRequirement.actionPath = '/become-tutor';
+      }
+      requirements.push(userRequirement);
+
+      // Check tutor profile
+      const tutorProfile = await TutorProfile.findOne({ 
+        user_id: new Types.ObjectId(tutorId) 
+      }).select('status verified_at cccd_images');
+
+      let profileStatus: 'completed' | 'pending' | 'missing' = 'missing';
+      let profileActionText: string | undefined = 'Hoàn thiện hồ sơ';
+      
+      if (tutorProfile) {
+        if (tutorProfile.status === 'VERIFIED') {
+          profileStatus = 'completed';
+          profileActionText = undefined;
+        } else if (tutorProfile.status === 'PENDING' || tutorProfile.status === 'MODIFIED_PENDING') {
+          profileStatus = 'pending';
+          profileActionText = 'Chờ xác minh';
+        }
+      }
+
+      const profileRequirement: ITutorEligibilityRequirement = {
+        id: 'tutor-profile',
+        title: 'Hồ sơ gia sư đã được xác thực',
+        description: 'Thông tin cá nhân, kinh nghiệm giảng dạy và CCCD đã được xác minh',
+        status: profileStatus,
+        actionPath: '/tutor/profile'
+      };
+      if (profileActionText) {
+        profileRequirement.actionText = profileActionText;
+      }
+      requirements.push(profileRequirement);
+
+      // Check education
+      let educationStatus: 'completed' | 'pending' | 'missing' = 'missing';
+      let educationActionText: string | undefined = 'Thêm bằng cấp';
+
+      if (tutorProfile) {
+        const educations = await Education.find({
+          tutorId: new Types.ObjectId(tutorProfile._id),
+        }).select('status');
+
+        const verifiedEducations = educations.filter(edu => edu.status === 'VERIFIED');
+        const pendingEducations = educations.filter(edu => 
+          edu.status === 'PENDING' || edu.status === 'MODIFIED_PENDING'
+        );
+
+        if (verifiedEducations.length > 0) {
+          educationStatus = 'completed';
+          educationActionText = undefined;
+        } else if (pendingEducations.length > 0) {
+          educationStatus = 'pending';
+          educationActionText = 'Chờ xác minh';
+        }
+      }
+
+      const educationRequirement: ITutorEligibilityRequirement = {
+        id: 'education',
+        title: 'Có ít nhất 1 bằng cấp được xác thực',
+        description: 'Bằng cấp/chứng chỉ học vấn đã được kiểm tra và xác nhận',
+        status: educationStatus,
+        actionPath: '/tutor/qualifications?tab=education'
+      };
+      if (educationActionText) {
+        educationRequirement.actionText = educationActionText;
+      }
+      requirements.push(educationRequirement);
+
+      // Check ID verification
+      let idStatus: 'completed' | 'pending' | 'missing' = 'missing';
+      let idActionText: string | undefined = 'Upload CCCD/CMND';
+
+      if (tutorProfile?.cccd_images && tutorProfile.cccd_images.length > 0) {
+        if (tutorProfile.status === 'VERIFIED') {
+          idStatus = 'completed';
+          idActionText = undefined;
+        } else {
+          idStatus = 'pending';
+          idActionText = 'Chờ xác minh';
+        }
+      }
+
+      const idRequirement: ITutorEligibilityRequirement = {
+        id: 'identity-verification',
+        title: 'Xác thực danh tính',
+        description: 'CCCD/CMND đã được xác minh để đảm bảo an toàn',
+        status: idStatus,
+        actionPath: '/tutor/profile'
+      };
+      if (idActionText) {
+        idRequirement.actionText = idActionText;
+      }
+      requirements.push(idRequirement);
+
+      // Determine overall eligibility
+      const completedCount = requirements.filter(req => req.status === 'completed').length;
+      const isEligible = completedCount === requirements.length;
+
+      return { isEligible, requirements };
+
+    } catch (error) {
+      console.error('Error checking tutor eligibility:', error);
+      // Return safe defaults on error
+      const errorRequirement: ITutorEligibilityRequirement = {
+        id: 'error',
+        title: 'Lỗi kiểm tra điều kiện',
+        description: 'Không thể kiểm tra điều kiện đăng bài. Vui lòng thử lại sau.',
+        status: 'missing' as 'completed' | 'pending' | 'missing',
+        actionText: 'Thử lại',
+        actionPath: '/tutor/profile'
+      };
+      
+      return {
+        isEligible: false,
+        requirements: requirements.length > 0 ? requirements : [errorRequirement]
+      };
     }
   }
 }

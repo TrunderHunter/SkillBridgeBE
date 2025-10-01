@@ -94,6 +94,29 @@ export class TutorPostController {
     }
   }
 
+  // [TUTOR] Kiểm tra điều kiện đăng bài
+  async checkEligibility(req: Request, res: Response) {
+    try {
+      const tutorId = req.user!.id;
+
+      const eligibilityResult = await tutorPostService.checkTutorEligibility(tutorId);
+
+      return sendSuccess(
+        res, 
+        'Eligibility check completed successfully', 
+        eligibilityResult
+      );
+    } catch (error) {
+      logger.error('Check eligibility error:', error);
+      return sendError(
+        res,
+        'Failed to check eligibility',
+        error instanceof Error ? error.message : 'Unknown error',
+        500
+      );
+    }
+  }
+
   // [PUBLIC] Tìm kiếm bài đăng gia sư
   async searchTutorPosts(req: Request, res: Response) {
     try {
