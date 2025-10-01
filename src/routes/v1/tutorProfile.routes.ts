@@ -33,6 +33,16 @@ router.put(
   TutorProfileController.updateIntroduction
 );
 
+// Verification routes
+router.get(
+  '/profile/check-edit-status',
+  TutorProfileController.checkEditStatus
+);
+router.post(
+  '/profile/submit-verification',
+  TutorProfileController.submitForVerification
+);
+
 // CCCD routes
 router.get('/cccd', CCCDController.getImages);
 router.post(

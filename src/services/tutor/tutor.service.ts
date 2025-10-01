@@ -1,6 +1,11 @@
 import { User, TutorProfile, Province, District, Ward } from '../../models';
 import { uploadToCloudinary } from '../../config';
-import { ITutorProfileInput, Gender } from '../../types/user.types';
+import {
+  ITutorProfileInput,
+  Gender,
+  IStructuredAddressWithInfo,
+} from '../../types/user.types';
+import { VerificationStatus } from '../../types/verification.types';
 import { logger } from '../../utils/logger';
 
 export interface TutorProfileResponse {
@@ -91,7 +96,7 @@ class TutorService {
             district_info: district,
             ward_info: ward,
           },
-        };
+        } as any;
       }
 
       // Get or create tutor profile
@@ -106,6 +111,7 @@ class TutorService {
           student_levels: '',
           video_intro_link: '',
           cccd_images: [],
+          status: VerificationStatus.DRAFT, // Set initial status
         });
         await tutorProfile.save();
         logger.info(`Auto-created TutorProfile for user: ${userId}`);
@@ -193,6 +199,28 @@ class TutorService {
         };
       }
 
+      // Update TutorProfile status if personal info changed
+      const tutorProfile = await TutorProfile.findOne({ user_id: userId });
+      if (tutorProfile) {
+        // If personal info changed and profile is verified, mark as modified
+        if (tutorProfile.status === VerificationStatus.VERIFIED) {
+          // Backup current profile data
+          tutorProfile.verified_data = {
+            headline: tutorProfile.headline,
+            introduction: tutorProfile.introduction,
+            teaching_experience: tutorProfile.teaching_experience,
+            student_levels: tutorProfile.student_levels,
+            video_intro_link: tutorProfile.video_intro_link,
+            cccd_images: tutorProfile.cccd_images,
+          };
+          tutorProfile.status = VerificationStatus.MODIFIED_PENDING;
+          await tutorProfile.save();
+          logger.info(
+            `TutorProfile status updated to MODIFIED_PENDING for user: ${userId}`
+          );
+        }
+      }
+
       // Populate structured_address with full address information
       let populatedUser = updatedUser.toJSON();
       if (updatedUser.structured_address) {
@@ -222,7 +250,7 @@ class TutorService {
             district_info: district,
             ward_info: ward,
           },
-        };
+        } as any;
       }
 
       logger.info(`Personal info updated successfully for user: ${userId}`);
@@ -276,12 +304,37 @@ class TutorService {
           user_id: userId,
           ...cleanData,
           cccd_images: [], // Initialize with empty array
+          status: VerificationStatus.DRAFT, // Set initial status
         });
         logger.info(`Creating new tutor profile for user: ${userId}`);
       } else {
         // Update existing profile
         Object.assign(tutorProfile, cleanData);
-        logger.info(`Updating existing tutor profile for user: ${userId}`);
+
+        // Update status based on current status
+        if (tutorProfile.status === VerificationStatus.VERIFIED) {
+          // If currently verified, backup data and set to MODIFIED_PENDING
+          tutorProfile.verified_data = {
+            headline: tutorProfile.headline,
+            introduction: tutorProfile.introduction,
+            teaching_experience: tutorProfile.teaching_experience,
+            student_levels: tutorProfile.student_levels,
+            video_intro_link: tutorProfile.video_intro_link,
+            cccd_images: tutorProfile.cccd_images,
+          };
+          tutorProfile.status = VerificationStatus.MODIFIED_PENDING;
+        } else if (tutorProfile.status === VerificationStatus.REJECTED) {
+          // If rejected, set to MODIFIED_AFTER_REJECTION
+          tutorProfile.status = VerificationStatus.MODIFIED_AFTER_REJECTION;
+          tutorProfile.rejection_reason = undefined; // Clear rejection reason
+        } else if (tutorProfile.status === VerificationStatus.DRAFT) {
+          // Keep as DRAFT if not verified yet
+          tutorProfile.status = VerificationStatus.DRAFT;
+        }
+
+        logger.info(
+          `Updating existing tutor profile for user: ${userId}, new status: ${tutorProfile.status}`
+        );
       }
 
       await tutorProfile.save();

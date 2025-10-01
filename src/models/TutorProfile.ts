@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { ITutorProfile } from '../types/user.types';
+import { VerificationStatus } from '../types/verification.types';
 
 export interface ITutorProfileDocument extends ITutorProfile, Document {
   _id: string;
@@ -57,6 +58,34 @@ const tutorProfileSchema = new Schema<ITutorProfileDocument>(
         message: 'Không thể tải lên quá 10 ảnh CCCD',
       },
     },
+    // Trạng thái xác thực của thông tin gia sư
+    status: {
+      type: String,
+      enum: Object.values(VerificationStatus),
+      default: VerificationStatus.DRAFT,
+    },
+    // Lý do từ chối (nếu có)
+    rejection_reason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    // Thời gian xác thực
+    verified_at: {
+      type: Date,
+      default: null,
+    },
+    // Người xác thực
+    verified_by: {
+      type: String,
+      ref: 'User',
+      default: null,
+    },
+    // Backup dữ liệu đã được xác thực (để restore khi bị reject)
+    verified_data: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
@@ -66,6 +95,8 @@ const tutorProfileSchema = new Schema<ITutorProfileDocument>(
 
 // Indexes for better performance
 tutorProfileSchema.index({ user_id: 1 });
+tutorProfileSchema.index({ status: 1 });
+tutorProfileSchema.index({ verified_at: 1 });
 
 // Transform output to match API response format
 tutorProfileSchema.set('toJSON', {

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { sendSuccess, sendError } from '../../utils/response';
+import { sendSuccess, sendError, sendResponse } from '../../utils/response';
 import { tutorService, cccdService } from '../../services/tutor';
+import { QualificationService } from '../../services/qualification';
 import { logger } from '../../utils/logger';
 
 interface AuthenticatedRequest extends Request {
@@ -59,6 +60,33 @@ export class TutorProfileController {
         return sendError(res, 'Người dùng chưa được xác thực', undefined, 401);
       }
 
+      // Kiểm tra quyền chỉnh sửa thông tin gia sư
+      const canEditResult =
+        await QualificationService.canEditTutorProfile(userId);
+
+      if (!canEditResult.canEdit) {
+        return sendResponse(
+          res,
+          403,
+          false,
+          canEditResult.message || 'Không thể chỉnh sửa thông tin',
+          {
+            status: canEditResult.status,
+            canEdit: false,
+          }
+        );
+      }
+
+      // Nếu có cảnh báo và chưa được confirm, trả về thông tin cảnh báo
+      if (canEditResult.warning && !req.body.confirmed) {
+        return sendResponse(res, 200, false, canEditResult.warning, {
+          status: canEditResult.status,
+          canEdit: true,
+          warning: canEditResult.warning,
+          requiresConfirmation: true,
+        }); // 200 để frontend có thể xử lý warning
+      }
+
       logger.info(`Updating personal info for user: ${userId}`);
 
       // Parse structured_address if it's a JSON string
@@ -107,6 +135,40 @@ export class TutorProfileController {
     }
   }
 
+  // Kiểm tra trạng thái có thể chỉnh sửa thông tin gia sư
+  static async checkEditStatus(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return sendError(res, 'Người dùng chưa được xác thực', undefined, 401);
+      }
+
+      logger.info(`Checking edit status for user: ${userId}`);
+
+      const result = await QualificationService.canEditTutorProfile(userId);
+
+      sendSuccess(res, 'Kiểm tra trạng thái thành công', {
+        canEdit: result.canEdit,
+        status: result.status,
+        warning: result.warning,
+        message: result.message,
+      });
+    } catch (error) {
+      logger.error('Check edit status controller error:', error);
+      sendError(
+        res,
+        'Kiểm tra trạng thái chỉnh sửa thất bại. Vui lòng thử lại sau.',
+        undefined,
+        500
+      );
+    }
+  }
+
   // Update tutor profile introduction
   static async updateIntroduction(
     req: AuthenticatedRequest,
@@ -118,6 +180,33 @@ export class TutorProfileController {
 
       if (!userId) {
         return sendError(res, 'Người dùng chưa được xác thực', undefined, 401);
+      }
+
+      // Kiểm tra quyền chỉnh sửa thông tin gia sư
+      const canEditResult =
+        await QualificationService.canEditTutorProfile(userId);
+
+      if (!canEditResult.canEdit) {
+        return sendResponse(
+          res,
+          403,
+          false,
+          canEditResult.message || 'Không thể chỉnh sửa thông tin',
+          {
+            status: canEditResult.status,
+            canEdit: false,
+          }
+        );
+      }
+
+      // Nếu có cảnh báo và chưa được confirm, trả về thông tin cảnh báo
+      if (canEditResult.warning && !req.body.confirmed) {
+        return sendResponse(res, 200, false, canEditResult.warning, {
+          status: canEditResult.status,
+          canEdit: true,
+          warning: canEditResult.warning,
+          requiresConfirmation: true,
+        }); // 200 để frontend có thể xử lý warning
       }
 
       logger.info(`Updating introduction for user: ${userId}`);
@@ -148,6 +237,79 @@ export class TutorProfileController {
         undefined,
         500
       );
+    }
+  }
+
+  // Gửi yêu cầu xác thực thông tin gia sư
+  static async submitForVerification(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return sendError(res, 'Người dùng chưa được xác thực', undefined, 401);
+      }
+
+      logger.info(`Submitting tutor profile for verification: ${userId}`);
+
+      // Lấy tutorProfileId từ user
+      const tutorProfile = await tutorService.getProfile(userId);
+      if (!tutorProfile.success || !tutorProfile.data?.profile?.id) {
+        return sendError(
+          res,
+          'Không tìm thấy thông tin gia sư',
+          undefined,
+          404
+        );
+      }
+
+      const tutorProfileId = tutorProfile.data.profile.id;
+
+      const result =
+        await QualificationService.createTutorProfileVerificationRequest(
+          userId,
+          tutorProfileId
+        );
+
+      sendSuccess(res, 'Gửi yêu cầu xác thực thành công', {
+        requestId: result._id,
+        status: result.status,
+        submittedAt: result.submittedAt,
+      });
+    } catch (error: any) {
+      logger.error('Submit for verification controller error:', error);
+
+      // Xử lý các loại lỗi khác nhau
+      if (error.message.includes('đang chờ xử lý')) {
+        sendResponse(res, 409, false, error.message, {
+          errorType: 'PENDING_REQUEST',
+          canRetry: false,
+        });
+      } else if (error.message.includes('Không tìm thấy')) {
+        sendResponse(res, 404, false, error.message, {
+          errorType: 'NOT_FOUND',
+          canRetry: false,
+        });
+      } else if (error.message.includes('quyền truy cập')) {
+        sendResponse(res, 403, false, error.message, {
+          errorType: 'ACCESS_DENIED',
+          canRetry: false,
+        });
+      } else {
+        sendResponse(
+          res,
+          500,
+          false,
+          'Gửi yêu cầu xác thực thất bại. Vui lòng thử lại sau.',
+          {
+            errorType: 'INTERNAL_ERROR',
+            canRetry: true,
+          }
+        );
+      }
     }
   }
 

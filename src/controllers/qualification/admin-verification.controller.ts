@@ -42,11 +42,33 @@ export class AdminVerificationController {
       const requestId = req.params.id;
 
       const result =
-        await AdminVerificationService.getVerificationRequestDetail(requestId);
+        await AdminVerificationService.getVerificationRequestDetailForAdmin(
+          requestId
+        );
 
       return sendSuccess(
         res,
         'Lấy chi tiết yêu cầu xác thực thành công',
+        result
+      );
+    } catch (error: any) {
+      return sendError(res, error.message, undefined, 500);
+    }
+  }
+
+  /**
+   * GET /api/admin/verification-requests/:id/user-info - Lấy thông tin User và TutorProfile
+   */
+  static async getUserAndTutorProfileInfo(req: Request, res: Response) {
+    try {
+      const tutorId = req.params.tutorId;
+
+      const result =
+        await AdminVerificationService.getUserAndTutorProfileInfo(tutorId);
+
+      return sendSuccess(
+        res,
+        'Lấy thông tin người dùng và gia sư thành công',
         result
       );
     } catch (error: any) {
