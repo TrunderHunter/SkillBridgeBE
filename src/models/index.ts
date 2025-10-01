@@ -7,3 +7,4 @@ export { Certificate } from './Certificate';
 export { Achievement } from './Achievement';
 export { VerificationRequest } from './VerificationRequest';
 export { VerificationDetail } from './VerificationDetail';
+export { Post, PostType, PostStatus } from './Post';
