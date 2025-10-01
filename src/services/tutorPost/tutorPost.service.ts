@@ -94,9 +94,11 @@ export class TutorPostService {
       });
 
       const savedPost = await tutorPost.save();
-      
-      console.log(`📝 Tutor post created: ${savedPost._id} with status ${initialStatus} by tutor ${tutorId}`);
-      
+
+      console.log(
+        `📝 Tutor post created: ${savedPost._id} with status ${initialStatus} by tutor ${tutorId}`
+      );
+
       return savedPost;
     } catch (error) {
       console.error(`❌ Failed to create tutor post for ${tutorId}:`, error);
@@ -341,26 +343,33 @@ export class TutorPostService {
       }
 
       // 2. Kiểm tra TutorProfile đã được xác thực
-      const tutorProfile = await TutorProfile.findOne({ 
-        user_id: new Types.ObjectId(tutorId) 
+      const tutorProfile = await TutorProfile.findOne({
+        user_id: new Types.ObjectId(tutorId),
       }).select('status verified_at cccd_images');
-      
+
       if (!tutorProfile) {
-        throw new Error('Tutor profile not found. Please complete your profile first.');
+        throw new Error(
+          'Tutor profile not found. Please complete your profile first.'
+        );
       }
 
       if (tutorProfile.status !== 'VERIFIED') {
         const statusMessages = {
-          'DRAFT': 'Please complete and submit your tutor profile for verification.',
-          'PENDING': 'Your tutor profile is pending verification. Please wait for admin approval.',
-          'REJECTED': 'Your tutor profile was rejected. Please update and resubmit.',
-          'MODIFIED_PENDING': 'Your profile modifications are pending verification.',
-          'MODIFIED_AFTER_REJECTION': 'Please address the rejection feedback and resubmit.'
+          DRAFT:
+            'Please complete and submit your tutor profile for verification.',
+          PENDING:
+            'Your tutor profile is pending verification. Please wait for admin approval.',
+          REJECTED:
+            'Your tutor profile was rejected. Please update and resubmit.',
+          MODIFIED_PENDING:
+            'Your profile modifications are pending verification.',
+          MODIFIED_AFTER_REJECTION:
+            'Please address the rejection feedback and resubmit.',
         };
-        
+
         throw new Error(
-          statusMessages[tutorProfile.status as keyof typeof statusMessages] || 
-          'Tutor profile must be verified to create posts'
+          statusMessages[tutorProfile.status as keyof typeof statusMessages] ||
+            'Tutor profile must be verified to create posts'
         );
       }
 
@@ -388,20 +397,27 @@ export class TutorPostService {
         profileStatus: tutorProfile.status,
         verifiedEducations: verifiedEducations.length,
         hasIdDocuments: tutorProfile.cccd_images.length > 0,
-        verifiedAt: tutorProfile.verified_at
+        verifiedAt: tutorProfile.verified_at,
       });
-
     } catch (error) {
       // Log validation failure
-      console.log(`❌ Tutor qualification validation failed for user ${tutorId}:`, error);
+      console.log(
+        `❌ Tutor qualification validation failed for user ${tutorId}:`,
+        error
+      );
       throw error;
     }
   }
 
   private async validatePostData(data: ICreateTutorPostInput): Promise<void> {
     // Validate address requirement for offline teaching
-    if ((data.teachingMode === 'OFFLINE' || data.teachingMode === 'BOTH') && !data.address) {
-      throw new Error('Address is required for offline or hybrid teaching mode');
+    if (
+      (data.teachingMode === 'OFFLINE' || data.teachingMode === 'BOTH') &&
+      !data.address
+    ) {
+      throw new Error(
+        'Address is required for offline or hybrid teaching mode'
+      );
     }
 
     // Validate schedule slots
@@ -411,24 +427,28 @@ export class TutorPostService {
 
     // Validate price range
     if (data.pricePerSession < 100000 || data.pricePerSession > 10000000) {
-      throw new Error('Price per session must be between 100,000 and 10,000,000 VND');
+      throw new Error(
+        'Price per session must be between 100,000 and 10,000,000 VND'
+      );
     }
 
     // Validate session duration
     const validDurations = [60, 90, 120, 150, 180];
     if (!validDurations.includes(data.sessionDuration)) {
-      throw new Error('Session duration must be 60, 90, 120, 150, or 180 minutes');
+      throw new Error(
+        'Session duration must be 60, 90, 120, 150, or 180 minutes'
+      );
     }
   }
 
   private async validateScheduleConflicts(
-    tutorId: string, 
+    tutorId: string,
     newSchedule: ITeachingSchedule[]
   ): Promise<void> {
     // Get existing active posts from this tutor
     const existingPosts = await TutorPost.find({
       tutorId: new Types.ObjectId(tutorId),
-      status: 'ACTIVE'
+      status: 'ACTIVE',
     }).select('teachingSchedule');
 
     // Check for conflicts
@@ -445,9 +465,12 @@ export class TutorPostService {
     }
   }
 
-  private isScheduleConflict(slot1: ITeachingSchedule, slot2: ITeachingSchedule): boolean {
+  private isScheduleConflict(
+    slot1: ITeachingSchedule,
+    slot2: ITeachingSchedule
+  ): boolean {
     if (slot1.dayOfWeek !== slot2.dayOfWeek) return false;
-    
+
     const start1 = this.timeToMinutes(slot1.startTime);
     const end1 = this.timeToMinutes(slot1.endTime);
     const start2 = this.timeToMinutes(slot2.startTime);
@@ -462,11 +485,21 @@ export class TutorPostService {
   }
 
   private formatScheduleSlot(slot: ITeachingSchedule): string {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const days = [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
     return `${days[slot.dayOfWeek]} ${slot.startTime}-${slot.endTime}`;
   }
 
-  private async determineInitialPostStatus(tutorId: string): Promise<'ACTIVE' | 'PENDING'> {
+  private async determineInitialPostStatus(
+    tutorId: string
+  ): Promise<'ACTIVE' | 'PENDING'> {
     try {
       // If all validations pass, the post can be ACTIVE immediately
       // This assumes validateTutorQualification already passed
@@ -478,7 +511,9 @@ export class TutorPostService {
   }
 
   // Public method for frontend to check eligibility
-  async checkTutorEligibility(tutorId: string): Promise<ITutorEligibilityResponse> {
+  async checkTutorEligibility(
+    tutorId: string
+  ): Promise<ITutorEligibilityResponse> {
     const requirements: ITutorEligibilityRequirement[] = [];
 
     try {
@@ -488,7 +523,10 @@ export class TutorPostService {
         id: 'user-role',
         title: 'Tài khoản gia sư',
         description: 'Tài khoản phải có quyền gia sư',
-        status: (user && user.role === 'TUTOR') ? 'completed' : 'missing' as 'completed' | 'pending' | 'missing'
+        status:
+          user && user.role === 'TUTOR'
+            ? 'completed'
+            : ('missing' as 'completed' | 'pending' | 'missing'),
       };
       if (!user || user.role !== 'TUTOR') {
         userRequirement.actionText = 'Đăng ký làm gia sư';
@@ -497,18 +535,21 @@ export class TutorPostService {
       requirements.push(userRequirement);
 
       // Check tutor profile
-      const tutorProfile = await TutorProfile.findOne({ 
-        user_id: new Types.ObjectId(tutorId) 
+      const tutorProfile = await TutorProfile.findOne({
+        user_id: new Types.ObjectId(tutorId),
       }).select('status verified_at cccd_images');
 
       let profileStatus: 'completed' | 'pending' | 'missing' = 'missing';
       let profileActionText: string | undefined = 'Hoàn thiện hồ sơ';
-      
+
       if (tutorProfile) {
         if (tutorProfile.status === 'VERIFIED') {
           profileStatus = 'completed';
           profileActionText = undefined;
-        } else if (tutorProfile.status === 'PENDING' || tutorProfile.status === 'MODIFIED_PENDING') {
+        } else if (
+          tutorProfile.status === 'PENDING' ||
+          tutorProfile.status === 'MODIFIED_PENDING'
+        ) {
           profileStatus = 'pending';
           profileActionText = 'Chờ xác minh';
         }
@@ -517,9 +558,10 @@ export class TutorPostService {
       const profileRequirement: ITutorEligibilityRequirement = {
         id: 'tutor-profile',
         title: 'Hồ sơ gia sư đã được xác thực',
-        description: 'Thông tin cá nhân, kinh nghiệm giảng dạy và CCCD đã được xác minh',
+        description:
+          'Thông tin cá nhân, kinh nghiệm giảng dạy và CCCD đã được xác minh',
         status: profileStatus,
-        actionPath: '/tutor/profile'
+        actionPath: '/tutor/profile',
       };
       if (profileActionText) {
         profileRequirement.actionText = profileActionText;
@@ -535,9 +577,11 @@ export class TutorPostService {
           tutorId: new Types.ObjectId(tutorProfile._id),
         }).select('status');
 
-        const verifiedEducations = educations.filter(edu => edu.status === 'VERIFIED');
-        const pendingEducations = educations.filter(edu => 
-          edu.status === 'PENDING' || edu.status === 'MODIFIED_PENDING'
+        const verifiedEducations = educations.filter(
+          (edu) => edu.status === 'VERIFIED'
+        );
+        const pendingEducations = educations.filter(
+          (edu) => edu.status === 'PENDING' || edu.status === 'MODIFIED_PENDING'
         );
 
         if (verifiedEducations.length > 0) {
@@ -554,7 +598,7 @@ export class TutorPostService {
         title: 'Có ít nhất 1 bằng cấp được xác thực',
         description: 'Bằng cấp/chứng chỉ học vấn đã được kiểm tra và xác nhận',
         status: educationStatus,
-        actionPath: '/tutor/qualifications?tab=education'
+        actionPath: '/tutor/qualifications?tab=education',
       };
       if (educationActionText) {
         educationRequirement.actionText = educationActionText;
@@ -580,7 +624,7 @@ export class TutorPostService {
         title: 'Xác thực danh tính',
         description: 'CCCD/CMND đã được xác minh để đảm bảo an toàn',
         status: idStatus,
-        actionPath: '/tutor/profile'
+        actionPath: '/tutor/profile',
       };
       if (idActionText) {
         idRequirement.actionText = idActionText;
@@ -588,26 +632,29 @@ export class TutorPostService {
       requirements.push(idRequirement);
 
       // Determine overall eligibility
-      const completedCount = requirements.filter(req => req.status === 'completed').length;
+      const completedCount = requirements.filter(
+        (req) => req.status === 'completed'
+      ).length;
       const isEligible = completedCount === requirements.length;
 
       return { isEligible, requirements };
-
     } catch (error) {
       console.error('Error checking tutor eligibility:', error);
       // Return safe defaults on error
       const errorRequirement: ITutorEligibilityRequirement = {
         id: 'error',
         title: 'Lỗi kiểm tra điều kiện',
-        description: 'Không thể kiểm tra điều kiện đăng bài. Vui lòng thử lại sau.',
+        description:
+          'Không thể kiểm tra điều kiện đăng bài. Vui lòng thử lại sau.',
         status: 'missing' as 'completed' | 'pending' | 'missing',
         actionText: 'Thử lại',
-        actionPath: '/tutor/profile'
+        actionPath: '/tutor/profile',
       };
-      
+
       return {
         isEligible: false,
-        requirements: requirements.length > 0 ? requirements : [errorRequirement]
+        requirements:
+          requirements.length > 0 ? requirements : [errorRequirement],
       };
     }
   }

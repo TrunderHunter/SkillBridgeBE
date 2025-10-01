@@ -99,11 +99,12 @@ export class TutorPostController {
     try {
       const tutorId = req.user!.id;
 
-      const eligibilityResult = await tutorPostService.checkTutorEligibility(tutorId);
+      const eligibilityResult =
+        await tutorPostService.checkTutorEligibility(tutorId);
 
       return sendSuccess(
-        res, 
-        'Eligibility check completed successfully', 
+        res,
+        'Eligibility check completed successfully',
         eligibilityResult
       );
     } catch (error) {
