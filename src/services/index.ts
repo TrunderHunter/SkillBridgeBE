@@ -5,3 +5,5 @@ export * from './user';
 export * from './upload';
 export * from './qualification';
 export * from './notification';
+export * from './subject';
+export * from './tutorPost';

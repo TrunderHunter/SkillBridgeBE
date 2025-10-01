@@ -10,3 +10,5 @@ export { VerificationDetail } from './VerificationDetail';
 export { Province } from './Province';
 export { District } from './District';
 export { Ward } from './Ward';
+export { Subject } from './Subject';
+export { TutorPost } from './TutorPost';

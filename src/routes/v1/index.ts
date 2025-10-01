@@ -5,6 +5,8 @@ import tutorProfileRoutes from './tutorProfile.routes';
 import { tutorQualificationRoutes } from './tutor-qualification.routes';
 import { adminVerificationRoutes } from './admin-verification.routes';
 import addressRoutes from './address.routes';
+import subjectRoutes from './subject.routes';
+import tutorPostRoutes from './tutorPost.routes';
 
 const router = express.Router();
 
@@ -25,5 +27,11 @@ router.use('/admin', adminVerificationRoutes);
 
 // Address routes
 router.use('/address', addressRoutes);
+
+// Subject routes
+router.use('/subjects', subjectRoutes);
+
+// Tutor post routes
+router.use('/tutor-posts', tutorPostRoutes);
 
 export default router;
