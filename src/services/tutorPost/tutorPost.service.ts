@@ -238,15 +238,22 @@ export class TutorPostService {
       // Execute query
       const posts = await TutorPost.find(filter)
         .populate('subjects', 'name category')
-        .populate('tutorId', 'name email gender')
+        .populate(
+          'tutorId',
+          'full_name email gender date_of_birth avatar_url structured_address'
+        )
+        .populate('address.province address.district address.ward', 'name')
         .sort(sort)
         .skip(skip)
         .limit(limit);
 
       const total = await TutorPost.countDocuments(filter);
 
+      // Enhance posts with structured address information
+      const enhancedPosts = await this.enhancePostsWithAddressInfo(posts);
+
       return {
-        posts,
+        posts: enhancedPosts,
         pagination: {
           currentPage: page,
           totalPages: Math.ceil(total / limit),
@@ -270,7 +277,10 @@ export class TutorPostService {
 
       const post = await TutorPost.findById(postId)
         .populate('subjects', 'name category description')
-        .populate('tutorId', 'full_name email gender avatar_url structured_address')
+        .populate(
+          'tutorId',
+          'full_name email gender avatar_url structured_address date_of_birth'
+        )
         .populate('address.province address.district address.ward', 'name');
 
       if (post) {
@@ -639,6 +649,50 @@ export class TutorPostService {
   }
 
   /**
+   * Enhance posts with structured address information for search results
+   */
+  private async enhancePostsWithAddressInfo(posts: any[]): Promise<any[]> {
+    try {
+      const { Province, District, Ward } = await import('../../models');
+
+      const enhancedPosts = await Promise.all(
+        posts.map(async (post) => {
+          const postObj = post.toObject ? post.toObject() : post;
+
+          // Enhance tutor's structured address
+          if (postObj.tutorId?.structured_address) {
+            const { province_code, district_code, ward_code } =
+              postObj.tutorId.structured_address;
+
+            const [province, district, ward] = await Promise.all([
+              province_code ? Province.findById(province_code) : null,
+              district_code ? District.findById(district_code) : null,
+              ward_code ? Ward.findById(ward_code) : null,
+            ]);
+
+            postObj.tutorId.structured_address = {
+              ...postObj.tutorId.structured_address,
+              province_name: province?.name || null,
+              district_name: district?.name || null,
+              ward_name: ward?.name || null,
+            };
+          }
+
+          // Enhance with tutor profile information
+          const enhancedPost = await this.enhanceTutorInfo(postObj);
+          return enhancedPost;
+        })
+      );
+
+      return enhancedPosts;
+    } catch (error) {
+      console.error('Error enhancing posts with address info:', error);
+      // Return original posts if enhancement fails
+      return posts.map((post) => (post.toObject ? post.toObject() : post));
+    }
+  }
+
+  /**
    * Enhance tutor information with additional data from TutorProfile, Education, Certificates, and Achievements
    */
   private async enhanceTutorInfo(post: any): Promise<any> {
@@ -654,7 +708,7 @@ export class TutorPostService {
 
       // Get Province, District, Ward information
       const { Province, District, Ward } = await import('../../models');
-      const province = post.tutorId.structured_address?.province_code 
+      const province = post.tutorId.structured_address?.province_code
         ? await Province.findById(post.tutorId.structured_address.province_code)
         : null;
       const district = post.tutorId.structured_address?.district_code
