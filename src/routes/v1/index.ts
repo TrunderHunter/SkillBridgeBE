@@ -13,9 +13,9 @@ const router = express.Router();
 
 router.use('/auth', authRoutes);
 router.use('/protected', protectedRoutes);
-router.use('/tutor/profile', tutorProfileRoutes);
-router.use('/tutor/qualification', tutorQualificationRoutes);
-router.use('/admin/verification', adminVerificationRoutes);
+router.use('/tutor', tutorProfileRoutes);
+router.use('/tutor', tutorQualificationRoutes);
+router.use('/admin', adminVerificationRoutes);
 router.use('/posts', postRoutes);
 
 // Address routes

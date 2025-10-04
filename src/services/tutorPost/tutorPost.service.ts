@@ -7,7 +7,8 @@ import {
 import { TutorProfile } from '../../models/TutorProfile';
 import { User } from '../../models/User';
 import { Education } from '../../models/Education';
-import { Types } from 'mongoose';
+import { Certificate } from '../../models/Certificate';
+import { Achievement } from '../../models/Achievement';
 
 // Interface for tutor eligibility checking
 export interface ITutorEligibilityRequirement {
@@ -27,8 +28,6 @@ export interface ITutorEligibilityResponse {
 export interface ICreateTutorPostInput {
   title: string;
   description: string;
-  experience: string;
-  videoIntroUrl?: string;
   subjects: string[]; // Subject IDs
   pricePerSession: number;
   sessionDuration: number;
@@ -41,8 +40,6 @@ export interface ICreateTutorPostInput {
 export interface IUpdateTutorPostInput {
   title?: string;
   description?: string;
-  experience?: string;
-  videoIntroUrl?: string;
   subjects?: string[];
   pricePerSession?: number;
   sessionDuration?: number;
@@ -86,20 +83,32 @@ export class TutorPostService {
       const initialStatus = await this.determineInitialPostStatus(tutorId);
 
       // 5. Create the post
-      const tutorPost = new TutorPost({
-        ...data,
-        tutorId: new Types.ObjectId(tutorId),
-        subjects: data.subjects.map((id) => new Types.ObjectId(id)),
-        status: initialStatus,
-      });
+      try {
+        console.log('Creating TutorPost with data:', {
+          ...data,
+          tutorId: tutorId,
+          subjects: data.subjects,
+          status: initialStatus,
+        });
 
-      const savedPost = await tutorPost.save();
+        const tutorPost = new TutorPost({
+          ...data,
+          tutorId: tutorId,
+          subjects: data.subjects,
+          status: initialStatus,
+        });
 
-      console.log(
-        `📝 Tutor post created: ${savedPost._id} with status ${initialStatus} by tutor ${tutorId}`
-      );
+        const savedPost = await tutorPost.save();
 
-      return savedPost;
+        console.log(
+          `📝 Tutor post created: ${savedPost._id} with status ${initialStatus} by tutor ${tutorId}`
+        );
+
+        return savedPost;
+      } catch (createError) {
+        console.error('Error creating TutorPost:', createError);
+        throw createError;
+      }
     } catch (error) {
       console.error(`❌ Failed to create tutor post for ${tutorId}:`, error);
       throw error;
@@ -112,7 +121,8 @@ export class TutorPostService {
     data: IUpdateTutorPostInput
   ): Promise<ITutorPost | null> {
     try {
-      if (!Types.ObjectId.isValid(postId)) {
+      // UUID validation - basic format check
+      if (!postId || typeof postId !== 'string' || postId.length !== 36) {
         throw new Error('Invalid post ID');
       }
 
@@ -122,14 +132,12 @@ export class TutorPostService {
         throw new Error('Post not found');
       }
 
-      if (existingPost.tutorId.toString() !== tutorId) {
+      if (existingPost.tutorId !== tutorId) {
         throw new Error('Unauthorized to update this post');
       }
 
       const updateData: any = { ...data };
-      if (data.subjects) {
-        updateData.subjects = data.subjects.map((id) => new Types.ObjectId(id));
-      }
+      // subjects are now strings, no conversion needed
 
       const tutorPost = await TutorPost.findByIdAndUpdate(
         postId,
@@ -191,7 +199,7 @@ export class TutorPostService {
       const filter: any = { status: 'ACTIVE' };
 
       if (subjects && subjects.length > 0) {
-        filter.subjects = { $in: subjects.map((id) => new Types.ObjectId(id)) };
+        filter.subjects = { $in: subjects };
       }
 
       if (teachingMode) {
@@ -255,18 +263,23 @@ export class TutorPostService {
 
   async getTutorPostById(postId: string): Promise<ITutorPost | null> {
     try {
-      if (!Types.ObjectId.isValid(postId)) {
+      // UUID validation - basic format check
+      if (!postId || typeof postId !== 'string' || postId.length !== 36) {
         throw new Error('Invalid post ID');
       }
 
       const post = await TutorPost.findById(postId)
         .populate('subjects', 'name category description')
-        .populate('tutorId', 'name email gender')
+        .populate('tutorId', 'full_name email gender avatar_url structured_address')
         .populate('address.province address.district address.ward', 'name');
 
       if (post) {
         // Increment view count
         await TutorPost.findByIdAndUpdate(postId, { $inc: { viewCount: 1 } });
+
+        // Enhance tutor information with additional data
+        const enhancedPost = await this.enhanceTutorInfo(post);
+        return enhancedPost;
       }
 
       return post;
@@ -344,8 +357,8 @@ export class TutorPostService {
 
       // 2. Kiểm tra TutorProfile đã được xác thực
       const tutorProfile = await TutorProfile.findOne({
-        user_id: new Types.ObjectId(tutorId),
-      }).select('status verified_at cccd_images');
+        user_id: tutorId,
+      }).select('status verified_at');
 
       if (!tutorProfile) {
         throw new Error(
@@ -375,7 +388,7 @@ export class TutorPostService {
 
       // 3. Kiểm tra có ít nhất một trình độ học vấn được xác thực
       const verifiedEducations = await Education.find({
-        tutorId: new Types.ObjectId(tutorProfile._id),
+        tutorId: tutorId, // Use the original tutorId (User ID)
         status: 'VERIFIED',
       }).select('_id level school major');
 
@@ -385,18 +398,10 @@ export class TutorPostService {
         );
       }
 
-      // 4. Kiểm tra CCCD images (không được rỗng - bảo mật)
-      if (!tutorProfile.cccd_images || tutorProfile.cccd_images.length === 0) {
-        throw new Error(
-          'Identity verification is required. Please upload your ID documents.'
-        );
-      }
-
-      // 5. Log successful validation
+      // 4. Log successful validation
       console.log(`✅ Tutor qualification validated for user ${tutorId}:`, {
         profileStatus: tutorProfile.status,
         verifiedEducations: verifiedEducations.length,
-        hasIdDocuments: tutorProfile.cccd_images.length > 0,
         verifiedAt: tutorProfile.verified_at,
       });
     } catch (error) {
@@ -447,7 +452,7 @@ export class TutorPostService {
   ): Promise<void> {
     // Get existing active posts from this tutor
     const existingPosts = await TutorPost.find({
-      tutorId: new Types.ObjectId(tutorId),
+      tutorId: tutorId,
       status: 'ACTIVE',
     }).select('teachingSchedule');
 
@@ -536,8 +541,8 @@ export class TutorPostService {
 
       // Check tutor profile
       const tutorProfile = await TutorProfile.findOne({
-        user_id: new Types.ObjectId(tutorId),
-      }).select('status verified_at cccd_images');
+        user_id: tutorId,
+      }).select('status verified_at');
 
       let profileStatus: 'completed' | 'pending' | 'missing' = 'missing';
       let profileActionText: string | undefined = 'Hoàn thiện hồ sơ';
@@ -559,7 +564,7 @@ export class TutorPostService {
         id: 'tutor-profile',
         title: 'Hồ sơ gia sư đã được xác thực',
         description:
-          'Thông tin cá nhân, kinh nghiệm giảng dạy và CCCD đã được xác minh',
+          'Thông tin cá nhân và kinh nghiệm giảng dạy đã được xác minh',
         status: profileStatus,
         actionPath: '/tutor/profile',
       };
@@ -574,7 +579,7 @@ export class TutorPostService {
 
       if (tutorProfile) {
         const educations = await Education.find({
-          tutorId: new Types.ObjectId(tutorProfile._id),
+          tutorId: tutorId, // Use the original tutorId (User ID)
         }).select('status');
 
         const verifiedEducations = educations.filter(
@@ -595,8 +600,8 @@ export class TutorPostService {
 
       const educationRequirement: ITutorEligibilityRequirement = {
         id: 'education',
-        title: 'Có ít nhất 1 bằng cấp được xác thực',
-        description: 'Bằng cấp/chứng chỉ học vấn đã được kiểm tra và xác nhận',
+        title: 'Trình độ học vấn được xác thực',
+        description: 'Trình độ học vấn đã được kiểm tra và xác nhận',
         status: educationStatus,
         actionPath: '/tutor/qualifications?tab=education',
       };
@@ -604,32 +609,6 @@ export class TutorPostService {
         educationRequirement.actionText = educationActionText;
       }
       requirements.push(educationRequirement);
-
-      // Check ID verification
-      let idStatus: 'completed' | 'pending' | 'missing' = 'missing';
-      let idActionText: string | undefined = 'Upload CCCD/CMND';
-
-      if (tutorProfile?.cccd_images && tutorProfile.cccd_images.length > 0) {
-        if (tutorProfile.status === 'VERIFIED') {
-          idStatus = 'completed';
-          idActionText = undefined;
-        } else {
-          idStatus = 'pending';
-          idActionText = 'Chờ xác minh';
-        }
-      }
-
-      const idRequirement: ITutorEligibilityRequirement = {
-        id: 'identity-verification',
-        title: 'Xác thực danh tính',
-        description: 'CCCD/CMND đã được xác minh để đảm bảo an toàn',
-        status: idStatus,
-        actionPath: '/tutor/profile',
-      };
-      if (idActionText) {
-        idRequirement.actionText = idActionText;
-      }
-      requirements.push(idRequirement);
 
       // Determine overall eligibility
       const completedCount = requirements.filter(
@@ -656,6 +635,85 @@ export class TutorPostService {
         requirements:
           requirements.length > 0 ? requirements : [errorRequirement],
       };
+    }
+  }
+
+  /**
+   * Enhance tutor information with additional data from TutorProfile, Education, Certificates, and Achievements
+   */
+  private async enhanceTutorInfo(post: any): Promise<any> {
+    try {
+      const tutorId = post.tutorId._id;
+
+      // Get TutorProfile information
+      const tutorProfile = await TutorProfile.findOne({
+        user_id: tutorId,
+      }).select(
+        'headline introduction teaching_experience student_levels video_intro_link status'
+      );
+
+      // Get Province, District, Ward information
+      const { Province, District, Ward } = await import('../../models');
+      const province = post.tutorId.structured_address?.province_code 
+        ? await Province.findById(post.tutorId.structured_address.province_code)
+        : null;
+      const district = post.tutorId.structured_address?.district_code
+        ? await District.findById(post.tutorId.structured_address.district_code)
+        : null;
+      const ward = post.tutorId.structured_address?.ward_code
+        ? await Ward.findById(post.tutorId.structured_address.ward_code)
+        : null;
+
+      // Get Education information (without images)
+      const education = await Education.find({ tutorId: tutorId })
+        .select('_id level school major startYear endYear status')
+        .sort({ endYear: -1 });
+
+      // Get Certificates information (without images)
+      const certificates = await Certificate.find({ tutorId: tutorId })
+        .select('_id name issuingOrganization issueDate status')
+        .sort({ issueDate: -1 });
+
+      // Get Achievements information (without images)
+      const achievements = await Achievement.find({ tutorId: tutorId })
+        .select(
+          '_id name level achievedDate awardingOrganization type field description status'
+        )
+        .sort({ achievedDate: -1 });
+
+      // Enhance the tutorId object with additional information
+      const enhancedTutorId = {
+        ...(post.tutorId.toObject ? post.tutorId.toObject() : post.tutorId),
+        structured_address: {
+          ...post.tutorId.structured_address,
+          province_name: province?.name || null,
+          district_name: district?.name || null,
+          ward_name: ward?.name || null,
+        },
+        profile: tutorProfile
+          ? {
+              headline: tutorProfile.headline,
+              introduction: tutorProfile.introduction,
+              teaching_experience: tutorProfile.teaching_experience,
+              student_levels: tutorProfile.student_levels,
+              video_intro_link: tutorProfile.video_intro_link,
+              status: tutorProfile.status,
+            }
+          : null,
+        education: education,
+        certificates: certificates,
+        achievements: achievements,
+      };
+
+      // Return enhanced post
+      return {
+        ...(post.toObject ? post.toObject() : post),
+        tutorId: enhancedTutorId,
+      };
+    } catch (error) {
+      console.error('Error enhancing tutor info:', error);
+      // Return original post if enhancement fails
+      return post;
     }
   }
 }

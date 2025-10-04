@@ -1,4 +1,5 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface ITeachingSchedule {
   dayOfWeek: number; // 0-6 (0 = Chủ Nhật, 1 = Thứ 2, ..., 6 = Thứ 7)
@@ -15,14 +16,12 @@ export interface IAddress {
 
 export interface ITutorPost extends Document {
   _id: string;
-  tutorId: Types.ObjectId; // Reference to User model với role TUTOR
+  tutorId: string; // Reference to User model với role TUTOR
   title: string; // Tiêu đề bài đăng
   description: string; // Mô tả, giới thiệu
-  experience: string; // Kinh nghiệm giảng dạy
-  videoIntroUrl?: string; // Link video giới thiệu (optional)
 
   // Thông tin dạy học
-  subjects: Types.ObjectId[]; // Reference to Subject model (có thể dạy nhiều môn)
+  subjects: string[]; // Reference to Subject model (có thể dạy nhiều môn)
   pricePerSession: number; // Học phí/buổi (tối thiểu 100,000 VNĐ)
   sessionDuration: number; // Thời lượng buổi học (phút) - mặc định 60 phút
   teachingMode: 'ONLINE' | 'OFFLINE' | 'BOTH'; // Hình thức dạy
@@ -71,22 +70,22 @@ const AddressSchema = new Schema<IAddress>(
   {
     province: {
       type: String,
-      required: true,
+      required: false, // Will be validated at TutorPost level
       ref: 'Province',
     },
     district: {
       type: String,
-      required: true,
+      required: false, // Will be validated at TutorPost level
       ref: 'District',
     },
     ward: {
       type: String,
-      required: true,
+      required: false, // Will be validated at TutorPost level
       ref: 'Ward',
     },
     specificAddress: {
       type: String,
-      required: true,
+      required: false, // Will be validated at TutorPost level
       trim: true,
       maxlength: 200,
     },
@@ -96,8 +95,12 @@ const AddressSchema = new Schema<IAddress>(
 
 const TutorPostSchema = new Schema<ITutorPost>(
   {
+    _id: {
+      type: String,
+      default: uuidv4,
+    },
     tutorId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       required: true,
       ref: 'User',
     },
@@ -113,29 +116,11 @@ const TutorPostSchema = new Schema<ITutorPost>(
       trim: true,
       maxlength: 2000,
     },
-    experience: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 1500,
-    },
-    videoIntroUrl: {
-      type: String,
-      trim: true,
-      validate: {
-        validator: function (v: string) {
-          if (!v) return true; // Optional field
-          // Validate URL format
-          return /^https?:\/\/.+/.test(v);
-        },
-        message: 'Video intro URL must be a valid URL',
-      },
-    },
 
     // Thông tin dạy học
     subjects: [
       {
-        type: Schema.Types.ObjectId,
+        type: String,
         required: true,
         ref: 'Subject',
       },
@@ -210,8 +195,30 @@ const TutorPostSchema = new Schema<ITutorPost>(
     // Địa chỉ (optional - chỉ cần khi dạy offline)
     address: {
       type: AddressSchema,
-      required: function () {
-        return this.teachingMode === 'OFFLINE' || this.teachingMode === 'BOTH';
+      required: false,
+      validate: {
+        validator: function (address: any) {
+          // If no address provided, it's valid
+          if (!address) return true;
+
+          // If address provided, check if teachingMode requires it
+          if (this.teachingMode === 'ONLINE') {
+            return true; // Address not required for online teaching
+          }
+
+          // For OFFLINE or BOTH, address fields are required
+          if (this.teachingMode === 'OFFLINE' || this.teachingMode === 'BOTH') {
+            return (
+              address.province &&
+              address.district &&
+              address.ward &&
+              address.specificAddress
+            );
+          }
+
+          return true;
+        },
+        message: 'Address is required for offline teaching mode',
       },
     },
 
@@ -255,7 +262,6 @@ TutorPostSchema.index({ viewCount: -1 });
 TutorPostSchema.index({
   title: 'text',
   description: 'text',
-  experience: 'text',
 });
 
 // Compound index cho tìm kiếm phức tạp
@@ -309,6 +315,15 @@ TutorPostSchema.pre('save', async function (next) {
   } catch (error) {
     next(error as any);
   }
+});
+
+// Transform output to match API response format
+TutorPostSchema.set('toJSON', {
+  transform: function (doc: any, ret: any) {
+    ret.id = ret._id;
+    delete ret._id;
+    return ret;
+  },
 });
 
 export const TutorPost = model<ITutorPost>('TutorPost', TutorPostSchema);

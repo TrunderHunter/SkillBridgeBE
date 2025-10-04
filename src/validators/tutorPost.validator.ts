@@ -53,18 +53,6 @@ export const createTutorPostValidator = [
     .withMessage('Description must not exceed 2000 characters')
     .trim(),
 
-  body('experience')
-    .notEmpty()
-    .withMessage('Experience is required')
-    .isLength({ max: 1500 })
-    .withMessage('Experience must not exceed 1500 characters')
-    .trim(),
-
-  body('videoIntroUrl')
-    .optional()
-    .isURL()
-    .withMessage('Video intro URL must be a valid URL'),
-
   body('subjects')
     .isArray({ min: 1 })
     .withMessage('At least one subject is required')
@@ -139,7 +127,7 @@ export const createTutorPostValidator = [
 ];
 
 export const updateTutorPostValidator = [
-  param('postId').isMongoId().withMessage('Invalid post ID'),
+  param('postId').isUUID().withMessage('Invalid post ID'),
 
   body('title')
     .optional()
@@ -152,17 +140,6 @@ export const updateTutorPostValidator = [
     .isLength({ max: 2000 })
     .withMessage('Description must not exceed 2000 characters')
     .trim(),
-
-  body('experience')
-    .optional()
-    .isLength({ max: 1500 })
-    .withMessage('Experience must not exceed 1500 characters')
-    .trim(),
-
-  body('videoIntroUrl')
-    .optional()
-    .isURL()
-    .withMessage('Video intro URL must be a valid URL'),
 
   body('subjects')
     .optional()
@@ -216,7 +193,7 @@ export const updateTutorPostValidator = [
 ];
 
 export const postIdValidator = [
-  param('postId').isMongoId().withMessage('Invalid post ID'),
+  param('postId').isUUID().withMessage('Invalid post ID'),
 ];
 
 export const searchTutorPostsValidator = [

@@ -22,19 +22,14 @@ export class QualificationService {
    */
   static async isTutorQualified(tutorId: string): Promise<boolean> {
     try {
-      // Kiểm tra có trình độ học vấn đã xác thực
+      // Kiểm tra có trình độ học vấn đã xác thực (chỉ cần education, không cần certificate)
       const education = await Education.findOne({
         tutorId,
         status: VerificationStatus.VERIFIED,
       });
 
-      // Kiểm tra có ít nhất một chứng chỉ đã xác thực
-      const verifiedCertificate = await Certificate.findOne({
-        tutorId,
-        status: VerificationStatus.VERIFIED,
-      });
-
-      return !!(education && verifiedCertificate);
+      // Chỉ cần education được xác thực là đủ điều kiện
+      return !!education;
     } catch (error: any) {
       throw new Error(`Lỗi kiểm tra điều kiện hành nghề: ${error.message}`);
     }
@@ -131,14 +126,12 @@ export class QualificationService {
         tutorProfileId,
       } = data;
 
-      // Kiểm tra yêu cầu đầu tiên: phải có education và ít nhất 1 certificate
+      // Kiểm tra yêu cầu đầu tiên: chỉ cần có education (không cần certificate)
       const isFirstRequest = !(await this.isTutorQualified(tutorId));
 
       if (isFirstRequest) {
-        if (!educationId || certificateIds.length === 0) {
-          throw new Error(
-            'Yêu cầu đầu tiên phải có trình độ học vấn và ít nhất một chứng chỉ'
-          );
+        if (!educationId) {
+          throw new Error('Yêu cầu đầu tiên phải có trình độ học vấn');
         }
       }
 

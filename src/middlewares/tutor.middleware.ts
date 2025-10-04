@@ -90,7 +90,7 @@ export const requireVerifiedEducation = async (
 
     // Kiểm tra có ít nhất một trình độ học vấn được xác thực
     const verifiedEducations = await Education.find({
-      tutorId: req.tutorProfile!._id,
+      tutorId: req.tutorProfile!.user_id,
       status: 'VERIFIED',
     });
 

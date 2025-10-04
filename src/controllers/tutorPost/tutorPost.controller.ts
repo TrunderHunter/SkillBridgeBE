@@ -165,7 +165,9 @@ export class TutorPostController {
       }
 
       // Ẩn thông tin nhạy cảm nếu người dùng chưa đăng nhập
-      let responseData: any = tutorPost.toObject();
+      let responseData: any = tutorPost.toObject
+        ? tutorPost.toObject()
+        : tutorPost;
 
       if (!req.user) {
         // Nếu chưa đăng nhập, ẩn một số thông tin

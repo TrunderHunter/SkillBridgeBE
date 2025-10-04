@@ -43,8 +43,8 @@ export class QualificationSuggestionService {
     );
     const hasVerifiedCertificate = verifiedCertificates.length > 0;
 
-    // Kiểm tra đủ điều kiện hành nghề
-    const isQualified = hasVerifiedEducation && hasVerifiedCertificate;
+    // Kiểm tra đủ điều kiện hành nghề - chỉ cần education được xác thực
+    const isQualified = hasVerifiedEducation;
 
     // Kiểm tra có thông tin cần xác thực (DRAFT và PENDING)
     const pendingEducation = education?.status === VerificationStatus.PENDING;
