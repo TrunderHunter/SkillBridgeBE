@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import { ITutorProfileDocument } from '../models/TutorProfile';
 
 declare global {
   namespace Express {
@@ -9,6 +10,7 @@ declare global {
         role: string;
         status: string;
       };
+      tutorProfile?: ITutorProfileDocument;
     }
   }
 }

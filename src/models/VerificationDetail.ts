@@ -7,6 +7,7 @@ export enum VerificationTargetType {
   EDUCATION = 'EDUCATION',
   CERTIFICATE = 'CERTIFICATE',
   ACHIEVEMENT = 'ACHIEVEMENT',
+  TUTOR_PROFILE = 'TUTOR_PROFILE',
 }
 
 export interface IVerificationDetail extends Document {
@@ -97,6 +98,8 @@ VerificationDetailSchema.virtual('target', {
       return 'Certificate';
     if (this.targetType === VerificationTargetType.ACHIEVEMENT)
       return 'Achievement';
+    if (this.targetType === VerificationTargetType.TUTOR_PROFILE)
+      return 'TutorProfile';
   },
   localField: 'targetId',
   foreignField: '_id',

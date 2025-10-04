@@ -34,6 +34,18 @@ router.get(
 );
 
 /**
+ * GET /api/admin/verification-requests/:tutorId/user-info - Lấy thông tin User và TutorProfile
+ */
+router.get(
+  '/verification-requests/:tutorId/user-info',
+  authenticateToken,
+  requireAdmin,
+  QualificationValidator.uuidParam('tutorId'),
+  handleValidationErrors,
+  AdminVerificationController.getUserAndTutorProfileInfo
+);
+
+/**
  * PUT /api/admin/verification-requests/:id - Xử lý yêu cầu (chấp nhận/từ chối từng mục)
  */
 router.put(

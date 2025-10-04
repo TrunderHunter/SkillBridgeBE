@@ -4,6 +4,7 @@ import {
   Achievement,
   VerificationRequest,
   VerificationDetail,
+  TutorProfile,
 } from '../../models';
 import {
   VerificationStatus,
@@ -21,19 +22,14 @@ export class QualificationService {
    */
   static async isTutorQualified(tutorId: string): Promise<boolean> {
     try {
-      // Kiểm tra có trình độ học vấn đã xác thực
+      // Kiểm tra có trình độ học vấn đã xác thực (chỉ cần education, không cần certificate)
       const education = await Education.findOne({
         tutorId,
         status: VerificationStatus.VERIFIED,
       });
 
-      // Kiểm tra có ít nhất một chứng chỉ đã xác thực
-      const verifiedCertificate = await Certificate.findOne({
-        tutorId,
-        status: VerificationStatus.VERIFIED,
-      });
-
-      return !!(education && verifiedCertificate);
+      // Chỉ cần education được xác thực là đủ điều kiện
+      return !!education;
     } catch (error: any) {
       throw new Error(`Lỗi kiểm tra điều kiện hành nghề: ${error.message}`);
     }
@@ -84,6 +80,12 @@ export class QualificationService {
         case VerificationTargetType.ACHIEVEMENT:
           target = await Achievement.findOne({ _id: targetId, tutorId });
           break;
+        case VerificationTargetType.TUTOR_PROFILE:
+          target = await TutorProfile.findOne({
+            _id: targetId,
+            user_id: tutorId,
+          });
+          break;
         default:
           throw new Error('Loại target không hợp lệ');
       }
@@ -112,31 +114,55 @@ export class QualificationService {
       educationId?: string;
       certificateIds?: string[];
       achievementIds?: string[];
+      tutorProfileId?: string;
     }
   ) {
     try {
       // Kiểm tra thông tin cơ bản
-      const { educationId, certificateIds = [], achievementIds = [] } = data;
+      const {
+        educationId,
+        certificateIds = [],
+        achievementIds = [],
+        tutorProfileId,
+      } = data;
 
-      // Kiểm tra yêu cầu đầu tiên: phải có education và ít nhất 1 certificate
+      // Kiểm tra yêu cầu đầu tiên: chỉ cần có education (không cần certificate)
       const isFirstRequest = !(await this.isTutorQualified(tutorId));
 
       if (isFirstRequest) {
-        if (!educationId || certificateIds.length === 0) {
-          throw new Error(
-            'Yêu cầu đầu tiên phải có trình độ học vấn và ít nhất một chứng chỉ'
-          );
+        if (!educationId) {
+          throw new Error('Yêu cầu đầu tiên phải có trình độ học vấn');
         }
       }
 
-      // Kiểm tra không có yêu cầu đang pending
-      const pendingRequest = await VerificationRequest.findOne({
-        tutorId,
-        status: RequestStatus.PENDING,
-      });
+      // Kiểm tra không có yêu cầu đang pending cho qualifications
+      // (Chỉ kiểm tra nếu có educationId, certificateIds, hoặc achievementIds)
+      const hasQualificationData =
+        educationId || certificateIds.length > 0 || achievementIds.length > 0;
 
-      if (pendingRequest) {
-        throw new Error('Đã có yêu cầu xác thực đang chờ xử lý');
+      if (hasQualificationData) {
+        const pendingRequest = await VerificationRequest.findOne({
+          tutorId,
+          status: RequestStatus.PENDING,
+        });
+
+        if (pendingRequest) {
+          // Kiểm tra xem pending request có chứa qualification data không
+          const qualificationDetails = await VerificationDetail.find({
+            requestId: pendingRequest._id,
+            targetType: {
+              $in: [
+                VerificationTargetType.EDUCATION,
+                VerificationTargetType.CERTIFICATE,
+                VerificationTargetType.ACHIEVEMENT,
+              ],
+            },
+          });
+
+          if (qualificationDetails.length > 0) {
+            throw new Error('Đã có yêu cầu xác thực trình độ đang chờ xử lý');
+          }
+        }
       }
 
       // Tạo verification request
@@ -287,12 +313,337 @@ export class QualificationService {
         }
       }
 
+      // Tutor Profile detail
+      if (tutorProfileId) {
+        // Kiểm tra không có yêu cầu đang pending cho tutor profile
+        const pendingRequest = await VerificationRequest.findOne({
+          tutorId,
+          status: RequestStatus.PENDING,
+        });
+
+        if (pendingRequest) {
+          // Kiểm tra xem pending request có chứa tutor profile data không
+          const tutorProfileDetail = await VerificationDetail.findOne({
+            requestId: pendingRequest._id,
+            targetType: VerificationTargetType.TUTOR_PROFILE,
+            targetId: tutorProfileId,
+          });
+
+          if (tutorProfileDetail) {
+            throw new Error(
+              'Đã có yêu cầu xác thực thông tin gia sư đang chờ xử lý'
+            );
+          }
+        }
+
+        const tutorProfile = await TutorProfile.findById(tutorProfileId);
+        if (!tutorProfile) {
+          throw new Error('Không tìm thấy thông tin gia sư');
+        }
+
+        if (tutorProfile.user_id !== tutorId) {
+          throw new Error('Không có quyền truy cập thông tin này');
+        }
+
+        // Chuyển DRAFT sang PENDING trước khi tạo verification request
+        if (tutorProfile.status === VerificationStatus.DRAFT) {
+          await this.submitDraftForVerification(
+            tutorId,
+            VerificationTargetType.TUTOR_PROFILE,
+            tutorProfileId
+          );
+          tutorProfile.status = VerificationStatus.PENDING; // Update local object
+        }
+
+        const requestType =
+          tutorProfile.status === VerificationStatus.VERIFIED
+            ? RequestType.UPDATE
+            : RequestType.NEW;
+
+        const detail = new VerificationDetail({
+          requestId: verificationRequest._id,
+          targetType: VerificationTargetType.TUTOR_PROFILE,
+          targetId: tutorProfileId,
+          requestType,
+          dataSnapshot: tutorProfile.toObject(),
+        });
+        details.push(detail);
+
+        // Cập nhật trạng thái tutor profile
+        if (tutorProfile.status === VerificationStatus.VERIFIED) {
+          tutorProfile.verified_data = {
+            headline: tutorProfile.headline,
+            introduction: tutorProfile.introduction,
+            teaching_experience: tutorProfile.teaching_experience,
+            student_levels: tutorProfile.student_levels,
+            video_intro_link: tutorProfile.video_intro_link,
+            cccd_images: tutorProfile.cccd_images,
+          };
+          tutorProfile.status = VerificationStatus.MODIFIED_PENDING;
+          await tutorProfile.save();
+        }
+      }
+
       // Lưu tất cả verification details
       await VerificationDetail.insertMany(details);
 
       return verificationRequest;
     } catch (error: any) {
       throw new Error(`Lỗi tạo yêu cầu xác thực: ${error.message}`);
+    }
+  }
+
+  /**
+   * 3.2.1. Tạo yêu cầu xác thực chỉ cho TutorProfile
+   */
+  static async createTutorProfileVerificationRequest(
+    tutorId: string,
+    tutorProfileId: string
+  ) {
+    try {
+      // Kiểm tra không có yêu cầu đang pending cho tutor profile
+      const pendingRequest = await VerificationRequest.findOne({
+        tutorId,
+        status: RequestStatus.PENDING,
+      });
+
+      if (pendingRequest) {
+        // Kiểm tra xem pending request có chứa tutor profile data không
+        const tutorProfileDetail = await VerificationDetail.findOne({
+          requestId: pendingRequest._id,
+          targetType: VerificationTargetType.TUTOR_PROFILE,
+          targetId: tutorProfileId,
+        });
+
+        if (tutorProfileDetail) {
+          throw new Error(
+            'Đã có yêu cầu xác thực thông tin gia sư đang chờ xử lý'
+          );
+        }
+      }
+
+      const tutorProfile = await TutorProfile.findById(tutorProfileId);
+      if (!tutorProfile) {
+        throw new Error('Không tìm thấy thông tin gia sư');
+      }
+
+      if (tutorProfile.user_id !== tutorId) {
+        throw new Error('Không có quyền truy cập thông tin này');
+      }
+
+      // Tạo verification request
+      const verificationRequest = new VerificationRequest({
+        tutorId,
+        status: RequestStatus.PENDING,
+        submittedAt: new Date(),
+      });
+
+      await verificationRequest.save();
+
+      // Chuyển DRAFT sang PENDING trước khi tạo verification request
+      if (tutorProfile.status === VerificationStatus.DRAFT) {
+        await this.submitDraftForVerification(
+          tutorId,
+          VerificationTargetType.TUTOR_PROFILE,
+          tutorProfileId
+        );
+        tutorProfile.status = VerificationStatus.PENDING; // Update local object
+      }
+
+      const requestType =
+        tutorProfile.status === VerificationStatus.VERIFIED
+          ? RequestType.UPDATE
+          : RequestType.NEW;
+
+      const detail = new VerificationDetail({
+        requestId: verificationRequest._id,
+        targetType: VerificationTargetType.TUTOR_PROFILE,
+        targetId: tutorProfileId,
+        requestType,
+        dataSnapshot: tutorProfile.toObject(),
+      });
+
+      await detail.save();
+
+      // Cập nhật trạng thái tutor profile
+      if (tutorProfile.status === VerificationStatus.VERIFIED) {
+        tutorProfile.verified_data = {
+          headline: tutorProfile.headline,
+          introduction: tutorProfile.introduction,
+          teaching_experience: tutorProfile.teaching_experience,
+          student_levels: tutorProfile.student_levels,
+          video_intro_link: tutorProfile.video_intro_link,
+          cccd_images: tutorProfile.cccd_images,
+        };
+        tutorProfile.status = VerificationStatus.MODIFIED_PENDING;
+        await tutorProfile.save();
+      }
+
+      return verificationRequest;
+    } catch (error: any) {
+      throw new Error(
+        `Lỗi tạo yêu cầu xác thực thông tin gia sư: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * 3.2.2. Lấy trạng thái xác thực của TutorProfile
+   */
+  static async getTutorProfileVerificationStatus(tutorId: string) {
+    try {
+      const tutorProfile = await TutorProfile.findOne({ user_id: tutorId });
+
+      if (!tutorProfile) {
+        return {
+          status: VerificationStatus.DRAFT,
+          canSubmit: true,
+          pendingChanges: false,
+          rejectionReason: null,
+        };
+      }
+
+      // Kiểm tra có yêu cầu xác thực đang chờ cho tutor profile không
+      const pendingRequest = await VerificationRequest.findOne({
+        tutorId,
+        status: {
+          $in: [RequestStatus.PENDING, RequestStatus.PARTIALLY_APPROVED],
+        },
+      });
+
+      let canSubmit = true;
+      if (pendingRequest) {
+        const tutorProfileDetail = await VerificationDetail.findOne({
+          requestId: pendingRequest._id,
+          targetType: VerificationTargetType.TUTOR_PROFILE,
+          targetId: tutorProfile._id,
+        });
+
+        if (tutorProfileDetail) {
+          canSubmit = false; // Có yêu cầu xác thực đang chờ cho tutor profile
+        }
+      }
+
+      const pendingChanges =
+        tutorProfile.status !== VerificationStatus.VERIFIED;
+
+      return {
+        status: tutorProfile.status,
+        canSubmit,
+        pendingChanges,
+        rejectionReason: tutorProfile.rejection_reason,
+        verifiedAt: tutorProfile.verified_at,
+        verifiedBy: tutorProfile.verified_by,
+      };
+    } catch (error: any) {
+      throw new Error(`Lỗi lấy trạng thái xác thực: ${error.message}`);
+    }
+  }
+
+  /**
+   * 3.2.3. Kiểm tra có thể chỉnh sửa thông tin đã được xác thực không
+   */
+  static async canEditVerifiedInfo(
+    tutorId: string,
+    targetType: VerificationTargetType,
+    targetId: string
+  ): Promise<{ canEdit: boolean; message?: string; warning?: string }> {
+    try {
+      let currentStatus: VerificationStatus | undefined;
+      let targetName: string;
+
+      switch (targetType) {
+        case VerificationTargetType.EDUCATION:
+          const education = await Education.findById(targetId);
+          currentStatus = education?.status;
+          targetName = 'trình độ học vấn';
+          break;
+        case VerificationTargetType.CERTIFICATE:
+          const certificate = await Certificate.findById(targetId);
+          currentStatus = certificate?.status;
+          targetName = 'chứng chỉ';
+          break;
+        case VerificationTargetType.ACHIEVEMENT:
+          const achievement = await Achievement.findById(targetId);
+          currentStatus = achievement?.status;
+          targetName = 'thành tích';
+          break;
+        case VerificationTargetType.TUTOR_PROFILE:
+          const tutorProfile = await TutorProfile.findById(targetId);
+          currentStatus = tutorProfile?.status;
+          targetName = 'thông tin gia sư';
+          break;
+        default:
+          return { canEdit: false, message: 'Loại thông tin không hợp lệ' };
+      }
+
+      if (!currentStatus) {
+        return { canEdit: false, message: `Không tìm thấy ${targetName}` };
+      }
+
+      // Không cho phép sửa khi đang pending hoặc modified pending
+      if (currentStatus === VerificationStatus.PENDING) {
+        return {
+          canEdit: false,
+          message: `${targetName} đang chờ xác thực, không thể chỉnh sửa`,
+        };
+      }
+
+      if (currentStatus === VerificationStatus.MODIFIED_PENDING) {
+        return {
+          canEdit: false,
+          message: `${targetName} đang chờ duyệt chỉnh sửa, không thể chỉnh sửa thêm`,
+        };
+      }
+
+      // Cảnh báo khi sửa thông tin đã được xác thực
+      if (currentStatus === VerificationStatus.VERIFIED) {
+        return {
+          canEdit: true,
+          warning: `Thông tin ${targetName} đã được xác thực. Mọi thay đổi sẽ cần gửi yêu cầu xác thực cho admin.`,
+        };
+      }
+
+      // Cho phép sửa trong các trường hợp khác
+      return { canEdit: true };
+    } catch (error: any) {
+      throw new Error(`Lỗi kiểm tra quyền chỉnh sửa: ${error.message}`);
+    }
+  }
+
+  /**
+   * 3.2.4. Kiểm tra trạng thái TutorProfile có thể chỉnh sửa không
+   */
+  static async canEditTutorProfile(tutorId: string): Promise<{
+    canEdit: boolean;
+    message?: string;
+    warning?: string;
+    status?: VerificationStatus;
+  }> {
+    try {
+      const tutorProfile = await TutorProfile.findOne({ user_id: tutorId });
+
+      if (!tutorProfile) {
+        return {
+          canEdit: true,
+          message: 'Chưa có thông tin gia sư, có thể tạo mới',
+        };
+      }
+
+      const result = await this.canEditVerifiedInfo(
+        tutorId,
+        VerificationTargetType.TUTOR_PROFILE,
+        tutorProfile._id
+      );
+
+      return {
+        ...result,
+        status: tutorProfile.status,
+      };
+    } catch (error: any) {
+      throw new Error(
+        `Lỗi kiểm tra quyền chỉnh sửa thông tin gia sư: ${error.message}`
+      );
     }
   }
 
@@ -320,6 +671,10 @@ export class QualificationService {
           const achievement = await Achievement.findById(targetId);
           currentStatus = achievement?.status;
           break;
+        case VerificationTargetType.TUTOR_PROFILE:
+          const tutorProfile = await TutorProfile.findById(targetId);
+          currentStatus = tutorProfile?.status;
+          break;
         default:
           return false;
       }
@@ -329,12 +684,13 @@ export class QualificationService {
         return false;
       }
 
-      // Cho phép sửa nếu là DRAFT, REJECTED, hoặc VERIFIED
+      // Cho phép sửa nếu là DRAFT, REJECTED, VERIFIED, hoặc MODIFIED_AFTER_REJECTION
       // Không cho phép sửa nếu đang chờ xác thực
       return (
         currentStatus === VerificationStatus.DRAFT ||
         currentStatus === VerificationStatus.REJECTED ||
-        currentStatus === VerificationStatus.VERIFIED
+        currentStatus === VerificationStatus.VERIFIED ||
+        currentStatus === VerificationStatus.MODIFIED_AFTER_REJECTION
       );
     } catch (error: any) {
       throw new Error(`Lỗi kiểm tra quyền sửa đổi: ${error.message}`);
@@ -414,6 +770,23 @@ export class QualificationService {
             achievement.status = VerificationStatus.VERIFIED;
             achievement.verifiedData = undefined;
             await achievement.save();
+          }
+          break;
+
+        case VerificationTargetType.TUTOR_PROFILE:
+          const tutorProfile = await TutorProfile.findById(targetId);
+          if (tutorProfile?.verified_data) {
+            const verifiedData = tutorProfile.verified_data;
+            tutorProfile.headline = verifiedData.headline;
+            tutorProfile.introduction = verifiedData.introduction;
+            tutorProfile.teaching_experience = verifiedData.teaching_experience;
+            tutorProfile.student_levels = verifiedData.student_levels;
+            tutorProfile.video_intro_link = verifiedData.video_intro_link;
+            tutorProfile.cccd_images = verifiedData.cccd_images;
+            tutorProfile.status = VerificationStatus.VERIFIED;
+            tutorProfile.verified_data = undefined;
+            tutorProfile.rejection_reason = undefined;
+            await tutorProfile.save();
           }
           break;
       }

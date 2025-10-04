@@ -4,6 +4,8 @@ import {
   Education,
   Certificate,
   Achievement,
+  TutorProfile,
+  User,
 } from '../../models';
 import {
   VerificationStatus,
@@ -219,6 +221,17 @@ export class AdminVerificationService {
         }
       }
 
+      // Handle MODIFIED_AFTER_REJECTION status
+      if (status === VerificationStatus.VERIFIED) {
+        const currentTarget = await this.getCurrentTarget(targetType, targetId);
+        if (
+          currentTarget?.status === VerificationStatus.MODIFIED_AFTER_REJECTION
+        ) {
+          // Clear verifiedData backup since it's now approved
+          updateData.verifiedData = undefined;
+        }
+      }
+
       switch (targetType) {
         case VerificationTargetType.EDUCATION:
           await Education.findByIdAndUpdate(targetId, updateData);
@@ -228,6 +241,9 @@ export class AdminVerificationService {
           break;
         case VerificationTargetType.ACHIEVEMENT:
           await Achievement.findByIdAndUpdate(targetId, updateData);
+          break;
+        case VerificationTargetType.TUTOR_PROFILE:
+          await TutorProfile.findByIdAndUpdate(targetId, updateData);
           break;
       }
     } catch (error: any) {
@@ -250,11 +266,109 @@ export class AdminVerificationService {
           return await Certificate.findById(targetId);
         case VerificationTargetType.ACHIEVEMENT:
           return await Achievement.findById(targetId);
+        case VerificationTargetType.TUTOR_PROFILE:
+          return await TutorProfile.findById(targetId);
         default:
           return null;
       }
     } catch (error) {
       return null;
+    }
+  }
+
+  /**
+   * Lấy thông tin chi tiết cho admin review (bao gồm User và TutorProfile)
+   */
+  static async getVerificationRequestDetailForAdmin(requestId: string) {
+    try {
+      const request = await VerificationRequest.findById(requestId)
+        .populate('tutorId', 'fullName email phoneNumber')
+        .populate('reviewedBy', 'fullName email');
+
+      if (!request) {
+        throw new Error('Không tìm thấy yêu cầu xác thực');
+      }
+
+      // Lấy tất cả verification details
+      const details = await VerificationDetail.find({ requestId }).sort({
+        createdAt: 1,
+      });
+
+      // Populate target objects dựa trên targetType
+      const populatedDetails = await Promise.all(
+        details.map(async (detail) => {
+          let targetData = null;
+
+          switch (detail.targetType) {
+            case VerificationTargetType.EDUCATION:
+              targetData = await Education.findById(detail.targetId);
+              break;
+            case VerificationTargetType.CERTIFICATE:
+              targetData = await Certificate.findById(detail.targetId);
+              break;
+            case VerificationTargetType.ACHIEVEMENT:
+              targetData = await Achievement.findById(detail.targetId);
+              break;
+            case VerificationTargetType.TUTOR_PROFILE:
+              targetData = await TutorProfile.findById(detail.targetId);
+              // Nếu là TutorProfile, cũng lấy thông tin User
+              if (targetData) {
+                const userData = await User.findById(targetData.user_id)
+                  .select('-password_hash')
+                  .populate('structured_address.province_code')
+                  .populate('structured_address.district_code')
+                  .populate('structured_address.ward_code');
+                targetData = {
+                  ...targetData.toObject(),
+                  userInfo: userData,
+                };
+              }
+              break;
+          }
+
+          return {
+            ...detail.toObject(),
+            target: targetData,
+          };
+        })
+      );
+
+      return {
+        request: request.toObject(),
+        details: populatedDetails,
+      };
+    } catch (error: any) {
+      throw new Error(`Lỗi lấy chi tiết yêu cầu xác thực: ${error.message}`);
+    }
+  }
+
+  /**
+   * Lấy thông tin User và TutorProfile cho admin review
+   */
+  static async getUserAndTutorProfileInfo(tutorId: string) {
+    try {
+      // Lấy thông tin User
+      const user = await User.findById(tutorId)
+        .select('-password_hash')
+        .populate('structured_address.province_code')
+        .populate('structured_address.district_code')
+        .populate('structured_address.ward_code');
+
+      if (!user) {
+        throw new Error('Không tìm thấy thông tin người dùng');
+      }
+
+      // Lấy thông tin TutorProfile
+      const tutorProfile = await TutorProfile.findOne({ user_id: tutorId });
+
+      return {
+        user: user.toObject(),
+        tutorProfile: tutorProfile ? tutorProfile.toObject() : null,
+      };
+    } catch (error: any) {
+      throw new Error(
+        `Lỗi lấy thông tin người dùng và gia sư: ${error.message}`
+      );
     }
   }
 
