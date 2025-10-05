@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
-import { PostService } from '../../services/post';
+import { PostService, ITutorSearchQuery } from '../../services/post';
 import { sendSuccess, sendError } from '../../utils/response';
+import { validationResult } from 'express-validator';
 import { IPostInput, IPostUpdateInput, IPostReviewInput } from '../../types/post.types';
 
 export interface CreatePostRequest extends Request {
@@ -238,6 +239,220 @@ export class PostController {
       }
     } catch (error: any) {
       sendError(res, error.message || 'Lỗi khi tìm kiếm gia sư thông minh', undefined, 500);
+    }
+  }
+
+  // ✅ Search Tutors for Students (Regular Search)
+  static async searchTutors(req: Request, res: Response): Promise<void> {
+    try {
+      console.log('🔍 POST Controller - Search Tutors Request:', req.query);
+
+      // Check validation errors
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, 'Dữ liệu không hợp lệ', undefined, 400);
+      }
+
+      const {
+        subjects,
+        teachingMode,
+        studentLevel,
+        priceMin,
+        priceMax,
+        province,
+        district,
+        ward,
+        search,
+        page,
+        limit,
+        sortBy,
+        sortOrder
+      } = req.query;
+
+      // Build search query
+      const searchQuery: ITutorSearchQuery = {};
+
+      // Handle array parameters
+      if (subjects) {
+        searchQuery.subjects = Array.isArray(subjects) 
+          ? subjects as string[] 
+          : [subjects] as string[];
+      }
+      
+      if (studentLevel) {
+        searchQuery.studentLevel = Array.isArray(studentLevel) 
+          ? studentLevel as string[] 
+          : [studentLevel] as string[];
+      }
+
+      // Handle single value parameters
+      if (teachingMode) searchQuery.teachingMode = teachingMode as any;
+      if (priceMin) searchQuery.priceMin = parseInt(priceMin as string, 10);
+      if (priceMax) searchQuery.priceMax = parseInt(priceMax as string, 10);
+      if (province) searchQuery.province = province as string;
+      if (district) searchQuery.district = district as string;
+      if (ward) searchQuery.ward = ward as string;
+      if (search) searchQuery.search = search as string;
+      if (page) searchQuery.page = parseInt(page as string, 10);
+      if (limit) searchQuery.limit = parseInt(limit as string, 10);
+      if (sortBy) searchQuery.sortBy = sortBy as any;
+      if (sortOrder) searchQuery.sortOrder = sortOrder as any;
+
+      console.log('🔍 Processed Search Query:', searchQuery);
+
+      const result = await PostService.searchTutors(searchQuery);
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, result.error, 400);
+      }
+    } catch (error: any) {
+      console.error('❌ Search tutors controller error:', error);
+      sendError(res, error.message || 'Lỗi khi tìm kiếm gia sư', undefined, 500);
+    }
+  }
+
+  // ✅ Get Featured Tutors
+  static async getFeaturedTutors(req: Request, res: Response): Promise<void> {
+    try {
+      console.log('⭐ POST Controller - Get Featured Tutors');
+
+      const { limit } = req.query;
+      const limitNum = limit ? parseInt(limit as string, 10) : 8;
+
+      const result = await PostService.getFeaturedTutors(limitNum);
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error: any) {
+      console.error('❌ Get featured tutors controller error:', error);
+      sendError(res, error.message || 'Lỗi khi lấy gia sư nổi bật', undefined, 500);
+    }
+  }
+
+  // ✅ Get Tutors by Subject
+  static async getTutorsBySubject(req: Request, res: Response): Promise<void> {
+    try {
+      console.log('📚 POST Controller - Get Tutors by Subject');
+
+      const { subjectId } = req.params;
+      const { page, limit } = req.query;
+
+      if (!subjectId) {
+        return sendError(res, 'Subject ID is required', undefined, 400);
+      }
+
+      const pageNum = page ? parseInt(page as string, 10) : 1;
+      const limitNum = limit ? parseInt(limit as string, 10) : 12;
+
+      const result = await PostService.getTutorsBySubject(subjectId, pageNum, limitNum);
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error: any) {
+      console.error('❌ Get tutors by subject controller error:', error);
+      sendError(res, error.message || 'Lỗi khi lấy gia sư theo môn học', undefined, 500);
+    }
+  }
+
+  // ✅ Get Tutors by Location
+  static async getTutorsByLocation(req: Request, res: Response): Promise<void> {
+    try {
+      console.log('📍 POST Controller - Get Tutors by Location');
+
+      const { province, district, page, limit } = req.query;
+
+      const pageNum = page ? parseInt(page as string, 10) : 1;
+      const limitNum = limit ? parseInt(limit as string, 10) : 12;
+
+      const result = await PostService.getTutorsByLocation(
+        province as string,
+        district as string,
+        pageNum,
+        limitNum
+      );
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error: any) {
+      console.error('❌ Get tutors by location controller error:', error);
+      sendError(res, error.message || 'Lỗi khi lấy gia sư theo khu vực', undefined, 500);
+    }
+  }
+
+  // ✅ Get Tutor Detail
+  static async getTutorById(req: Request, res: Response): Promise<void> {
+    try {
+      console.log('👤 POST Controller - Get Tutor by ID');
+
+      const { tutorId } = req.params;
+
+      if (!tutorId) {
+        return sendError(res, 'Tutor ID is required', undefined, 400);
+      }
+
+      const result = await PostService.getTutorById(tutorId);
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, result.message.includes('Không tìm thấy') ? 404 : 400);
+      }
+    } catch (error: any) {
+      console.error('❌ Get tutor by ID controller error:', error);
+      sendError(res, error.message || 'Lỗi khi lấy chi tiết gia sư', undefined, 500);
+    }
+  }
+
+  // ✅ Contact Tutor
+  static async contactTutor(req: Request, res: Response): Promise<void> {
+    try {
+      console.log('📞 POST Controller - Contact Tutor');
+
+      const { tutorId } = req.params;
+
+      if (!tutorId) {
+        return sendError(res, 'Tutor ID is required', undefined, 400);
+      }
+
+      const result = await PostService.contactTutor(tutorId);
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error: any) {
+      console.error('❌ Contact tutor controller error:', error);
+      sendError(res, error.message || 'Lỗi khi liên hệ gia sư', undefined, 500);
+    }
+  }
+
+  // ✅ Get Search Filter Options
+  static async getSearchFilterOptions(req: Request, res: Response): Promise<void> {
+    try {
+      console.log('🔧 POST Controller - Get Search Filter Options');
+
+      const result = await PostService.getSearchFilterOptions();
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error: any) {
+      console.error('❌ Get search filter options controller error:', error);
+      sendError(res, error.message || 'Lỗi khi lấy tùy chọn bộ lọc', undefined, 500);
     }
   }
 }
