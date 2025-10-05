@@ -73,4 +73,14 @@ router.patch(
   PostController.reviewPost
 );
 
+// Tìm gia sư thông minh cho bài đăng của học viên
+router.get(
+  '/:id/smart-tutors',
+  authenticateToken,
+  requireRole(UserRole.STUDENT),
+  getPostsValidator,
+  handleValidationErrors,
+  PostController.smartSearchTutors
+);
+
 export default router;

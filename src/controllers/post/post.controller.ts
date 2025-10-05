@@ -211,4 +211,33 @@ export class PostController {
       sendError(res, error.message || 'Lỗi khi duyệt bài đăng', undefined, 500);
     }
   }
+
+  // Tìm gia sư thông minh dựa trên bài đăng
+  static async smartSearchTutors(req: Request, res: Response): Promise<void> {
+    try {
+      const studentPostId = req.params.id;
+      const {
+        page,
+        limit,
+        sort_by,
+        sort_order,
+      } = req.query;
+
+      const paginationOptions: any = {};
+      if (page) paginationOptions.page = parseInt(page as string, 10);
+      if (limit) paginationOptions.limit = parseInt(limit as string, 10);
+      if (sort_by) paginationOptions.sort_by = sort_by;
+      if (sort_order) paginationOptions.sort_order = sort_order;
+
+      const result = await PostService.smartSearchTutors(studentPostId, paginationOptions);
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error: any) {
+      sendError(res, error.message || 'Lỗi khi tìm kiếm gia sư thông minh', undefined, 500);
+    }
+  }
 }

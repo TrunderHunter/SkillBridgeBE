@@ -1,4 +1,4 @@
-import { Post, PostStatus, PostType } from '../../models/Post';
+import { IPost, Post, PostStatus, PostType } from '../../models/Post';
 import { User } from '../../models/User';
 import { UserRole } from '../../types/user.types';
 import {
@@ -9,6 +9,7 @@ import {
   IPostPaginationOptions,
 } from '../../types/post.types';
 import { mapPostToResponse } from '../../utils/mappers/post.mapper';
+import { TutorPost } from '../../models/TutorPost';
 
 export class PostService {
   // Tạo bài đăng mới
@@ -203,5 +204,102 @@ export class PostService {
     } catch (error: any) {
       return { success: false, message: error.message || 'Lỗi khi duyệt bài đăng' };
     }
+  }
+
+  // Tìm gia sư thông minh dựa trên bài đăng của học viên
+  static async smartSearchTutors(
+    studentPostId: string,
+    paginationOptions: IPostPaginationOptions = {}
+  ): Promise<any> {
+    try {
+      const { page = 1, limit = 10, sort_by = 'compatibility', sort_order = 'desc' } = paginationOptions;
+
+      const studentPost = await Post.findById(studentPostId).lean();
+      if (!studentPost) {
+        return { success: false, message: 'Không tìm thấy bài đăng của học viên' };
+      }
+
+      // Lấy tất cả tutor posts active, populate cần thiết
+      const tutorPosts = await TutorPost.find({ status: 'ACTIVE' })
+        .populate('subjects', 'name category')
+        .populate('tutorId', 'full_name email gender date_of_birth avatar_url structured_address')
+        .populate('address.province address.district address.ward', 'name')
+        .lean();
+
+      // Tính score
+      const scoredPosts = tutorPosts.map(tp => ({
+        post: tp,
+        score: PostService.calculateCompatibility(studentPost, tp)
+      }));
+
+      // Sort
+      const sortDirection = sort_order === 'desc' ? -1 : 1;
+      scoredPosts.sort((a, b) => sortDirection * (b.score - a.score));
+
+      // Paginate
+      const skip = (page - 1) * limit;
+      const paginated = scoredPosts.slice(skip, skip + limit);
+      const total = scoredPosts.length;
+
+      return {
+        success: true,
+        message: 'Tìm kiếm gia sư thông minh thành công',
+        data: {
+          tutors: paginated.map(p => ({ ...p.post, compatibility: Math.round(p.score) })),
+          pagination: {
+            total,
+            page,
+            limit,
+            pages: Math.ceil(total / limit),
+          },
+        },
+      };
+    } catch (error: any) {
+      return { success: false, message: error.message || 'Lỗi khi tìm kiếm gia sư thông minh' };
+    }
+  }
+
+  private static calculateCompatibility(student: IPost, tutor: any): number {
+    let score = 0;
+
+    // Subjects (30%)
+    const subjectMatch = student.subjects.filter((s: string) => tutor.subjects.some((ts: any) => ts.name === s)).length / (student.subjects.length || 1);
+    score += 30 * subjectMatch;
+
+    // Grade levels (20%)
+    const gradeMatch = student.grade_levels.filter((g: string) => tutor.studentLevel.includes(g)).length / (student.grade_levels.length || 1);
+    score += 20 * gradeMatch;
+
+    // Teaching mode (20%)
+    let modeMatch = 0;
+    const studentMode = student.is_online ? 'ONLINE' : 'OFFLINE';
+    if (tutor.teachingMode === studentMode || tutor.teachingMode === 'BOTH') {
+      modeMatch = 1;
+    }
+    score += 20 * modeMatch;
+
+    // Price (20%)
+    let priceMatch = 0;
+    if (student.hourly_rate && student.hourly_rate.min !== undefined && student.hourly_rate.max !== undefined) {
+      if (tutor.pricePerSession >= student.hourly_rate.min && tutor.pricePerSession <= student.hourly_rate.max) {
+        priceMatch = 1;
+      }
+    } else {
+      priceMatch = 1;
+    }
+    score += 20 * priceMatch;
+
+    // Location (10%) - basic
+    let locationMatch = 0;
+    if (!student.is_online && student.location && tutor.address && tutor.address.province) {
+      if (student.location.toLowerCase().includes(tutor.address.province.name.toLowerCase())) {
+        locationMatch = 1;
+      }
+    } else {
+      locationMatch = 1;
+    }
+    score += 10 * locationMatch;
+
+    return score;
   }
 }
