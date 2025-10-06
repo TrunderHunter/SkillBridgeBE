@@ -139,6 +139,15 @@ export class TutorPostService {
       const updateData: any = { ...data };
       // subjects are now strings, no conversion needed
 
+      // Check for schedule conflicts if teachingSchedule is being updated
+      if (data.teachingSchedule) {
+        await this.validateScheduleConflicts(
+          tutorId,
+          data.teachingSchedule,
+          postId
+        );
+      }
+
       const tutorPost = await TutorPost.findByIdAndUpdate(
         postId,
         { $set: updateData },
@@ -291,7 +300,9 @@ export class TutorPostService {
         // Only increment view count if explicitly requested and user is not the tutor
         // Check both populated and non-populated cases
         const tutorId =
-          typeof post.tutorId === 'object' ? post.tutorId._id : post.tutorId;
+          typeof post.tutorId === 'object'
+            ? (post.tutorId as any)._id
+            : post.tutorId;
         if (shouldIncrementView && userId && tutorId !== userId) {
           await TutorPost.findByIdAndUpdate(postId, { $inc: { viewCount: 1 } });
         }
@@ -467,22 +478,31 @@ export class TutorPostService {
 
   private async validateScheduleConflicts(
     tutorId: string,
-    newSchedule: ITeachingSchedule[]
+    newSchedule: ITeachingSchedule[],
+    excludePostId?: string
   ): Promise<void> {
-    // Get existing active posts from this tutor
-    const existingPosts = await TutorPost.find({
+    // Get existing active posts from this tutor, excluding the current post if updating
+    const query: any = {
       tutorId: tutorId,
       status: 'ACTIVE',
-    }).select('teachingSchedule');
+    };
+
+    if (excludePostId) {
+      query._id = { $ne: excludePostId };
+    }
+
+    const existingPosts =
+      await TutorPost.find(query).select('teachingSchedule');
 
     // Check for conflicts
     for (const existingPost of existingPosts) {
       for (const existingSlot of existingPost.teachingSchedule) {
         for (const newSlot of newSchedule) {
           if (this.isScheduleConflict(existingSlot, newSlot)) {
-            throw new Error(
-              `Schedule conflict detected: ${this.formatScheduleSlot(newSlot)} overlaps with existing post`
-            );
+            const conflictMessage = `${this.formatScheduleSlotVietnamese(newSlot)} trùng với bài đăng hiện có`;
+            const error = new Error(conflictMessage);
+            (error as any).isScheduleConflict = true;
+            throw error;
           }
         }
       }
@@ -517,6 +537,19 @@ export class TutorPostService {
       'Thursday',
       'Friday',
       'Saturday',
+    ];
+    return `${days[slot.dayOfWeek]} ${slot.startTime}-${slot.endTime}`;
+  }
+
+  private formatScheduleSlotVietnamese(slot: ITeachingSchedule): string {
+    const days = [
+      'Chủ nhật',
+      'Thứ hai',
+      'Thứ ba',
+      'Thứ tư',
+      'Thứ năm',
+      'Thứ sáu',
+      'Thứ bảy',
     ];
     return `${days[slot.dayOfWeek]} ${slot.startTime}-${slot.endTime}`;
   }
@@ -768,10 +801,67 @@ export class TutorPostService {
         achievements: achievements,
       };
 
+      // Enhance the post's address information if it exists
+      let enhancedAddress = null;
+      if (post.address) {
+        // Use populated data if available, otherwise fetch from database
+        const { Province, District, Ward } = await import('../../models');
+
+        let addressProvince, addressDistrict, addressWard;
+
+        // Check if data is already populated (has name field)
+        if (
+          typeof post.address.province === 'object' &&
+          post.address.province.name
+        ) {
+          addressProvince = post.address.province;
+        } else if (post.address.province) {
+          addressProvince = await Province.findById(post.address.province);
+        }
+
+        if (
+          typeof post.address.district === 'object' &&
+          post.address.district.name
+        ) {
+          addressDistrict = post.address.district;
+        } else if (post.address.district) {
+          addressDistrict = await District.findById(post.address.district);
+        }
+
+        if (typeof post.address.ward === 'object' && post.address.ward.name) {
+          addressWard = post.address.ward;
+        } else if (post.address.ward) {
+          addressWard = await Ward.findById(post.address.ward);
+        }
+
+        enhancedAddress = {
+          province: addressProvince
+            ? {
+                _id: addressProvince._id,
+                name: addressProvince.name,
+              }
+            : null,
+          district: addressDistrict
+            ? {
+                _id: addressDistrict._id,
+                name: addressDistrict.name,
+              }
+            : null,
+          ward: addressWard
+            ? {
+                _id: addressWard._id,
+                name: addressWard.name,
+              }
+            : null,
+          specificAddress: post.address.specificAddress || null,
+        };
+      }
+
       // Return enhanced post
       return {
         ...(post.toObject ? post.toObject() : post),
         tutorId: enhancedTutorId,
+        address: enhancedAddress,
       };
     } catch (error) {
       console.error('Error enhancing tutor info:', error);

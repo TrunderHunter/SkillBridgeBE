@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { tutorPostController } from '../../controllers/tutorPost';
-import { authenticateToken } from '../../middlewares/auth.middleware';
+import {
+  authenticateToken,
+  optionalAuth,
+} from '../../middlewares/auth.middleware';
 import {
   requireTutorQualification,
   requirePostOwnership,
@@ -25,6 +28,7 @@ router.get(
 );
 router.get(
   '/:postId',
+  optionalAuth,
   postIdValidator,
   handleValidationErrors,
   tutorPostController.getTutorPostById.bind(tutorPostController)

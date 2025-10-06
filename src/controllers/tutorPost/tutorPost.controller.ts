@@ -38,6 +38,17 @@ export class TutorPostController {
       );
     } catch (error) {
       logger.error('Create tutor post error:', error);
+
+      // Handle schedule conflict error specially
+      if (error instanceof Error && (error as any).isScheduleConflict) {
+        return sendError(
+          res,
+          error.message, // Use the Vietnamese error message as the main message
+          undefined, // No error field for schedule conflicts
+          400
+        );
+      }
+
       return sendError(
         res,
         'Failed to create tutor post',
@@ -69,6 +80,17 @@ export class TutorPostController {
       return sendSuccess(res, 'Tutor post updated successfully', { tutorPost });
     } catch (error) {
       logger.error('Update tutor post error:', error);
+
+      // Handle schedule conflict error specially
+      if (error instanceof Error && (error as any).isScheduleConflict) {
+        return sendError(
+          res,
+          error.message, // Use the Vietnamese error message as the main message
+          undefined, // No error field for schedule conflicts
+          400
+        );
+      }
+
       return sendError(
         res,
         'Failed to update tutor post',
