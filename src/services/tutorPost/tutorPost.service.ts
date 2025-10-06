@@ -268,7 +268,11 @@ export class TutorPostService {
     }
   }
 
-  async getTutorPostById(postId: string): Promise<ITutorPost | null> {
+  async getTutorPostById(
+    postId: string,
+    shouldIncrementView?: boolean,
+    userId?: string
+  ): Promise<ITutorPost | null> {
     try {
       // UUID validation - basic format check
       if (!postId || typeof postId !== 'string' || postId.length !== 36) {
@@ -284,8 +288,13 @@ export class TutorPostService {
         .populate('address.province address.district address.ward', 'name');
 
       if (post) {
-        // Increment view count
-        await TutorPost.findByIdAndUpdate(postId, { $inc: { viewCount: 1 } });
+        // Only increment view count if explicitly requested and user is not the tutor
+        // Check both populated and non-populated cases
+        const tutorId =
+          typeof post.tutorId === 'object' ? post.tutorId._id : post.tutorId;
+        if (shouldIncrementView && userId && tutorId !== userId) {
+          await TutorPost.findByIdAndUpdate(postId, { $inc: { viewCount: 1 } });
+        }
 
         // Enhance tutor information with additional data
         const enhancedPost = await this.enhanceTutorInfo(post);

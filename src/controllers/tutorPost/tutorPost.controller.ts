@@ -157,8 +157,15 @@ export class TutorPostController {
   async getTutorPostById(req: Request, res: Response) {
     try {
       const { postId } = req.params;
+      const userId = req.user?.id;
 
-      const tutorPost = await tutorPostService.getTutorPostById(postId);
+      // Only increment view count if user is authenticated and not the tutor
+      const shouldIncrementView = !!userId;
+      const tutorPost = await tutorPostService.getTutorPostById(
+        postId,
+        shouldIncrementView,
+        userId
+      );
 
       if (!tutorPost) {
         return sendError(res, 'Tutor post not found', undefined, 404);
