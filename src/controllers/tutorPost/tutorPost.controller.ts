@@ -17,6 +17,33 @@ export interface UpdateTutorPostRequest extends Request {
 }
 
 export class TutorPostController {
+  // Helper function to handle query array parameters
+  private parseArrayParam(param: any): string[] | undefined {
+    if (!param) return undefined;
+
+    // If it's already an array, return it
+    if (Array.isArray(param)) {
+      return param.filter(Boolean); // Remove empty strings
+    }
+
+    // If it's a string, split by comma and filter empty values
+    if (typeof param === 'string') {
+      return param
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    return undefined;
+  }
+
+  // Helper function to parse number parameter
+  private parseNumberParam(param: any): number | undefined {
+    if (!param) return undefined;
+    const parsed = parseInt(param as string, 10);
+    return isNaN(parsed) ? undefined : parsed;
+  }
+
   // [TUTOR] Tạo bài đăng mới
   async createTutorPost(req: CreateTutorPostRequest, res: Response) {
     try {
@@ -104,8 +131,8 @@ export class TutorPostController {
   async getMyTutorPosts(req: Request, res: Response) {
     try {
       const tutorId = req.user!.id;
-      const page = req.query.page ? parseInt(req.query.page as string) : 1;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      const page = this.parseNumberParam(req.query.page) || 1;
+      const limit = this.parseNumberParam(req.query.limit) || 10;
 
       const result = await tutorPostService.getTutorPosts(tutorId, page, limit);
 
@@ -143,39 +170,133 @@ export class TutorPostController {
   // [PUBLIC] Tìm kiếm bài đăng gia sư
   async searchTutorPosts(req: Request, res: Response) {
     try {
+      console.log('🔍 TutorPost Controller - Search request:', {
+        query: req.query,
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+      });
+
       const query: ITutorPostQuery = {
-        subjects: req.query.subjects
-          ? (req.query.subjects as string).split(',')
-          : undefined,
+        // ✅ Fix: Properly handle array parameters
+        subjects: this.parseArrayParam(req.query.subjects),
         teachingMode: req.query.teachingMode as any,
-        studentLevel: req.query.studentLevel
-          ? (req.query.studentLevel as string).split(',')
-          : undefined,
-        priceMin: req.query.priceMin
-          ? parseInt(req.query.priceMin as string)
-          : undefined,
-        priceMax: req.query.priceMax
-          ? parseInt(req.query.priceMax as string)
-          : undefined,
+        studentLevel: this.parseArrayParam(req.query.studentLevel),
+
+        // ✅ Fix: Properly handle number parameters
+        priceMin: this.parseNumberParam(req.query.priceMin),
+        priceMax: this.parseNumberParam(req.query.priceMax),
+
+        // String parameters
         province: req.query.province as string,
         district: req.query.district as string,
         search: req.query.search as string,
-        page: req.query.page ? parseInt(req.query.page as string) : 1,
-        limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
+
+        // ✅ Fix: Properly handle pagination parameters
+        page: Math.max(1, this.parseNumberParam(req.query.page) || 1),
+        limit: Math.min(
+          Math.max(1, this.parseNumberParam(req.query.limit) || 12),
+          50 // Max limit for performance
+        ),
+
         sortBy: (req.query.sortBy as any) || 'createdAt',
         sortOrder: (req.query.sortOrder as any) || 'desc',
       };
 
+      // Log parsed query for debugging
+      console.log('📋 Parsed query:', JSON.stringify(query, null, 2));
+
       const result = await tutorPostService.searchTutorPosts(query);
+
+      logger.info(`Search completed: ${result.posts.length} posts found`, {
+        query,
+        totalItems: result.pagination.totalItems,
+      });
 
       return sendSuccess(res, 'Search completed successfully', result);
     } catch (error) {
       logger.error('Search tutor posts error:', error);
-      return sendError(res, 'Failed to search tutor posts', undefined, 500);
+      return sendError(
+        res,
+        'Failed to search tutor posts',
+        error instanceof Error ? error.message : 'Unknown error',
+        500
+      );
     }
   }
 
-  // [PUBLIC] Lấy chi tiết bài đăng
+  // ✅ Get filter options
+  async getFilterOptions(req: Request, res: Response) {
+    try {
+      console.log('🔧 Getting filter options');
+
+      const filterOptions = await tutorPostService.getFilterOptions();
+
+      return sendSuccess(
+        res,
+        'Filter options retrieved successfully',
+        filterOptions
+      );
+    } catch (error) {
+      logger.error('Get filter options error:', error);
+      return sendError(
+        res,
+        'Failed to get filter options',
+        error instanceof Error ? error.message : 'Unknown error',
+        500
+      );
+    }
+  }
+
+  // ✅ Get districts by province
+  async getDistrictsByProvince(req: Request, res: Response) {
+    try {
+      const { provinceCode } = req.params;
+
+      if (!provinceCode) {
+        return sendError(res, 'Province code is required', undefined, 400);
+      }
+
+      const districts =
+        await tutorPostService.getDistrictsByProvince(provinceCode);
+
+      return sendSuccess(res, 'Districts retrieved successfully', {
+        districts,
+      });
+    } catch (error) {
+      logger.error('Get districts error:', error);
+      return sendError(
+        res,
+        'Failed to get districts',
+        error instanceof Error ? error.message : 'Unknown error',
+        500
+      );
+    }
+  }
+
+  // ✅ Get wards by district
+  async getWardsByDistrict(req: Request, res: Response) {
+    try {
+      const { districtCode } = req.params;
+
+      if (!districtCode) {
+        return sendError(res, 'District code is required', undefined, 400);
+      }
+
+      const wards = await tutorPostService.getWardsByDistrict(districtCode);
+
+      return sendSuccess(res, 'Wards retrieved successfully', { wards });
+    } catch (error) {
+      logger.error('Get wards error:', error);
+      return sendError(
+        res,
+        'Failed to get wards',
+        error instanceof Error ? error.message : 'Unknown error',
+        500
+      );
+    }
+  }
+
+  // ✅ Get tutor post by ID
   async getTutorPostById(req: Request, res: Response) {
     try {
       const { postId } = req.params;
@@ -193,36 +314,16 @@ export class TutorPostController {
         return sendError(res, 'Tutor post not found', undefined, 404);
       }
 
-      // Ẩn thông tin nhạy cảm nếu người dùng chưa đăng nhập
-      let responseData: any = tutorPost.toObject
-        ? tutorPost.toObject()
-        : tutorPost;
-
-      if (!req.user) {
-        // Nếu chưa đăng nhập, ẩn một số thông tin
-        if (responseData.tutorId) {
-          delete responseData.tutorId.email;
-        }
-        // Không hiển thị thông tin liên hệ chi tiết
-        if (responseData.address) {
-          responseData.address = {
-            province: responseData.address.province,
-            district: responseData.address.district,
-            // Ẩn ward và specificAddress
-          };
-        }
-      }
-
       return sendSuccess(res, 'Tutor post retrieved successfully', {
-        tutorPost: responseData,
+        tutorPost,
       });
     } catch (error) {
       logger.error('Get tutor post by ID error:', error);
       return sendError(
         res,
-        'Failed to retrieve tutor post',
+        'Failed to get tutor post',
         error instanceof Error ? error.message : 'Unknown error',
-        400
+        500
       );
     }
   }

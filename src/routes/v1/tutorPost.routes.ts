@@ -19,13 +19,34 @@ import {
 
 const router = Router();
 
-// Public routes
+// ==================== PUBLIC SEARCH APIs ====================
+
+// ✅ Enhanced search API with comprehensive filtering
 router.get(
   '/search',
   searchTutorPostsValidator,
   handleValidationErrors,
   tutorPostController.searchTutorPosts.bind(tutorPostController)
 );
+
+// ✅ Get filter options for search dropdowns
+router.get(
+  '/filters',
+  tutorPostController.getFilterOptions.bind(tutorPostController)
+);
+
+// ✅ Location APIs for cascading dropdowns
+router.get(
+  '/locations/provinces/:provinceCode/districts',
+  tutorPostController.getDistrictsByProvince.bind(tutorPostController)
+);
+
+router.get(
+  '/locations/districts/:districtCode/wards',
+  tutorPostController.getWardsByDistrict.bind(tutorPostController)
+);
+
+// ✅ Get tutor post detail (public with view count increment)
 router.get(
   '/:postId',
   optionalAuth,
@@ -33,12 +54,16 @@ router.get(
   handleValidationErrors,
   tutorPostController.getTutorPostById.bind(tutorPostController)
 );
+
+// ✅ Contact tutor (increment contact count)
 router.post(
   '/:postId/contact',
   postIdValidator,
   handleValidationErrors,
   tutorPostController.incrementContactCount.bind(tutorPostController)
 );
+
+// ==================== PROTECTED TUTOR APIs ====================
 
 // Protected routes (require authentication)
 router.use(authenticateToken);
@@ -51,12 +76,14 @@ router.post(
   handleValidationErrors,
   tutorPostController.createTutorPost.bind(tutorPostController)
 );
+
 router.get(
   '/',
   paginationValidator,
   handleValidationErrors,
   tutorPostController.getMyTutorPosts.bind(tutorPostController)
 );
+
 router.get(
   '/eligibility/check',
   tutorPostController.checkEligibility.bind(tutorPostController)
@@ -70,6 +97,7 @@ router.put(
   handleValidationErrors,
   tutorPostController.updateTutorPost.bind(tutorPostController)
 );
+
 router.post(
   '/:postId/activate',
   requirePostOwnership,
@@ -77,6 +105,7 @@ router.post(
   handleValidationErrors,
   tutorPostController.activatePost.bind(tutorPostController)
 );
+
 router.post(
   '/:postId/deactivate',
   requirePostOwnership,
@@ -84,6 +113,7 @@ router.post(
   handleValidationErrors,
   tutorPostController.deactivatePost.bind(tutorPostController)
 );
+
 router.delete(
   '/:postId',
   requirePostOwnership,

@@ -11,7 +11,7 @@ export interface IPostInput {
     min: number;
     max: number;
   };
-  availability?: string;
+  availability?: string; // Vẫn giữ dạng string nhưng sẽ được tạo từ các lựa chọn cố định
   requirements?: string;
   expiry_date?: Date;
 }

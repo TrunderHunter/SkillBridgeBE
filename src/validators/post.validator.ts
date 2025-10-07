@@ -1,5 +1,114 @@
-import { body, param, query } from 'express-validator';
+import { body, query, param } from 'express-validator';
 import { PostStatus } from '../models/Post';
+
+// ✅ Tutor Search Validator
+export const tutorSearchValidator = [
+  query('subjects')
+    .optional()
+    .custom((value) => {
+      if (typeof value === 'string') return true;
+      if (Array.isArray(value)) {
+        return value.every(item => typeof item === 'string');
+      }
+      return false;
+    })
+    .withMessage('Subjects must be string or array of strings'),
+
+  query('teachingMode')
+    .optional()
+    .isIn(['ONLINE', 'OFFLINE', 'BOTH'])
+    .withMessage('Teaching mode must be ONLINE, OFFLINE, or BOTH'),
+
+  query('studentLevel')
+    .optional()
+    .custom((value) => {
+      if (typeof value === 'string') return true;
+      if (Array.isArray(value)) {
+        return value.every(item => typeof item === 'string');
+      }
+      return false;
+    })
+    .withMessage('Student level must be string or array of strings'),
+
+  query('priceMin')
+    .optional()
+    .isNumeric()
+    .withMessage('Price min must be a number')
+    .custom((value) => parseFloat(value) >= 0)
+    .withMessage('Price min must be >= 0'),
+
+  query('priceMax')
+    .optional()
+    .isNumeric()
+    .withMessage('Price max must be a number')
+    .custom((value, { req }) => {
+      const priceMin = req.query?.priceMin;
+      if (priceMin && parseFloat(value) < parseFloat(priceMin as string)) {
+        throw new Error('Price max must be >= price min');
+      }
+      return true;
+    }),
+
+  query('province')
+    .optional()
+    .isString()
+    .trim()
+    .withMessage('Province must be a string'),
+
+  query('district')
+    .optional()
+    .isString()
+    .trim()
+    .withMessage('District must be a string'),
+
+  query('ward')
+    .optional()
+    .isString()
+    .trim()
+    .withMessage('Ward must be a string'),
+
+  query('search')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Search term must be 1-200 characters'),
+
+  query('page')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Page must be a positive integer'),
+
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('Limit must be between 1 and 100'),
+
+  query('sortBy')
+    .optional()
+    .isIn(['createdAt', 'pricePerSession', 'viewCount', 'contactCount'])
+    .withMessage('Sort by must be createdAt, pricePerSession, viewCount, or contactCount'),
+
+  query('sortOrder')
+    .optional()
+    .isIn(['asc', 'desc'])
+    .withMessage('Sort order must be asc or desc')
+];
+
+// ✅ Tutor ID Parameter Validator
+export const tutorIdValidator = [
+  param('tutorId')
+    .isMongoId()
+    .withMessage('Tutor ID must be a valid MongoDB ObjectId')
+];
+
+export const subjectIdValidator = [
+  param('subjectId')
+    .isMongoId()
+    .withMessage('Subject ID must be a valid MongoDB ObjectId')
+];
+
+// ... existing validators (createPostValidator, updatePostValidator, etc.)
 
 export const createPostValidator = [
   body('title')

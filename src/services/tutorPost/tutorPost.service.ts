@@ -9,6 +9,8 @@ import { User } from '../../models/User';
 import { Education } from '../../models/Education';
 import { Certificate } from '../../models/Certificate';
 import { Achievement } from '../../models/Achievement';
+import { Subject } from '../../models/Subject';
+import { Province, District, Ward } from '../../models';
 
 // Interface for tutor eligibility checking
 export interface ITutorEligibilityRequirement {
@@ -187,6 +189,8 @@ export class TutorPostService {
     }
   }
 
+  // ✅ Enhanced search method with comprehensive filtering
+  // ✅ Enhanced search method with comprehensive text search
   async searchTutorPosts(query: ITutorPostQuery) {
     try {
       const {
@@ -197,45 +201,88 @@ export class TutorPostService {
         priceMax,
         province,
         district,
-        search,
+        search, // ✅ Comprehensive text search
         page = 1,
         limit = 20,
         sortBy = 'createdAt',
         sortOrder = 'desc',
       } = query;
 
-      // Build filter
-      const filter: any = { status: 'ACTIVE' };
+      console.log('🔍 Searching tutor posts with query:', query);
 
+      // Build base filter
+      const filter: any = {
+        status: 'ACTIVE',
+        tutorId: {
+          $in: await this.getVerifiedTutorIds(),
+        },
+      };
+
+      // ✅ Subject filter - Direct filter without status validation
       if (subjects && subjects.length > 0) {
+        console.log('🎯 Applying subjects filter:', subjects);
         filter.subjects = { $in: subjects };
       }
 
+      // Teaching mode filter
       if (teachingMode) {
-        filter.teachingMode = { $in: [teachingMode, 'BOTH'] };
+        console.log('🏫 Applying teaching mode filter:', teachingMode);
+        if (teachingMode === 'BOTH') {
+          filter.teachingMode = { $in: ['ONLINE', 'OFFLINE', 'BOTH'] };
+        } else {
+          filter.teachingMode = { $in: [teachingMode, 'BOTH'] };
+        }
       }
 
+      // Student level filter
       if (studentLevel && studentLevel.length > 0) {
+        console.log('🎓 Applying student level filter:', studentLevel);
         filter.studentLevel = { $in: studentLevel };
       }
 
+      // Price range filter
       if (priceMin !== undefined || priceMax !== undefined) {
+        console.log('💰 Applying price filter:', { priceMin, priceMax });
         filter.pricePerSession = {};
         if (priceMin !== undefined) filter.pricePerSession.$gte = priceMin;
         if (priceMax !== undefined) filter.pricePerSession.$lte = priceMax;
       }
 
-      if (province) {
-        filter['address.province'] = province;
+      // Location filters
+      if (province || district) {
+        console.log('📍 Applying location filter:', { province, district });
+        const locationFilter: any = {};
+
+        if (province) {
+          const provinceObj = await Province.findOne({
+            $or: [
+              { code: province },
+              { name: { $regex: province, $options: 'i' } },
+            ],
+          });
+
+          if (provinceObj) {
+            locationFilter['address.province'] = provinceObj.code;
+          }
+        }
+
+        if (district && province) {
+          const districtObj = await District.findOne({
+            $or: [
+              { code: district },
+              { name: { $regex: district, $options: 'i' } },
+            ],
+          });
+
+          if (districtObj) {
+            locationFilter['address.district'] = districtObj.code;
+          }
+        }
+
+        Object.assign(filter, locationFilter);
       }
 
-      if (district) {
-        filter['address.district'] = district;
-      }
-
-      if (search) {
-        filter.$text = { $search: search };
-      }
+      console.log('📋 Built filter:', JSON.stringify(filter, null, 2));
 
       // Calculate pagination
       const skip = (page - 1) * limit;
@@ -243,36 +290,506 @@ export class TutorPostService {
       // Build sort
       const sort: any = {};
       sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+      if (sortBy !== 'createdAt') {
+        sort.createdAt = -1;
+      }
 
-      // Execute query
-      const posts = await TutorPost.find(filter)
-        .populate('subjects', 'name category')
-        .populate(
-          'tutorId',
-          'full_name email gender date_of_birth avatar_url structured_address'
-        )
-        .populate('address.province address.district address.ward', 'name')
-        .sort(sort)
-        .skip(skip)
-        .limit(limit);
+      // ✅ Always use aggregation for comprehensive search capabilities
+      const aggregationPipeline = [
+        { $match: filter },
 
-      const total = await TutorPost.countDocuments(filter);
+        // ✅ Lookup tutor information
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'tutorId',
+            foreignField: '_id',
+            as: 'tutorInfo',
+          },
+        },
+        { $unwind: '$tutorInfo' },
 
-      // Enhance posts with structured address information
-      const enhancedPosts = await this.enhancePostsWithAddressInfo(posts);
+        // ✅ Lookup subjects for search
+        {
+          $lookup: {
+            from: 'subjects',
+            localField: 'subjects',
+            foreignField: '_id',
+            as: 'subjectDetails',
+          },
+        },
+
+        // ✅ Lookup address information for search
+        {
+          $lookup: {
+            from: 'provinces',
+            localField: 'address.province',
+            foreignField: 'code',
+            as: 'provinceInfo',
+          },
+        },
+        {
+          $lookup: {
+            from: 'districts',
+            localField: 'address.district',
+            foreignField: 'code',
+            as: 'districtInfo',
+          },
+        },
+
+        // ✅ Comprehensive text search filter
+        ...(search && search.trim()
+          ? [
+              {
+                $match: {
+                  $or: [
+                    // Search in post title & description
+                    { title: { $regex: search.trim(), $options: 'i' } },
+                    { description: { $regex: search.trim(), $options: 'i' } },
+
+                    // Search in tutor name
+                    {
+                      'tutorInfo.full_name': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+
+                    // Search in subject names
+                    {
+                      'subjectDetails.name': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+
+                    // Search in location names
+                    {
+                      'provinceInfo.name': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+                    {
+                      'districtInfo.name': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+
+                    // Search in address text
+                    {
+                      'address.addressText': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+
+                    // Search in tutor profile headline
+                    {
+                      'tutorInfo.profile.headline': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+                  ],
+                },
+              },
+            ]
+          : []),
+
+        // ✅ Add relevance score when searching
+        ...(search && search.trim()
+          ? [
+              {
+                $addFields: {
+                  relevanceScore: {
+                    $add: [
+                      // Title match gets highest score (20 points)
+                      {
+                        $cond: [
+                          {
+                            $regexMatch: {
+                              input: '$title',
+                              regex: search.trim(),
+                              options: 'i',
+                            },
+                          },
+                          20,
+                          0,
+                        ],
+                      },
+                      // Tutor name match (15 points)
+                      {
+                        $cond: [
+                          {
+                            $regexMatch: {
+                              input: '$tutorInfo.full_name',
+                              regex: search.trim(),
+                              options: 'i',
+                            },
+                          },
+                          15,
+                          0,
+                        ],
+                      },
+                      // Subject name match (10 points)
+                      {
+                        $cond: [
+                          {
+                            $gt: [
+                              {
+                                $size: {
+                                  $filter: {
+                                    input: '$subjectDetails',
+                                    cond: {
+                                      $regexMatch: {
+                                        input: '$$this.name',
+                                        regex: search.trim(),
+                                        options: 'i',
+                                      },
+                                    },
+                                  },
+                                },
+                              },
+                              0,
+                            ],
+                          },
+                          10,
+                          0,
+                        ],
+                      },
+                      // Description match (8 points)
+                      {
+                        $cond: [
+                          {
+                            $regexMatch: {
+                              input: '$description',
+                              regex: search.trim(),
+                              options: 'i',
+                            },
+                          },
+                          8,
+                          0,
+                        ],
+                      },
+                      // Location match (5 points)
+                      {
+                        $cond: [
+                          {
+                            $or: [
+                              { $gt: [{ $size: '$provinceInfo' }, 0] },
+                              { $gt: [{ $size: '$districtInfo' }, 0] },
+                            ],
+                          },
+                          5,
+                          0,
+                        ],
+                      },
+                      // Address text match (3 points)
+                      {
+                        $cond: [
+                          {
+                            $regexMatch: {
+                              input: { $ifNull: ['$address.addressText', ''] },
+                              regex: search.trim(),
+                              options: 'i',
+                            },
+                          },
+                          3,
+                          0,
+                        ],
+                      },
+                      // Add popularity bonus
+                      { $multiply: ['$viewCount', 0.1] },
+                      { $multiply: ['$contactCount', 0.3] },
+                    ],
+                  },
+                },
+              },
+            ]
+          : []),
+
+        // ✅ Sort by relevance when searching, otherwise by selected sort
+        {
+          $sort:
+            search && search.trim()
+              ? { relevanceScore: -1, [sortBy]: sortOrder === 'asc' ? 1 : -1 }
+              : sort,
+        },
+
+        // Pagination
+        { $skip: skip },
+        { $limit: limit },
+
+        // Final projection
+        {
+          $project: {
+            _id: 1,
+            title: 1,
+            description: 1,
+            subjects: '$subjectDetails',
+            pricePerSession: 1,
+            sessionDuration: 1,
+            teachingMode: 1,
+            studentLevel: 1,
+            teachingSchedule: 1,
+            address: 1,
+            status: 1,
+            viewCount: 1,
+            contactCount: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            tutorId: {
+              _id: '$tutorInfo._id',
+              full_name: '$tutorInfo.full_name',
+              email: '$tutorInfo.email',
+              gender: '$tutorInfo.gender',
+              date_of_birth: '$tutorInfo.date_of_birth',
+              avatar_url: '$tutorInfo.avatar_url',
+              structured_address: '$tutorInfo.structured_address',
+              profile: '$tutorInfo.profile',
+            },
+            // Include relevance score for debugging
+            ...(search && search.trim() ? { relevanceScore: 1 } : {}),
+          },
+        },
+      ];
+
+      // ✅ Count pipeline with same comprehensive search
+      const countPipeline = [
+        { $match: filter },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'tutorId',
+            foreignField: '_id',
+            as: 'tutorInfo',
+          },
+        },
+        { $unwind: '$tutorInfo' },
+        {
+          $lookup: {
+            from: 'subjects',
+            localField: 'subjects',
+            foreignField: '_id',
+            as: 'subjectDetails',
+          },
+        },
+        {
+          $lookup: {
+            from: 'provinces',
+            localField: 'address.province',
+            foreignField: 'code',
+            as: 'provinceInfo',
+          },
+        },
+        {
+          $lookup: {
+            from: 'districts',
+            localField: 'address.district',
+            foreignField: 'code',
+            as: 'districtInfo',
+          },
+        },
+        ...(search && search.trim()
+          ? [
+              {
+                $match: {
+                  $or: [
+                    { title: { $regex: search.trim(), $options: 'i' } },
+                    { description: { $regex: search.trim(), $options: 'i' } },
+                    {
+                      'tutorInfo.full_name': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+                    {
+                      'subjectDetails.name': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+                    {
+                      'provinceInfo.name': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+                    {
+                      'districtInfo.name': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+                    {
+                      'address.addressText': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+                    {
+                      'tutorInfo.profile.headline': {
+                        $regex: search.trim(),
+                        $options: 'i',
+                      },
+                    },
+                  ],
+                },
+              },
+            ]
+          : []),
+        { $count: 'total' },
+      ];
+
+      const totalResult = await TutorPost.aggregate(countPipeline);
+      const totalItems = totalResult[0]?.total || 0;
+
+      // Execute main query
+      const posts = await TutorPost.aggregate(aggregationPipeline);
+
+      if (search && search.trim()) {
+        console.log(
+          `✅ Comprehensive text search completed for "${search.trim()}": ${posts.length} posts found (${totalItems} total)`
+        );
+
+        // Log top matches with relevance scores for debugging
+        const topMatches = posts.slice(0, 3).map((post) => ({
+          title: post.title,
+          tutorName: post.tutorId.full_name,
+          relevanceScore: post.relevanceScore,
+        }));
+        console.log('🎯 Top matches:', topMatches);
+      } else {
+        console.log(
+          `✅ Filter search completed: ${posts.length} posts found (${totalItems} total)`
+        );
+      }
+
+      // Build pagination info
+      const totalPages = Math.ceil(totalItems / limit);
 
       return {
-        posts: enhancedPosts,
+        posts,
         pagination: {
           currentPage: page,
-          totalPages: Math.ceil(total / limit),
-          totalItems: total,
-          hasNext: page < Math.ceil(total / limit),
+          totalPages,
+          totalItems,
+          hasNext: page < totalPages,
           hasPrev: page > 1,
         },
-        filters: query,
       };
     } catch (error) {
+      console.error('❌ Search tutor posts error:', error);
+      throw error;
+    }
+  }
+
+  // ✅ Fix getFilterOptions - Remove status checking for subjects
+  async getFilterOptions() {
+    try {
+      console.log('🔧 Getting filter options...');
+
+      const [subjects, provinces, priceStats] = await Promise.all([
+        // ✅ Get all subjects without status filter
+        Subject.find({})
+          .select('_id name category')
+          .sort({ category: 1, name: 1 })
+          .lean(),
+
+        // Get provinces that have active tutor posts
+        this.getProvincesWithTutors(),
+
+        // Get price range statistics
+        TutorPost.aggregate([
+          { $match: { status: 'ACTIVE' } },
+          {
+            $group: {
+              _id: null,
+              minPrice: { $min: '$pricePerSession' },
+              maxPrice: { $max: '$pricePerSession' },
+              avgPrice: { $avg: '$pricePerSession' },
+            },
+          },
+        ]),
+      ]);
+
+      // Group subjects by category
+      const subjectsByCategory = subjects.reduce((acc: any, subject) => {
+        const category = subject.category || 'Khác';
+        if (!acc[category]) acc[category] = [];
+        acc[category].push(subject);
+        return acc;
+      }, {});
+
+      const result = {
+        subjects: {
+          all: subjects,
+          byCategory: subjectsByCategory,
+        },
+        studentLevels: [
+          { value: 'TIEU_HOC', label: 'Tiểu học' },
+          { value: 'TRUNG_HOC_CO_SO', label: 'THCS' },
+          { value: 'TRUNG_HOC_PHO_THONG', label: 'THPT' },
+          { value: 'DAI_HOC', label: 'Đại học' },
+          { value: 'NGUOI_DI_LAM', label: 'Người đi làm' },
+          { value: 'KHAC', label: 'Khác' },
+        ],
+        teachingModes: [
+          { value: 'ONLINE', label: 'Trực tuyến', icon: '💻' },
+          { value: 'OFFLINE', label: 'Trực tiếp', icon: '🏠' },
+          { value: 'BOTH', label: 'Cả hai', icon: '🔄' },
+        ],
+        provinces,
+        priceRange: priceStats[0] || {
+          minPrice: 100000,
+          maxPrice: 2000000,
+          avgPrice: 500000,
+        },
+        sortOptions: [
+          { value: 'createdAt', label: 'Mới nhất', order: 'desc' },
+          { value: 'pricePerSession', label: 'Giá thấp nhất', order: 'asc' },
+          { value: 'pricePerSession', label: 'Giá cao nhất', order: 'desc' },
+          { value: 'viewCount', label: 'Xem nhiều nhất', order: 'desc' },
+          { value: 'contactCount', label: 'Liên hệ nhiều nhất', order: 'desc' },
+        ],
+      };
+
+      console.log('✅ Filter options loaded successfully');
+      return result;
+    } catch (error) {
+      console.error('❌ Get filter options error:', error);
+      throw error;
+    }
+  }
+
+  // ✅ Get districts by province code
+  async getDistrictsByProvince(provinceCode: string) {
+    try {
+      const districts = await District.find({ province_code: provinceCode })
+        .select('code name')
+        .sort({ name: 1 })
+        .lean();
+
+      return districts;
+    } catch (error) {
+      console.error('Get districts error:', error);
+      throw error;
+    }
+  }
+
+  // ✅ Get wards by district code
+  async getWardsByDistrict(districtCode: string) {
+    try {
+      const wards = await Ward.find({ district_code: districtCode })
+        .select('code name')
+        .sort({ name: 1 })
+        .lean();
+
+      return wards;
+    } catch (error) {
+      console.error('Get wards error:', error);
       throw error;
     }
   }
@@ -283,18 +800,13 @@ export class TutorPostService {
     userId?: string
   ): Promise<ITutorPost | null> {
     try {
-      // UUID validation - basic format check
-      if (!postId || typeof postId !== 'string' || postId.length !== 36) {
-        throw new Error('Invalid post ID');
-      }
-
       const post = await TutorPost.findById(postId)
-        .populate('subjects', 'name category description')
+        .populate('subjects', 'name category')
         .populate(
           'tutorId',
-          'full_name email gender avatar_url structured_address date_of_birth'
+          'full_name email gender date_of_birth avatar_url structured_address'
         )
-        .populate('address.province address.district address.ward', 'name');
+        .lean();
 
       if (post) {
         // Only increment view count if explicitly requested and user is not the tutor
@@ -312,64 +824,115 @@ export class TutorPostService {
         return enhancedPost;
       }
 
-      return post;
+      // Increment view count
+      await TutorPost.findByIdAndUpdate(postId, { $inc: { viewCount: 1 } });
+
+      // Enhance with additional information
+      const enhancedPost = await this.enhanceTutorInfo(post);
+
+      return enhancedPost;
     } catch (error) {
+      console.error('Get tutor post by ID error:', error);
       throw error;
     }
   }
 
+  // ✅ Activate post
   async activatePost(
     postId: string,
     tutorId: string
   ): Promise<ITutorPost | null> {
     try {
       const post = await TutorPost.findOneAndUpdate(
-        { _id: postId, tutorId },
-        { $set: { status: 'ACTIVE' } },
+        { _id: postId, tutorId: tutorId },
+        { status: 'ACTIVE' },
         { new: true }
-      );
+      ).populate('subjects', 'name category');
 
       return post;
     } catch (error) {
+      console.error('Activate post error:', error);
       throw error;
     }
   }
 
+  // ✅ Deactivate post
   async deactivatePost(
     postId: string,
     tutorId: string
   ): Promise<ITutorPost | null> {
     try {
       const post = await TutorPost.findOneAndUpdate(
-        { _id: postId, tutorId },
-        { $set: { status: 'INACTIVE' } },
+        { _id: postId, tutorId: tutorId },
+        { status: 'INACTIVE' },
         { new: true }
-      );
+      ).populate('subjects', 'name category');
 
       return post;
     } catch (error) {
+      console.error('Deactivate post error:', error);
       throw error;
     }
   }
 
+  // ✅ Delete tutor post
   async deleteTutorPost(postId: string, tutorId: string): Promise<boolean> {
     try {
       const result = await TutorPost.findOneAndDelete({
         _id: postId,
-        tutorId,
+        tutorId: tutorId,
       });
 
-      return result !== null;
+      return !!result;
     } catch (error) {
+      console.error('Delete tutor post error:', error);
       throw error;
     }
   }
 
+  // ✅ Increment contact count
   async incrementContactCount(postId: string): Promise<void> {
     try {
       await TutorPost.findByIdAndUpdate(postId, { $inc: { contactCount: 1 } });
     } catch (error) {
+      console.error('Increment contact count error:', error);
       throw error;
+    }
+  }
+
+  // Helper methods
+  private async getVerifiedTutorIds(): Promise<string[]> {
+    try {
+      const verifiedProfiles = await TutorProfile.find({
+        status: 'VERIFIED',
+      }).select('user_id');
+
+      return verifiedProfiles.map((profile) => profile.user_id);
+    } catch (error) {
+      console.error('Error getting verified tutor IDs:', error);
+      return [];
+    }
+  }
+
+  private async getProvincesWithTutors() {
+    try {
+      // Get unique province codes from active tutor posts
+      const provinceCodes = await TutorPost.distinct('address.province', {
+        status: 'ACTIVE',
+      });
+
+      // Get province details
+      const provinces = await Province.find({
+        code: { $in: provinceCodes },
+      })
+        .select('code name')
+        .sort({ name: 1 })
+        .lean();
+
+      return provinces;
+    } catch (error) {
+      console.error('Error getting provinces with tutors:', error);
+      return [];
     }
   }
 

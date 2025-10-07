@@ -7,9 +7,36 @@ import {
   updatePostValidator,
   reviewPostValidator,
   getPostsValidator,
+  tutorSearchValidator
 } from '../../validators/post.validator';
 
 const router = express.Router();
+
+// ==================== TUTOR SEARCH APIs (SIMPLIFIED) ====================
+
+// ✅ MAIN API: Universal tutor search with all filters
+router.get('/tutors/search', 
+  tutorSearchValidator,
+  handleValidationErrors,
+  PostController.searchTutors
+);
+
+// ✅ Get search filter options (for dropdowns)
+router.get('/tutors/filters', 
+  PostController.getSearchFilterOptions
+);
+
+// ✅ Get tutor detail + increment view count
+router.get('/tutors/:tutorId', 
+  PostController.getTutorById
+);
+
+// ✅ Contact tutor (increment contact count)
+router.post('/tutors/:tutorId/contact', 
+  PostController.contactTutor
+);
+
+// ==================== EXISTING POST APIs ====================
 
 // Tạo bài đăng mới (chỉ sinh viên)
 router.post(
@@ -71,6 +98,16 @@ router.patch(
   reviewPostValidator,
   handleValidationErrors,
   PostController.reviewPost
+);
+
+// Tìm gia sư thông minh cho bài đăng của học viên
+router.get(
+  '/:id/smart-tutors',
+  authenticateToken,
+  requireRole(UserRole.STUDENT),
+  getPostsValidator,
+  handleValidationErrors,
+  PostController.smartSearchTutors
 );
 
 export default router;
