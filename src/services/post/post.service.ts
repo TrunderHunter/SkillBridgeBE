@@ -51,10 +51,148 @@ export interface ITutorSearchPagination {
   hasPrev: boolean;
 }
 
+// Interface cho một khoảng thời gian đã được phân tích
+interface TimeSlot {
+  dayOfWeek: number; // 0 = Chủ nhật, ..., 6 = Thứ bảy
+  startTime: string; // "HH:mm"
+  endTime: string; // "HH:mm"
+}
+
+// Bảng ánh xạ tên ngày sang chỉ số (index)
+const DAYS_OF_WEEK_MAP: { [key: string]: number } = {
+  'Chủ nhật': 0, 'CN': 0,
+  'Thứ hai': 1, 'T2': 1,
+  'Thứ ba': 2, 'T3': 2,
+  'Thứ tư': 3, 'T4': 3,
+  'Thứ năm': 4, 'T5': 4,
+  'Thứ sáu': 5, 'T6': 5,
+  'Thứ bảy': 6, 'T7': 6,
+};
+
+
+/**
+ * Hàm phụ trợ để phân tích chuỗi availability thành một mảng các TimeSlot.
+ * @param availabilityString - Ví dụ: "Thứ hai (08:00 - 10:00), Thứ tư (14:00 - 16:00)"
+ * @returns Mảng các đối tượng TimeSlot
+ */
+function parseAvailabilityString(availabilityString: string): TimeSlot[] {
+  if (!availabilityString) return [];
+  
+  const slots: TimeSlot[] = [];
+  // Tách các ngày, đảm bảo không tách sai ở dấu phẩy trong tên
+  const dayParts = availabilityString.split(/,\s*(?=[^)]+\()/);
+
+  dayParts.forEach(part => {
+    const dayMatch = part.match(/^(.*?)\s*\((.*?)\)/);
+    if (!dayMatch) return;
+
+    const dayName = dayMatch[1].trim();
+    const timesStr = dayMatch[2];
+    
+    // Tìm key trong map khớp với tên ngày
+    const dayKey = Object.keys(DAYS_OF_WEEK_MAP).find(key => dayName.includes(key));
+    if (dayKey === undefined) return;
+
+    const dayIndex = DAYS_OF_WEEK_MAP[dayKey];
+
+    // Tìm tất cả các khoảng thời gian trong ngoặc
+    const timeMatches = timesStr.matchAll(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/g);
+    for (const match of timeMatches) {
+      slots.push({
+        dayOfWeek: dayIndex,
+        startTime: match[1],
+        endTime: match[2],
+      });
+    }
+  });
+
+  return slots;
+}
+
 export class PostService {
+  /**
+   * [HÀM MỚI] Kiểm tra xung đột lịch học cho một sinh viên.
+   * @param userId - ID của sinh viên
+   * @param newAvailability - Chuỗi lịch học của bài đăng mới
+   * @param excludePostId - (Tùy chọn) ID của bài đăng cần loại trừ khi kiểm tra (dùng cho chức năng cập nhật)
+   * @returns Object chứa thông tin về việc có trùng lặp hay không.
+   */
+  static async checkScheduleConflict(
+    userId: string, 
+    newAvailability: string,
+    excludePostId?: string 
+  ): Promise<{ hasConflict: boolean; conflictingPostTitle?: string }> {
+    try {
+      // 1. Xây dựng query để lấy tất cả bài đăng đang hoạt động của sinh viên
+      const query: any = {
+        author_id: userId,
+        status: { $in: [PostStatus.PENDING, PostStatus.APPROVED] }
+      };
+
+      // Nếu đang cập nhật, loại trừ chính bài đăng đó ra khỏi việc kiểm tra
+      if (excludePostId) {
+        query._id = { $ne: excludePostId };
+      }
+      
+      const existingActivePosts = await Post.find(query).select('title availability').lean();
+
+      if (existingActivePosts.length === 0) {
+        return { hasConflict: false };
+      }
+
+      // 2. Phân tích chuỗi availability của bài đăng mới thành các TimeSlot
+      const newSlots = parseAvailabilityString(newAvailability);
+      if (newSlots.length === 0) {
+         return { hasConflict: false }; // Không có lịch để kiểm tra
+      }
+
+      // 3. Lặp qua từng bài đăng cũ để kiểm tra
+      for (const post of existingActivePosts) {
+        if (!post.availability) continue;
+        const existingSlots = parseAvailabilityString(post.availability);
+
+        // 4. So sánh từng slot mới với từng slot cũ
+        for (const newSlot of newSlots) {
+          for (const existingSlot of existingSlots) {
+            // Chỉ so sánh nếu cùng ngày trong tuần
+            if (newSlot.dayOfWeek === existingSlot.dayOfWeek) {
+              // Logic kiểm tra chồng chéo thời gian: (StartA < EndB) and (EndA > StartB)
+              const startsBeforeEnd = newSlot.startTime < existingSlot.endTime;
+              const endsAfterStart = newSlot.endTime > existingSlot.startTime;
+
+              if (startsBeforeEnd && endsAfterStart) {
+                // Tìm thấy trùng lặp!
+                return { 
+                  hasConflict: true, 
+                  conflictingPostTitle: post.title 
+                };
+              }
+            }
+          }
+        }
+      }
+
+      // Nếu không tìm thấy trùng lặp nào
+      return { hasConflict: false };
+
+    } catch (error) {
+      console.error("Lỗi khi kiểm tra trùng lịch học:", error);
+      // Mặc định không chặn nếu có lỗi xảy ra để tránh trường hợp người dùng không thể đăng bài
+      return { hasConflict: false };
+    }
+  }
   // Tạo bài đăng mới
   static async createPost(userId: string, postData: IPostInput): Promise<any> {
     try {
+      // [THÊM] Gọi hàm kiểm tra trước khi tạo
+      const conflictCheck = await this.checkScheduleConflict(userId, postData.availability || '');
+      if (conflictCheck.hasConflict) {
+        return { 
+          success: false, 
+          message: `Lịch học bị trùng với bài đăng đã có: "${conflictCheck.conflictingPostTitle}"`,
+          isConflict: true // Thêm cờ để controller biết đây là lỗi trùng lịch
+        };
+      }
       const post = await Post.create({ ...postData, author_id: userId });
       await post.populate({ path: 'author_id', select: 'full_name avatar' });
 
@@ -146,6 +284,17 @@ export class PostService {
   // Cập nhật bài đăng
   static async updatePost(postId: string, userId: string, updateData: IPostUpdateInput): Promise<any> {
     try {
+      // [THÊM] Gọi hàm kiểm tra trước khi cập nhật, loại trừ chính bài đăng này
+      if (updateData.availability) {
+        const conflictCheck = await this.checkScheduleConflict(userId, updateData.availability, postId);
+        if (conflictCheck.hasConflict) {
+          return { 
+            success: false, 
+            message: `Lịch học bị trùng với bài đăng đã có: "${conflictCheck.conflictingPostTitle}"`,
+            isConflict: true
+          };
+        }
+      }
       const post = await Post.findById(postId);
 
       if (!post) {

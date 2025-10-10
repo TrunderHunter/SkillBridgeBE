@@ -23,12 +23,14 @@ export class PostController {
       const userId = req.user!.id;
       const postData: IPostInput = req.body;
 
+      
       const result = await PostService.createPost(userId, postData);
 
       if (result.success) {
         sendSuccess(res, result.message, result.data, 201);
       } else {
-        sendError(res, result.message, undefined, 400);
+        const statusCode = result.isConflict ? 409 : 400;
+        sendError(res, result.message, undefined, statusCode);
       }
     } catch (error: any) {
       sendError(res, error.message || 'Lỗi khi tạo bài đăng', undefined, 500);
@@ -169,7 +171,8 @@ export class PostController {
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
-        sendError(res, result.message, undefined, 400);
+        const statusCode = result.isConflict ? 409 : 400;
+        sendError(res, result.message, undefined, statusCode);
       }
     } catch (error: any) {
       sendError(res, error.message || 'Lỗi khi cập nhật bài đăng', undefined, 500);
