@@ -15,26 +15,26 @@ const router = express.Router();
 // ==================== TUTOR SEARCH APIs (SIMPLIFIED) ====================
 
 // ✅ MAIN API: Universal tutor search with all filters
-router.get('/tutors/search', 
-  tutorSearchValidator,
-  handleValidationErrors,
-  PostController.searchTutors
-);
+// router.get('/tutors/search', 
+//   tutorSearchValidator,
+//   handleValidationErrors,
+//   PostController.searchTutors
+// );
 
-// ✅ Get search filter options (for dropdowns)
-router.get('/tutors/filters', 
-  PostController.getSearchFilterOptions
-);
+// // ✅ Get search filter options (for dropdowns)
+// router.get('/tutors/filters', 
+//   PostController.getSearchFilterOptions
+// );
 
-// ✅ Get tutor detail + increment view count
-router.get('/tutors/:tutorId', 
-  PostController.getTutorById
-);
+// // ✅ Get tutor detail + increment view count
+// router.get('/tutors/:tutorId', 
+//   PostController.getTutorById
+// );
 
-// ✅ Contact tutor (increment contact count)
-router.post('/tutors/:tutorId/contact', 
-  PostController.contactTutor
-);
+// // ✅ Contact tutor (increment contact count)
+// router.post('/tutors/:tutorId/contact', 
+//   PostController.contactTutor
+// );
 
 // ==================== EXISTING POST APIs ====================
 
