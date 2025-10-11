@@ -3,6 +3,7 @@ import { PostService, ITutorSearchQuery } from '../../services/post';
 import { sendSuccess, sendError } from '../../utils/response';
 import { validationResult } from 'express-validator';
 import { IPostInput, IPostUpdateInput, IPostReviewInput } from '../../types/post.types';
+import { v4 as uuidv4, validate as validateUUID } from 'uuid';
 
 export interface CreatePostRequest extends Request {
   body: IPostInput;
@@ -23,7 +24,6 @@ export class PostController {
       const userId = req.user!.id;
       const postData: IPostInput = req.body;
 
-      
       const result = await PostService.createPost(userId, postData);
 
       if (result.success) {
@@ -129,7 +129,6 @@ export class PostController {
   static async getPostById(req: Request, res: Response): Promise<void> {
     try {
       const postId = req.params.id;
-
       const result = await PostService.getPostById(postId);
 
       if (result.success) {
@@ -216,41 +215,117 @@ export class PostController {
     }
   }
 
-  // Tìm gia sư thông minh dựa trên bài đăng
+  // Smart Search với đầy đủ filters
   static async smartSearchTutors(req: Request, res: Response): Promise<void> {
     try {
       const studentPostId = req.params.id;
+
+      if (!studentPostId) {
+        console.error('❌ Missing postId in request params');
+        return sendError(res, 'ID bài đăng là bắt buộc', undefined, 400);
+      }
+
+      const trimmedPostId = studentPostId.trim();
+      if (!trimmedPostId) {
+        console.error('❌ PostId is empty after trim');
+        return sendError(res, 'ID bài đăng không được rỗng', undefined, 400);
+      }
+
+      const isValidUUID = validateUUID(trimmedPostId);
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(trimmedPostId);
+
+      if (!isValidUUID && !isValidObjectId) {
+        console.error('❌ Invalid Post ID format:', {
+          postId: trimmedPostId,
+          length: trimmedPostId.length,
+          isUUID: isValidUUID,
+          isObjectId: isValidObjectId
+        });
+        return sendError(res, 'ID bài đăng phải là UUID hoặc MongoDB ObjectId hợp lệ', undefined, 400);
+      }
+
       const {
-        page,
-        limit,
-        sort_by,
-        sort_order,
+        subjects, teachingMode, studentLevel, priceMin, priceMax,
+        province, district, ward, search, page, limit, sort_by, sort_order,
       } = req.query;
 
-      const paginationOptions: any = {};
-      if (page) paginationOptions.page = parseInt(page as string, 10);
-      if (limit) paginationOptions.limit = parseInt(limit as string, 10);
-      if (sort_by) paginationOptions.sort_by = sort_by;
-      if (sort_order) paginationOptions.sort_order = sort_order;
+      const searchQuery: ITutorSearchQuery = {};
 
-      const result = await PostService.smartSearchTutors(studentPostId, paginationOptions);
+      if (subjects) {
+        searchQuery.subjects = Array.isArray(subjects)
+          ? subjects as string[]
+          : [subjects] as string[];
+      }
 
+      if (studentLevel) {
+        searchQuery.studentLevel = Array.isArray(studentLevel)
+          ? studentLevel as string[]
+          : [studentLevel] as string[];
+      }
+
+      if (teachingMode && ['ONLINE', 'OFFLINE', 'BOTH'].includes(teachingMode as string)) {
+        searchQuery.teachingMode = teachingMode as any;
+      }
+
+      if (priceMin && !isNaN(Number(priceMin))) {
+        searchQuery.priceMin = parseInt(priceMin as string, 10);
+      }
+
+      if (priceMax && !isNaN(Number(priceMax))) {
+        searchQuery.priceMax = parseInt(priceMax as string, 10);
+      }
+
+      if (province) {
+        searchQuery.province = province as string;
+      }
+
+      if (district) {
+        searchQuery.district = district as string;
+      }
+
+      if (ward) {
+        searchQuery.ward = ward as string;
+      }
+
+      if (search && typeof search === 'string' && search.trim()) {
+        searchQuery.search = search.trim();
+      }
+
+      const paginationOptions: any = {
+        page: page && !isNaN(Number(page)) ? Math.max(1, parseInt(page as string, 10)) : 1,
+        limit: limit && !isNaN(Number(limit)) ? Math.min(50, Math.max(1, parseInt(limit as string, 10))) : 12,
+        sort_by: sort_by && ['compatibility', 'createdAt', 'pricePerSession', 'viewCount'].includes(sort_by as string)
+          ? sort_by as string
+          : 'compatibility',
+        sort_order: sort_order && ['asc', 'desc'].includes(sort_order as string)
+          ? sort_order as string
+          : 'desc'
+      };
+
+
+      const result = await PostService.smartSearchTutorsWithFilters(
+        trimmedPostId,
+        searchQuery,
+        paginationOptions
+      );
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
         sendError(res, result.message, undefined, 400);
       }
     } catch (error: any) {
-      sendError(res, error.message || 'Lỗi khi tìm kiếm gia sư thông minh', undefined, 500);
+      console.error('❌ Smart Search Controller Error:', {
+        message: error.message,
+        stack: error.stack,
+        postId: req.params.id
+      });
+      sendError(res, error.message || 'Lỗi server khi tìm kiếm gia sư thông minh', undefined, 500);
     }
   }
 
-  // ✅ Search Tutors for Students (Regular Search)
+  // Search Tutors for Students (Regular Search)
   static async searchTutors(req: Request, res: Response): Promise<void> {
     try {
-      console.log('🔍 POST Controller - Search Tutors Request:', req.query);
-
-      // Check validation errors
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return sendError(res, 'Dữ liệu không hợp lệ', undefined, 400);
@@ -272,23 +347,20 @@ export class PostController {
         sortOrder
       } = req.query;
 
-      // Build search query
       const searchQuery: ITutorSearchQuery = {};
 
-      // Handle array parameters
       if (subjects) {
-        searchQuery.subjects = Array.isArray(subjects) 
-          ? subjects as string[] 
+        searchQuery.subjects = Array.isArray(subjects)
+          ? subjects as string[]
           : [subjects] as string[];
       }
-      
+
       if (studentLevel) {
-        searchQuery.studentLevel = Array.isArray(studentLevel) 
-          ? studentLevel as string[] 
+        searchQuery.studentLevel = Array.isArray(studentLevel)
+          ? studentLevel as string[]
           : [studentLevel] as string[];
       }
 
-      // Handle single value parameters
       if (teachingMode) searchQuery.teachingMode = teachingMode as any;
       if (priceMin) searchQuery.priceMin = parseInt(priceMin as string, 10);
       if (priceMax) searchQuery.priceMax = parseInt(priceMax as string, 10);
@@ -300,8 +372,6 @@ export class PostController {
       if (limit) searchQuery.limit = parseInt(limit as string, 10);
       if (sortBy) searchQuery.sortBy = sortBy as any;
       if (sortOrder) searchQuery.sortOrder = sortOrder as any;
-
-      console.log('🔍 Processed Search Query:', searchQuery);
 
       const result = await PostService.searchTutors(searchQuery);
 
@@ -316,16 +386,12 @@ export class PostController {
     }
   }
 
-  // ✅ Get Featured Tutors
+  // Get Featured Tutors
   static async getFeaturedTutors(req: Request, res: Response): Promise<void> {
     try {
-      console.log('⭐ POST Controller - Get Featured Tutors');
-
       const { limit } = req.query;
       const limitNum = limit ? parseInt(limit as string, 10) : 8;
-
       const result = await PostService.getFeaturedTutors(limitNum);
-
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
@@ -337,23 +403,17 @@ export class PostController {
     }
   }
 
-  // ✅ Get Tutors by Subject
+  // Get Tutors by Subject
   static async getTutorsBySubject(req: Request, res: Response): Promise<void> {
     try {
-      console.log('📚 POST Controller - Get Tutors by Subject');
-
       const { subjectId } = req.params;
       const { page, limit } = req.query;
-
       if (!subjectId) {
         return sendError(res, 'Subject ID is required', undefined, 400);
       }
-
       const pageNum = page ? parseInt(page as string, 10) : 1;
       const limitNum = limit ? parseInt(limit as string, 10) : 12;
-
       const result = await PostService.getTutorsBySubject(subjectId, pageNum, limitNum);
-
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
@@ -365,23 +425,18 @@ export class PostController {
     }
   }
 
-  // ✅ Get Tutors by Location
+  // Get Tutors by Location
   static async getTutorsByLocation(req: Request, res: Response): Promise<void> {
     try {
-      console.log('📍 POST Controller - Get Tutors by Location');
-
       const { province, district, page, limit } = req.query;
-
       const pageNum = page ? parseInt(page as string, 10) : 1;
       const limitNum = limit ? parseInt(limit as string, 10) : 12;
-
       const result = await PostService.getTutorsByLocation(
         province as string,
         district as string,
         pageNum,
         limitNum
       );
-
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
@@ -393,19 +448,14 @@ export class PostController {
     }
   }
 
-  // ✅ Get Tutor Detail
+  // Get Tutor Detail
   static async getTutorById(req: Request, res: Response): Promise<void> {
     try {
-      console.log('👤 POST Controller - Get Tutor by ID');
-
       const { tutorId } = req.params;
-
       if (!tutorId) {
         return sendError(res, 'Tutor ID is required', undefined, 400);
       }
-
       const result = await PostService.getTutorById(tutorId);
-
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
@@ -417,19 +467,14 @@ export class PostController {
     }
   }
 
-  // ✅ Contact Tutor
+  // Contact Tutor
   static async contactTutor(req: Request, res: Response): Promise<void> {
     try {
-      console.log('📞 POST Controller - Contact Tutor');
-
       const { tutorId } = req.params;
-
       if (!tutorId) {
         return sendError(res, 'Tutor ID is required', undefined, 400);
       }
-
       const result = await PostService.contactTutor(tutorId);
-
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
@@ -441,13 +486,10 @@ export class PostController {
     }
   }
 
-  // ✅ Get Search Filter Options
+  // Get Search Filter Options
   static async getSearchFilterOptions(req: Request, res: Response): Promise<void> {
     try {
-      console.log('🔧 POST Controller - Get Search Filter Options');
-
       const result = await PostService.getSearchFilterOptions();
-
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {

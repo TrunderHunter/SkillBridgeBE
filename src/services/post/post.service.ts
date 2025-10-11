@@ -10,8 +10,11 @@ import {
 } from '../../types/post.types';
 import { mapPostToResponse } from '../../utils/mappers/post.mapper';
 import { TutorPost } from '../../models/TutorPost';
+import { TutorProfile } from '../../models/TutorProfile';
 import { Subject } from '../../models/Subject';
 import { mapTutorPostToResponse } from '../../utils/mappers/tutorPost.mapper';
+import { v4 as uuidv4, validate as validateUUID } from 'uuid';
+import { VerificationRequest } from '../../models/VerificationRequest';
 
 export interface ITutorSearchQuery {
   // Core filters
@@ -38,8 +41,8 @@ export interface ITutorSearchQuery {
   sortOrder?: 'asc' | 'desc';
   
   // Special filters
-  featured?: boolean; // Get featured tutors
-  subjectId?: string; // Filter by specific subject
+  featured?: boolean;
+  subjectId?: string;
 }
 
 export interface ITutorSearchPagination {
@@ -68,7 +71,6 @@ const DAYS_OF_WEEK_MAP: { [key: string]: number } = {
   'Thứ sáu': 5, 'T6': 5,
   'Thứ bảy': 6, 'T7': 6,
 };
-
 
 /**
  * Hàm phụ trợ để phân tích chuỗi availability thành một mảng các TimeSlot.
@@ -181,6 +183,46 @@ export class PostService {
       return { hasConflict: false };
     }
   }
+
+  // ✅ ADD: Get verified tutor IDs
+  private static async getVerifiedTutorIds(): Promise<string[]> {
+    try {
+      const verifiedRequests = await VerificationRequest.find({
+        status: 'APPROVED'
+      }).select('user_id').lean();
+      
+      return verifiedRequests
+      .filter(req => req && req.tutorId) // << SỬA Ở ĐÂY (Kiểm tra sự tồn tại của trường)
+      .map(req => req.tutorId.toString());
+    } catch (error) {
+      console.error('Error getting verified tutor IDs:', error);
+      return [];
+    }
+  }
+
+  // ✅ ADD: Enhance tutor info
+  private static async enhanceTutorInfo(tutorPost: any): Promise<any> {
+    try {
+      // Nếu đã có đầy đủ thông tin từ populate, return luôn
+      if (tutorPost.tutorId && typeof tutorPost.tutorId === 'object' && tutorPost.tutorId.full_name) {
+        return tutorPost;
+      }
+
+      // Nếu chưa có, fetch thêm thông tin
+      const tutorInfo = await User.findById(tutorPost.tutorId)
+        .select('full_name email gender date_of_birth avatar_url structured_address profile education achievements certificates role')
+        .lean();
+
+      return {
+        ...tutorPost,
+        tutorId: tutorInfo || tutorPost.tutorId
+      };
+    } catch (error) {
+      console.error('Error enhancing tutor info:', error);
+      return tutorPost;
+    }
+  }
+
   // Tạo bài đăng mới
   static async createPost(userId: string, postData: IPostInput): Promise<any> {
     try {
@@ -193,6 +235,7 @@ export class PostService {
           isConflict: true // Thêm cờ để controller biết đây là lỗi trùng lịch
         };
       }
+
       const post = await Post.create({ ...postData, author_id: userId });
       await post.populate({ path: 'author_id', select: 'full_name avatar' });
 
@@ -401,7 +444,7 @@ export class PostService {
     paginationOptions: IPostPaginationOptions = {}
   ): Promise<any> {
     try {
-      const { page = 1, limit = 10, sort_by = 'compatibility', sort_order = 'desc' } = paginationOptions;
+      const { page = 1, limit = 12, sort_by = 'compatibility', sort_order = 'desc' } = paginationOptions;
 
       const studentPost = await Post.findById(studentPostId).lean();
       if (!studentPost) {
@@ -418,7 +461,7 @@ export class PostService {
       // Tính score
       const scoredPosts = tutorPosts.map(tp => ({
         post: tp,
-        score: PostService.calculateCompatibility(studentPost, tp)
+        score: this.calculateCompatibility(studentPost, tp)
       }));
 
       // Sort
@@ -448,256 +491,242 @@ export class PostService {
     }
   }
 
-  private static calculateCompatibility(student: IPost, tutor: any): number {
-    let score = 0;
-
-    // Subjects (30%)
-    const subjectMatch = student.subjects.filter((s: string) => tutor.subjects.some((ts: any) => ts.name === s)).length / (student.subjects.length || 1);
-    score += 30 * subjectMatch;
-
-    // Grade levels (20%)
-    const gradeMatch = student.grade_levels.filter((g: string) => tutor.studentLevel.includes(g)).length / (student.grade_levels.length || 1);
-    score += 20 * gradeMatch;
-
-    // Teaching mode (20%)
-    let modeMatch = 0;
-    const studentMode = student.is_online ? 'ONLINE' : 'OFFLINE';
-    if (tutor.teachingMode === studentMode || tutor.teachingMode === 'BOTH') {
-      modeMatch = 1;
-    }
-    score += 20 * modeMatch;
-
-    // Price (20%)
-    let priceMatch = 0;
-    if (student.hourly_rate && student.hourly_rate.min !== undefined && student.hourly_rate.max !== undefined) {
-      if (tutor.pricePerSession >= student.hourly_rate.min && tutor.pricePerSession <= student.hourly_rate.max) {
-        priceMatch = 1;
-      }
-    } else {
-      priceMatch = 1;
-    }
-    score += 20 * priceMatch;
-
-    // Location (10%) - basic
-    let locationMatch = 0;
-    if (!student.is_online && student.location && tutor.address && tutor.address.province) {
-      if (student.location.toLowerCase().includes(tutor.address.province.name.toLowerCase())) {
-        locationMatch = 1;
-      }
-    } else {
-      locationMatch = 1;
-    }
-    score += 10 * locationMatch;
-
-    return score;
-  }
-
-  // ✅ Search Tutors for Students (Regular Search)
-  static async searchTutors(searchQuery: ITutorSearchQuery = {}): Promise<any> {
+  // ✅ FIX: Smart search with filters - REMOVE DUPLICATE IMPLEMENTATION
+  static async smartSearchTutorsWithFilters(
+    studentPostId: string,
+    searchQuery: ITutorSearchQuery = {},
+    paginationOptions: IPostPaginationOptions = {}
+  ): Promise<any> {
     try {
-      const {
-        subjects,
-        teachingMode,
-        studentLevel,
-        priceMin,
-        priceMax,
-        province,
-        district,
-        ward,
-        search,
-        page = 1,
-        limit = 12,
-        sortBy = 'createdAt',
-        sortOrder = 'desc',
-        featured = false,
-        subjectId
-      } = searchQuery;
+      const { page = 1, limit = 12, sort_by = 'compatibility', sort_order = 'desc' } = paginationOptions;
 
-      console.log('🔍 Universal Tutor Search:', searchQuery);
+      // 1. Lấy thông tin bài đăng của học viên (Giữ nguyên)
+      const studentPost = await Post.findById(studentPostId).lean();
+      if (!studentPost) {
+        return { success: false, message: 'Không tìm thấy bài đăng của học viên' };
+      }
 
-      // Build dynamic MongoDB query
-      const query: any = {
-        status: 'ACTIVE'
+      // 2. ✅ SỬA LỖI & TỐI ƯU: Xây dựng bộ lọc chính tại tầng Database
+      const baseFilter: any = {
+        status: 'ACTIVE', // Chỉ lấy các bài đăng gia sư đang hoạt động
       };
 
-      // ✅ Subject filters (multiple ways)
-      if (subjectId) {
-        // Single subject filter (from URL param or query)
-        query.subjects = { $in: [subjectId] };
-      } else if (subjects && subjects.length > 0) {
-        // Multiple subjects filter
-        query.subjects = { $in: subjects };
+      // 3. ✅ TỐI ƯU: Truy vấn danh sách gia sư tiềm năng đã được lọc trước từ DB
+      const potentialTutors = await TutorPost.find(baseFilter)
+        .populate('subjects', 'name category')
+        .populate({
+          path: 'tutorId',
+          select: 'full_name email gender date_of_birth avatar_url structured_address profile education achievements certificates role',
+          model: 'User'
+        })
+        .lean();
+
+
+        // ✅ LOẠI BỎ: Bước lọc `validTutors` thừa và gây lỗi trong code. Việc lọc đã được DB thực hiện.
+      if (potentialTutors.length === 0) {
+        return {
+          success: true,
+          message: '🤖 Không tìm thấy gia sư nào phù hợp với tiêu chí cơ bản.',
+          data: { tutors: [], pagination: { total: 0, page, limit, pages: 0 }, aiAnalysis: { totalTutorsAnalyzed: 0, totalFound: 0 } }
+        };
       }
 
-      // ✅ Teaching mode filter
-      if (teachingMode) {
-        if (teachingMode === 'ONLINE') {
-          query.teachingMode = { $in: ['ONLINE', 'BOTH'] };
-        } else if (teachingMode === 'OFFLINE') {
-          query.teachingMode = { $in: ['OFFLINE', 'BOTH'] };
-        } else if (teachingMode === 'BOTH') {
-          query.teachingMode = 'BOTH';
+      // 4. Tính toán điểm tương thích cho danh sách đã được lọc
+      const scoredTutors = potentialTutors.map((tutorPost) => {
+        const compatibility = this.calculateCompatibility(studentPost, tutorPost);
+        const matchDetails = this.getDetailedMatchInfo(studentPost, tutorPost);
+        return { ...tutorPost, compatibility: Math.round(compatibility), matchDetails };
+      });
+
+      // 5. Sắp xếp theo điểm tương thích (Giữ nguyên)
+      let sortedTutors = [...scoredTutors];
+      sortedTutors.sort((a, b) => {
+        const sortDirection = sort_order === 'desc' ? -1 : 1;
+        return sortDirection * (b.compatibility - a.compatibility);
+      });
+
+
+      // ✅ 9. APPLY USER FILTERS AFTER SCORING (Optional filtering)
+      let filteredTutors = [...sortedTutors];
+
+      if (searchQuery.subjects && searchQuery.subjects.length > 0) {
+        filteredTutors = filteredTutors.filter(tutor =>
+          tutor.subjects.some((subject: any) =>
+            searchQuery.subjects!.includes(subject._id.toString()) ||
+            searchQuery.subjects!.includes(subject.name)
+          )
+        );
+      }
+
+      if (searchQuery.teachingMode && searchQuery.teachingMode !== 'BOTH') {
+        filteredTutors = filteredTutors.filter(tutor =>
+          tutor.teachingMode === searchQuery.teachingMode || tutor.teachingMode === 'BOTH'
+        );
+      }
+
+      if (searchQuery.studentLevel && searchQuery.studentLevel.length > 0) {
+        filteredTutors = filteredTutors.filter(tutor =>
+          searchQuery.studentLevel!.some(level =>
+            tutor.studentLevel.includes(level)
+          )
+        );
+      }
+
+      if (searchQuery.priceMin !== undefined || searchQuery.priceMax !== undefined) {
+        filteredTutors = filteredTutors.filter(tutor => {
+          if (searchQuery.priceMin !== undefined && tutor.pricePerSession < searchQuery.priceMin) return false;
+          if (searchQuery.priceMax !== undefined && tutor.pricePerSession > searchQuery.priceMax) return false;
+          return true;
+        });
+      }
+
+      if (searchQuery.search && searchQuery.search.trim()) {
+        const searchTerm = searchQuery.search.trim().toLowerCase();
+        filteredTutors = filteredTutors.filter(tutor =>
+          tutor.title?.toLowerCase().includes(searchTerm) ||
+          tutor.description?.toLowerCase().includes(searchTerm) ||
+          (typeof tutor.tutorId === 'object' && tutor.tutorId && 'full_name' in tutor.tutorId && (tutor.tutorId as any).full_name?.toLowerCase().includes(searchTerm)) ||
+          tutor.subjects?.some((subject: any) =>
+            subject.name?.toLowerCase().includes(searchTerm)
+          )
+        );
+      }
+
+      // ✅ 10. PAGINATION
+      const totalCount = filteredTutors.length;
+      const totalPages = Math.ceil(totalCount / limit);
+      const skip = (page - 1) * limit;
+      const paginatedTutors = filteredTutors.slice(skip, skip + limit);
+
+      const pagination = {
+        total: totalCount,
+        totalItems: totalCount,
+        page: page,
+        currentPage: page,
+        limit: limit,
+        pages: totalPages,
+        totalPages: totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      };
+
+      // ✅ 11. BUILD RESPONSE
+      const averageCompatibility = paginatedTutors.length > 0 
+        ? Math.round(paginatedTutors.reduce((sum, t) => sum + t.compatibility, 0) / paginatedTutors.length)
+        : 0;
+
+      return {
+        success: true,
+        message: `🤖 AI phân tích ${potentialTutors.length} gia sư, tìm thấy ${totalCount} phù hợp.`,
+        data: {
+          tutors: paginatedTutors,
+          pagination,
+          aiAnalysis: {
+            studentPostAnalyzed: {
+              subjects: studentPost.subjects,
+              gradeLevels: studentPost.grade_levels,
+              isOnline: studentPost.is_online,
+              priceRange: studentPost.hourly_rate
+            },
+            filtersApplied: Object.keys(searchQuery).filter(key => 
+              searchQuery[key as keyof ITutorSearchQuery] !== undefined &&
+              !['page', 'limit', 'sortBy', 'sortOrder'].includes(key)
+            ),
+            totalTutorsAnalyzed: potentialTutors.length,
+            totalFound: totalCount,
+            averageCompatibility,
+            sortedBy: 'AI Compatibility Score'
+          }
+        }
+      };
+
+    } catch (error: any) {
+      console.error('❌ Smart Search Error:', error);
+      return { 
+        success: false, 
+        message: error.message || 'Lỗi khi tìm kiếm gia sư thông minh'
+      };
+    }
+  }
+
+  // ✅ ADD: Search Tutors (Regular Search)
+  static async searchTutors(searchQuery: ITutorSearchQuery): Promise<any> {
+    try {
+      const { page = 1, limit = 12, sortBy = 'createdAt', sortOrder = 'desc' } = searchQuery;
+      // Build base query
+      const baseFilter: any = { status: 'ACTIVE' };
+
+      // Apply filters
+      if (searchQuery.subjects && searchQuery.subjects.length > 0) {
+        baseFilter.subjects = { $in: searchQuery.subjects };
+      }
+
+      if (searchQuery.teachingMode && searchQuery.teachingMode !== 'BOTH') {
+        baseFilter.teachingMode = { $in: [searchQuery.teachingMode, 'BOTH'] };
+      }
+
+      if (searchQuery.studentLevel && searchQuery.studentLevel.length > 0) {
+        baseFilter.studentLevel = { $in: searchQuery.studentLevel };
+      }
+
+      if (searchQuery.priceMin !== undefined || searchQuery.priceMax !== undefined) {
+        baseFilter.pricePerSession = {};
+        if (searchQuery.priceMin !== undefined) {
+          baseFilter.pricePerSession.$gte = searchQuery.priceMin;
+        }
+        if (searchQuery.priceMax !== undefined) {
+          baseFilter.pricePerSession.$lte = searchQuery.priceMax;
         }
       }
 
-      // ✅ Student level filter
-      if (studentLevel && studentLevel.length > 0) {
-        query.studentLevel = { $in: studentLevel };
-      }
-
-      // ✅ Price range filter
-      if (priceMin !== undefined || priceMax !== undefined) {
-        query.pricePerSession = {};
-        if (priceMin !== undefined) query.pricePerSession.$gte = priceMin;
-        if (priceMax !== undefined) query.pricePerSession.$lte = priceMax;
-      }
-
-      // ✅ Location filters (flexible)
-      const locationFilters = [];
-      if (province || district || ward) {
-        const addressQuery: any = {};
-        if (ward) addressQuery['address.ward'] = ward;
-        else if (district) addressQuery['address.district'] = district;
-        else if (province) addressQuery['address.province'] = province;
-        
-        locationFilters.push(addressQuery);
-        
-        // Also include tutors from structured_address
-        const tutorLocationQuery: any = {};
-        if (ward) tutorLocationQuery['tutorId.structured_address.ward_name'] = new RegExp(ward, 'i');
-        else if (district) tutorLocationQuery['tutorId.structured_address.district_name'] = new RegExp(district, 'i');
-        else if (province) tutorLocationQuery['tutorId.structured_address.province_name'] = new RegExp(province, 'i');
-        
-        locationFilters.push(tutorLocationQuery);
-        
-        // Always include online tutors (can teach anywhere)
-        locationFilters.push({ teachingMode: { $in: ['ONLINE', 'BOTH'] } });
-        
-        query.$or = locationFilters;
-      }
-
-      // ✅ Text search (flexible)
-      if (search && search.trim()) {
-        const searchRegex = { $regex: search.trim(), $options: 'i' };
-        const searchFilters = [
-          { title: searchRegex },
-          { description: searchRegex },
-          { 'tutorId.full_name': searchRegex }
+      // Text search
+      if (searchQuery.search && searchQuery.search.trim()) {
+        const searchTerm = searchQuery.search.trim();
+        baseFilter.$or = [
+          { title: { $regex: searchTerm, $options: 'i' } },
+          { description: { $regex: searchTerm, $options: 'i' } }
         ];
-        
-        // Combine with location filters if exist
-        if (query.$or) {
-          query.$and = [
-            { $or: query.$or }, // Location filters
-            { $or: searchFilters } // Search filters
-          ];
-          delete query.$or;
-        } else {
-          query.$or = searchFilters;
-        }
       }
 
-      // ✅ Dynamic sorting
+      // Sorting
       const sortOptions: any = {};
-      
-      if (featured) {
-        // Featured tutors: prioritize by engagement
-        sortOptions.viewCount = -1;
-        sortOptions.contactCount = -1;
-        sortOptions.createdAt = -1;
-      } else {
-        // Regular sorting
-        const sortDirection = sortOrder === 'asc' ? 1 : -1;
-        switch (sortBy) {
-          case 'pricePerSession':
-            sortOptions.pricePerSession = sortDirection;
-            break;
-          case 'viewCount':
-            sortOptions.viewCount = sortDirection;
-            break;
-          case 'contactCount':
-            sortOptions.contactCount = sortDirection;
-            break;
-          default:
-            sortOptions.createdAt = sortDirection;
-        }
-        
-        // Secondary sort for consistency
-        if (sortBy !== 'createdAt') {
-          sortOptions.createdAt = -1;
-        }
-      }
+      const sortField = sortBy || 'createdAt';
+      const sortDir = sortOrder === 'asc' ? 1 : -1;
+      sortOptions[sortField] = sortDir;
 
-      // ✅ Pagination
+      // Execute query
       const skip = (page - 1) * limit;
       
-      // Limit for featured
-      const actualLimit = featured ? Math.min(limit, 8) : limit;
-
-      console.log('📊 MongoDB Query:', JSON.stringify(query, null, 2));
-      console.log('🔧 Sort Options:', sortOptions);
-
-      // ✅ Execute search
-      const [tutors, totalCount] = await Promise.all([
-        TutorPost.find(query)
-          .populate({
-            path: 'subjects',
-            select: 'name category',
-            model: 'Subject'
-          })
-          .populate({
-            path: 'tutorId',
-            select: 'full_name email gender date_of_birth avatar_url structured_address profile education certificates achievements',
-            model: 'User',
-            match: { role: 'tutor', status: 'active' }
-          })
-          .populate('address.province address.district address.ward', 'name code')
+      const [tutorPosts, totalCount] = await Promise.all([
+        TutorPost.find(baseFilter)
+          .populate('subjects', 'name category')
+          .populate('tutorId', 'full_name email gender date_of_birth avatar_url')
           .sort(sortOptions)
           .skip(skip)
-          .limit(actualLimit)
+          .limit(limit)
           .lean(),
-        TutorPost.countDocuments(query)
+        TutorPost.countDocuments(baseFilter)
       ]);
 
-      // Filter valid tutors
-      const validTutors = tutors.filter(tutor => tutor.tutorId);
-
-      console.log(`✅ Found ${validTutors.length}/${tutors.length} valid tutors (${totalCount} total)`);
-
-      // ✅ Build response
       const pagination = {
         total: totalCount,
         page,
-        limit: actualLimit,
-        pages: Math.ceil(totalCount / actualLimit),
-        hasNext: page < Math.ceil(totalCount / actualLimit),
+        limit,
+        pages: Math.ceil(totalCount / limit),
+        hasNext: page < Math.ceil(totalCount / limit),
         hasPrev: page > 1
       };
 
       return {
         success: true,
-        message: featured ? 'Lấy gia sư nổi bật thành công' : 'Tìm kiếm gia sư thành công',
+        message: `Tìm thấy ${totalCount} gia sư`,
         data: {
-          tutors: validTutors.map(mapTutorPostToResponse),
-          pagination,
-          filters: {
-            applied: Object.keys(searchQuery).filter(key => 
-              searchQuery[key as keyof ITutorSearchQuery] !== undefined && 
-              searchQuery[key as keyof ITutorSearchQuery] !== ''
-            ),
-            ...searchQuery
-          },
-          summary: {
-            total: totalCount,
-            found: validTutors.length,
-            page,
-            limit: actualLimit,
-            hasFilters: Object.keys(searchQuery).length > 2 // more than page & limit
-          }
+          tutors: tutorPosts.map(mapTutorPostToResponse),
+          pagination
         }
       };
     } catch (error: any) {
-      console.error('❌ Universal search error:', error);
+      console.error('❌ Search tutors error:', error);
       return {
         success: false,
         message: error.message || 'Lỗi khi tìm kiếm gia sư',
@@ -706,158 +735,57 @@ export class PostService {
     }
   }
 
-  // ✅ SIMPLIFIED: Get filter options
-  static async getSearchFilterOptions(): Promise<any> {
-    try {
-      // Get active subjects grouped by category
-      const subjects = await Subject.find({ status: 'active' })
-        .select('_id name category')
-        .sort({ category: 1, name: 1 })
-        .lean();
-
-      const subjectsByCategory = subjects.reduce((acc: any, subject) => {
-        const category = subject.category || 'Khác';
-        if (!acc[category]) acc[category] = [];
-        acc[category].push(subject);
-        return acc;
-      }, {});
-
-      return {
-        success: true,
-        message: 'Lấy tùy chọn bộ lọc thành công',
-        data: {
-          subjects: {
-            all: subjects,
-            byCategory: subjectsByCategory
-          },
-          studentLevels: [
-            { value: 'TIEU_HOC', label: 'Tiểu học' },
-            { value: 'TRUNG_HOC_CO_SO', label: 'Trung học cơ sở' },
-            { value: 'TRUNG_HOC_PHO_THONG', label: 'Trung học phổ thông' },
-            { value: 'DAI_HOC', label: 'Đại học' },
-            { value: 'NGUOI_DI_LAM', label: 'Người đi làm' },
-            { value: 'KHAC', label: 'Khác' }
-          ],
-          teachingModes: [
-            { value: 'ONLINE', label: 'Trực tuyến', icon: '💻' },
-            { value: 'OFFLINE', label: 'Tại nhà', icon: '🏠' },
-            { value: 'BOTH', label: 'Cả hai hình thức', icon: '🔄' }
-          ],
-          priceRanges: [
-            { label: 'Dưới 200k', min: 0, max: 200000 },
-            { label: '200k - 500k', min: 200000, max: 500000 },
-            { label: '500k - 1M', min: 500000, max: 1000000 },
-            { label: '1M - 2M', min: 1000000, max: 2000000 },
-            { label: 'Trên 2M', min: 2000000, max: 10000000 }
-          ],
-          sortOptions: [
-            { value: 'createdAt', label: 'Mới nhất', icon: '🕒' },
-            { value: 'pricePerSession', label: 'Giá tiền', icon: '💰' },
-            { value: 'viewCount', label: 'Lượt xem', icon: '👀' },
-            { value: 'contactCount', label: 'Lượt liên hệ', icon: '📞' }
-          ]
-        }
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        message: error.message || 'Lỗi khi lấy tùy chọn bộ lọc'
-      };
-    }
-  }
-
-  // ✅ Get Featured Tutors
+  // ✅ ADD: Get Featured Tutors
   static async getFeaturedTutors(limit: number = 8): Promise<any> {
     try {
-      console.log('⭐ Getting featured tutors, limit:', limit);
-
-      const tutors = await TutorPost.find({ 
-        status: 'ACTIVE'
+      const tutorPosts = await TutorPost.find({ 
+        status: 'ACTIVE',
+        isFeatured: true 
       })
-        .populate({
-          path: 'subjects',
-          select: 'name category',
-          model: 'Subject'
-        })
-        .populate({
-          path: 'tutorId',
-          select: 'full_name email gender date_of_birth avatar_url structured_address profile education certificates',
-          model: 'User',
-          match: { role: 'tutor', status: 'active' }
-        })
-        .populate('address.province address.district address.ward', 'name code')
-        .sort({ 
-          viewCount: -1,
-          contactCount: -1,
-          createdAt: -1
-        })
+        .populate('subjects', 'name category')
+        .populate('tutorId', 'full_name email avatar_url')
+        .sort({ viewCount: -1, createdAt: -1 })
         .limit(limit)
         .lean();
 
-      // Filter valid tutors
-      const validTutors = tutors.filter(tutor => tutor.tutorId);
-
       return {
         success: true,
-        message: 'Lấy danh sách gia sư nổi bật thành công',
+        message: `Lấy ${tutorPosts.length} gia sư nổi bật thành công`,
         data: {
-          tutors: validTutors.map(mapTutorPostToResponse),
-          count: validTutors.length
+          tutors: tutorPosts.map(mapTutorPostToResponse)
         }
       };
     } catch (error: any) {
       console.error('❌ Get featured tutors error:', error);
       return {
         success: false,
-        message: error.message || 'Lỗi khi lấy danh sách gia sư nổi bật'
+        message: error.message || 'Lỗi khi lấy gia sư nổi bật'
       };
     }
   }
 
-  // ✅ Get Tutors by Subject
-  static async getTutorsBySubject(
-    subjectId: string,
-    page: number = 1,
-    limit: number = 12
-  ): Promise<any> {
+  // ✅ ADD: Get Tutors by Subject
+  static async getTutorsBySubject(subjectId: string, page: number = 1, limit: number = 12): Promise<any> {
     try {
-      console.log('📚 Getting tutors by subject:', subjectId);
-
-      const query = {
-        status: 'ACTIVE',
-        subjects: { $in: [subjectId] }
-      };
-
       const skip = (page - 1) * limit;
-
-      const [tutors, totalCount] = await Promise.all([
-        TutorPost.find(query)
-          .populate({
-            path: 'subjects',
-            select: 'name category',
-            model: 'Subject'
-          })
-          .populate({
-            path: 'tutorId',
-            select: 'full_name email gender date_of_birth avatar_url structured_address profile',
-            model: 'User',
-            match: { role: 'tutor', status: 'active' }
-          })
-          .populate('address.province address.district address.ward', 'name code')
-          .sort({ 
-            viewCount: -1, 
-            contactCount: -1,
-            createdAt: -1
-          })
+      const [tutorPosts, totalCount] = await Promise.all([
+        TutorPost.find({ 
+          status: 'ACTIVE',
+          subjects: subjectId
+        })
+          .populate('subjects', 'name category')
+          .populate('tutorId', 'full_name email avatar_url')
+          .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit)
           .lean(),
-        TutorPost.countDocuments(query)
+        TutorPost.countDocuments({ 
+          status: 'ACTIVE',
+          subjects: subjectId
+        })
       ]);
 
-      const validTutors = tutors.filter(tutor => tutor.tutorId);
-
-      const pagination: ITutorSearchPagination = {
+      const pagination = {
         total: totalCount,
         page,
         limit,
@@ -868,9 +796,9 @@ export class PostService {
 
       return {
         success: true,
-        message: 'Lấy danh sách gia sư theo môn học thành công',
+        message: `Tìm thấy ${totalCount} gia sư cho môn học này`,
         data: {
-          tutors: validTutors.map(mapTutorPostToResponse),
+          tutors: tutorPosts.map(mapTutorPostToResponse),
           pagination
         }
       };
@@ -878,63 +806,38 @@ export class PostService {
       console.error('❌ Get tutors by subject error:', error);
       return {
         success: false,
-        message: error.message || 'Lỗi khi lấy danh sách gia sư theo môn học'
+        message: error.message || 'Lỗi khi lấy gia sư theo môn học'
       };
     }
   }
 
-  // ✅ Get Tutors by Location
-  static async getTutorsByLocation(
-    province?: string,
-    district?: string,
-    page: number = 1,
-    limit: number = 12
-  ): Promise<any> {
+  // ✅ ADD: Get Tutors by Location
+  static async getTutorsByLocation(province?: string, district?: string, page: number = 1, limit: number = 12): Promise<any> {
     try {
-      console.log('📍 Getting tutors by location:', { province, district });
-
-      const locationQuery: any = {};
-      if (province) locationQuery['address.province'] = province;
-      if (district) locationQuery['address.district'] = district;
-
-      const query = {
-        status: 'ACTIVE',
-        $or: [
-          locationQuery,
-          { teachingMode: { $in: ['ONLINE', 'BOTH'] } }
-        ]
-      };
+      
+      const locationFilter: any = { status: 'ACTIVE' };
+      
+      if (province) {
+        locationFilter['address.province'] = province;
+      }
+      if (district) {
+        locationFilter['address.district'] = district;
+      }
 
       const skip = (page - 1) * limit;
-
-      const [tutors, totalCount] = await Promise.all([
-        TutorPost.find(query)
-          .populate({
-            path: 'subjects',
-            select: 'name category',
-            model: 'Subject'
-          })
-          .populate({
-            path: 'tutorId',
-            select: 'full_name email gender date_of_birth avatar_url structured_address profile',
-            model: 'User',
-            match: { role: 'tutor', status: 'active' }
-          })
-          .populate('address.province address.district address.ward', 'name code')
-          .sort({ 
-            viewCount: -1, 
-            contactCount: -1,
-            createdAt: -1
-          })
+      
+      const [tutorPosts, totalCount] = await Promise.all([
+        TutorPost.find(locationFilter)
+          .populate('subjects', 'name category')
+          .populate('tutorId', 'full_name email avatar_url')
+          .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit)
           .lean(),
-        TutorPost.countDocuments(query)
+        TutorPost.countDocuments(locationFilter)
       ]);
 
-      const validTutors = tutors.filter(tutor => tutor.tutorId);
-
-      const pagination: ITutorSearchPagination = {
+      const pagination = {
         total: totalCount,
         page,
         limit,
@@ -945,9 +848,9 @@ export class PostService {
 
       return {
         success: true,
-        message: 'Lấy danh sách gia sư theo khu vực thành công',
+        message: `Tìm thấy ${totalCount} gia sư trong khu vực`,
         data: {
-          tutors: validTutors.map(mapTutorPostToResponse),
+          tutors: tutorPosts.map(mapTutorPostToResponse),
           pagination
         }
       };
@@ -955,41 +858,32 @@ export class PostService {
       console.error('❌ Get tutors by location error:', error);
       return {
         success: false,
-        message: error.message || 'Lỗi khi lấy danh sách gia sư theo khu vực'
+        message: error.message || 'Lỗi khi lấy gia sư theo khu vực'
       };
     }
   }
 
-  // ✅ Get Tutor Detail by ID
+  // ✅ ADD: Get Tutor by ID
   static async getTutorById(tutorPostId: string): Promise<any> {
     try {
-      console.log('👤 Getting tutor detail:', tutorPostId);
-
-      const tutor = await TutorPost.findById(tutorPostId)
-        .populate({
-          path: 'subjects',
-          select: 'name category description',
-          model: 'Subject'
-        })
+      
+      const tutorPost = await TutorPost.findById(tutorPostId)
+        .populate('subjects', 'name category description')
         .populate({
           path: 'tutorId',
-          select: 'full_name email gender date_of_birth avatar_url structured_address profile education certificates achievements',
-          model: 'User'
+          select: 'full_name email phone gender date_of_birth avatar_url profile education achievements certificates',
+          populate: [
+            { path: 'education', model: 'Education' },
+            { path: 'achievements', model: 'Achievement' },
+            { path: 'certificates', model: 'Certificate' }
+          ]
         })
-        .populate('address.province address.district address.ward', 'name code')
         .lean();
 
-      if (!tutor) {
+      if (!tutorPost) {
         return {
           success: false,
           message: 'Không tìm thấy gia sư'
-        };
-      }
-
-      if (!tutor.tutorId) {
-        return {
-          success: false,
-          message: 'Gia sư không khả dụng'
         };
       }
 
@@ -999,9 +893,7 @@ export class PostService {
       return {
         success: true,
         message: 'Lấy thông tin gia sư thành công',
-        data: {
-          tutor: mapTutorPostToResponse(tutor)
-        }
+        data: mapTutorPostToResponse(tutorPost)
       };
     } catch (error: any) {
       console.error('❌ Get tutor by ID error:', error);
@@ -1012,29 +904,28 @@ export class PostService {
     }
   }
 
-  // ✅ Contact Tutor (Increment contact count)
+  // ✅ ADD: Contact Tutor
   static async contactTutor(tutorPostId: string): Promise<any> {
     try {
-      console.log('📞 Contact tutor:', tutorPostId);
-
-      const tutor = await TutorPost.findByIdAndUpdate(
-        tutorPostId,
-        { $inc: { contactCount: 1 } },
-        { new: true }
-      );
-
-      if (!tutor) {
+      
+      const tutorPost = await TutorPost.findById(tutorPostId);
+      
+      if (!tutorPost) {
         return {
           success: false,
           message: 'Không tìm thấy gia sư'
         };
       }
 
+      // Increment contact count
+      await TutorPost.findByIdAndUpdate(tutorPostId, { $inc: { contactCount: 1 } });
+
       return {
         success: true,
         message: 'Đã ghi nhận liên hệ với gia sư',
         data: {
-          contactCount: tutor.contactCount
+          tutorPostId,
+          contactCount: (tutorPost.contactCount || 0) + 1
         }
       };
     } catch (error: any) {
@@ -1046,93 +937,188 @@ export class PostService {
     }
   }
 
-  // // ✅ Get Search Filter Options
-  // static async getSearchFilterOptions(): Promise<any> {
-  //   try {
-  //     console.log('🔧 Getting search filter options');
+  // ✅ ADD: Get Search Filter Options
+  static async getSearchFilterOptions(): Promise<any> {
+    try { 
+      const [subjects, studentLevels] = await Promise.all([
+        Subject.find({ isActive: true }).select('_id name category').sort({ name: 1 }).lean(),
+        TutorPost.distinct('studentLevel').then(levels => levels.filter(Boolean))
+      ]);
 
-  //     // Get active subjects
-  //     const subjects = await Subject.find({ status: 'active' })
-  //       .select('_id name category')
-  //       .sort({ category: 1, name: 1 })
-  //       .lean();
+      return {
+        success: true,
+        message: 'Lấy tùy chọn bộ lọc thành công',
+        data: {
+          subjects,
+          // provinces,
+          studentLevels,
+          teachingModes: [
+            { value: 'ONLINE', label: 'Dạy online' },
+            { value: 'OFFLINE', label: 'Dạy offline' },
+            { value: 'BOTH', label: 'Cả hai hình thức' }
+          ],
+          priceRanges: [
+            { min: 0, max: 100000, label: 'Dưới 100k' },
+            { min: 100000, max: 300000, label: '100k - 300k' },
+            { min: 300000, max: 500000, label: '300k - 500k' },
+            { min: 500000, max: 1000000, label: '500k - 1M' },
+            { min: 1000000, max: null, label: 'Trên 1M' }
+          ]
+        }
+      };
+    } catch (error: any) {
+      console.error('❌ Get search filter options error:', error);
+      return {
+        success: false,
+        message: error.message || 'Lỗi khi lấy tùy chọn bộ lọc'
+      };
+    }
+  }
 
-  //     // Group subjects by category
-  //     const subjectsByCategory = subjects.reduce((acc: any, subject) => {
-  //       const category = subject.category || 'Khác';
-  //       if (!acc[category]) acc[category] = [];
-  //       acc[category].push(subject);
-  //       return acc;
-  //     }, {});
+  // ✅ IMPROVE: Calculate Compatibility method
+  private static calculateCompatibility(studentPost: any, tutorPost: any): number {
+    let totalScore = 0;
+    let maxPossibleScore = 0;
+    // 1. Subject matching (40 points)
+    maxPossibleScore += 40;
+    if (studentPost.subjects && studentPost.subjects.length > 0 && tutorPost.subjects) {
+      const studentSubjects = Array.isArray(studentPost.subjects) ? studentPost.subjects : [studentPost.subjects];
+      const tutorSubjects = tutorPost.subjects.map((s: any) => s.name || s.toString());
+      
+      const matchingSubjects = studentSubjects.filter((subject: string) => 
+        tutorSubjects.some((tutorSubject: string) => 
+          tutorSubject.toLowerCase().includes(subject.toLowerCase()) ||
+          subject.toLowerCase().includes(tutorSubject.toLowerCase())
+        )
+      );
+      
+      const subjectScore = studentSubjects.length > 0 
+        ? (matchingSubjects.length / studentSubjects.length) * 40 
+        : 20;
+      
+      totalScore += subjectScore;
+    } else {
+      totalScore += 20; // Base score if no subjects specified
+    }
 
-  //     // Static options
-  //     const studentLevels = [
-  //       { value: 'TIEU_HOC', label: 'Tiểu học' },
-  //       { value: 'TRUNG_HOC_CO_SO', label: 'Trung học cơ sở' },
-  //       { value: 'TRUNG_HOC_PHO_THONG', label: 'Trung học phổ thông' },
-  //       { value: 'DAI_HOC', label: 'Đại học' },
-  //       { value: 'NGUOI_DI_LAM', label: 'Người đi làm' },
-  //       { value: 'KHAC', label: 'Khác' }
-  //     ];
+    // 2. Grade level matching (25 points)
+    maxPossibleScore += 25;
+    if (studentPost.grade_levels && studentPost.grade_levels.length > 0 && tutorPost.studentLevel) {
+      const studentGrades = Array.isArray(studentPost.grade_levels) ? studentPost.grade_levels : [studentPost.grade_levels];
+      const tutorLevels = Array.isArray(tutorPost.studentLevel) ? tutorPost.studentLevel : [tutorPost.studentLevel];
+      
+      const matchingGrades = studentGrades.filter((grade: string) => 
+        tutorLevels.some((level: string) => 
+          level.toLowerCase().includes(grade.toLowerCase()) ||
+          grade.toLowerCase().includes(level.toLowerCase())
+        )
+      );
+      
+      const gradeScore = studentGrades.length > 0 
+        ? (matchingGrades.length / studentGrades.length) * 25 
+        : 15;
+      
+      totalScore += gradeScore;
+    } else {
+      totalScore += 15; // Base score
+    }
 
-  //     const teachingModes = [
-  //       { value: 'ONLINE', label: 'Trực tuyến', icon: '💻' },
-  //       { value: 'OFFLINE', label: 'Tại nhà', icon: '🏠' },
-  //       { value: 'BOTH', label: 'Cả hai hình thức', icon: '🔄' }
-  //     ];
+    // 3. Teaching mode matching (20 points)
+    maxPossibleScore += 20;
+    const studentMode = studentPost.is_online ? 'ONLINE' : 'OFFLINE';
+    let modeScore = 10; // Base score
+    
+    if (tutorPost.teachingMode) {
+      if (tutorPost.teachingMode === studentMode) {
+        modeScore = 20; // Perfect match
+      } else if (tutorPost.teachingMode === 'BOTH') {
+        modeScore = 18; // Can teach both modes
+      } else {
+        modeScore = 8; // Mismatch but still some points
+      }
+    }
+    
+    totalScore += modeScore;
+    // 4. Price matching (15 points)
+    maxPossibleScore += 15;
+    let priceScore = 10; // Base score
+    
+    if (studentPost.hourly_rate && 
+        studentPost.hourly_rate.min !== undefined && 
+        studentPost.hourly_rate.max !== undefined &&
+        tutorPost.pricePerSession !== undefined) {
+      
+      if (tutorPost.pricePerSession >= studentPost.hourly_rate.min && 
+          tutorPost.pricePerSession <= studentPost.hourly_rate.max) {
+        priceScore = 15; // Perfect match - within range
+      } else {
+        // Calculate based on how far outside the range
+        const midPoint = (studentPost.hourly_rate.min + studentPost.hourly_rate.max) / 2;
+        const difference = Math.abs(tutorPost.pricePerSession - midPoint);
+        const maxDifference = Math.max(
+          midPoint - studentPost.hourly_rate.min, 
+          studentPost.hourly_rate.max - midPoint
+        );
+        
+        if (maxDifference > 0) {
+          priceScore = Math.max(5, 15 * (1 - difference / (maxDifference * 2)));
+        }
+      }
+    }
+    totalScore += priceScore;
+    const finalScore = Math.min(100, Math.max(20, (totalScore / maxPossibleScore) * 100));
+    return finalScore;
+  }
 
-  //     const priceRanges = [
-  //       { label: 'Dưới 200k', min: 0, max: 200000 },
-  //       { label: '200k - 500k', min: 200000, max: 500000 },
-  //       { label: '500k - 1M', min: 500000, max: 1000000 },
-  //       { label: '1M - 2M', min: 1000000, max: 2000000 },
-  //       { label: 'Trên 2M', min: 2000000, max: 10000000 }
-  //     ];
+  // ✅ ADD: Get Detailed Match Info method
+  private static getDetailedMatchInfo(studentPost: any, tutorPost: any) {
+    // Subject match percentage
+    const subjectMatch = studentPost.subjects && studentPost.subjects.length > 0
+      ? (studentPost.subjects.filter((s: string) => 
+          tutorPost.subjects.some((ts: any) => ts.name === s)
+        ).length / studentPost.subjects.length) * 100
+      : 100;
 
-  //     const sortOptions = [
-  //       { value: 'createdAt', label: 'Mới nhất', icon: '🕒' },
-  //       { value: 'pricePerSession', label: 'Giá tiền', icon: '💰' },
-  //       { value: 'viewCount', label: 'Lượt xem', icon: '👀' },
-  //       { value: 'contactCount', label: 'Lượt liên hệ', icon: '📞' }
-  //     ];
+    // Grade level match percentage
+    const gradeMatch = studentPost.grade_levels && studentPost.grade_levels.length > 0
+      ? (studentPost.grade_levels.filter((g: string) => 
+          tutorPost.studentLevel.includes(g)
+        ).length / studentPost.grade_levels.length) * 100
+      : 100;
 
-  //     // Get available provinces from active tutor posts
-  //     const provinces = await TutorPost.aggregate([
-  //       { $match: { status: 'ACTIVE' } },
-  //       { $lookup: { 
-  //         from: 'provinces', 
-  //         localField: 'address.province', 
-  //         foreignField: '_id', 
-  //         as: 'provinceInfo' 
-  //       }},
-  //       { $unwind: '$provinceInfo' },
-  //       { $group: { 
-  //         _id: '$provinceInfo._id', 
-  //         name: { $first: '$provinceInfo.name' },
-  //         code: { $first: '$provinceInfo.code' }
-  //       }},
-  //       { $sort: { name: 1 }}
-  //     ]);
+    // Price compatibility
+    let priceMatch = 100;
+    if (studentPost.hourly_rate && studentPost.hourly_rate.min && studentPost.hourly_rate.max) {
+      if (tutorPost.pricePerSession >= studentPost.hourly_rate.min && 
+          tutorPost.pricePerSession <= studentPost.hourly_rate.max) {
+        priceMatch = 100;
+      } else {
+        const midPoint = (studentPost.hourly_rate.min + studentPost.hourly_rate.max) / 2;
+        const difference = Math.abs(tutorPost.pricePerSession - midPoint);
+        const range = studentPost.hourly_rate.max - studentPost.hourly_rate.min;
+        priceMatch = Math.max(30, 100 - (difference / range) * 50);
+      }
+    }
 
-  //     return {
-  //       success: true,
-  //       message: 'Lấy tùy chọn bộ lọc thành công',
-  //       data: {
-  //         subjects: subjects,
-  //         subjectsByCategory,
-  //         studentLevels,
-  //         teachingModes,
-  //         priceRanges,
-  //         sortOptions,
-  //         provinces: provinces || []
-  //       }
-  //     };
-  //   } catch (error: any) {
-  //     console.error('❌ Get search filter options error:', error);
-  //     return {
-  //       success: false,
-  //       message: error.message || 'Lỗi khi lấy tùy chọn bộ lọc'
-  //     };
-  //   }
-  // }
+    // Teaching mode compatibility
+    const studentMode = studentPost.is_online ? 'ONLINE' : 'OFFLINE';
+    let modeMatch = 0;
+    if (tutorPost.teachingMode === studentMode) {
+      modeMatch = 100;
+    } else if (tutorPost.teachingMode === 'BOTH') {
+      modeMatch = 90;
+    } else {
+      modeMatch = 25;
+    }
+
+    return {
+      subjectMatch: Math.round(subjectMatch),
+      gradeMatch: Math.round(gradeMatch),
+      priceMatch: Math.round(priceMatch),
+      modeMatch: Math.round(modeMatch),
+      locationMatch: 85,
+      scheduleMatch: 75,
+      overallScore: Math.round((subjectMatch + gradeMatch + priceMatch + modeMatch) / 4)
+    };
+  }
 }

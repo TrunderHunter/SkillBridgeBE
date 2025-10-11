@@ -12,29 +12,45 @@ import {
 
 const router = express.Router();
 
-// ==================== TUTOR SEARCH APIs (SIMPLIFIED) ====================
+// ==================== TUTOR SEARCH APIs (ENHANCED) ====================
 
 // ✅ MAIN API: Universal tutor search with all filters
-// router.get('/tutors/search', 
-//   tutorSearchValidator,
-//   handleValidationErrors,
-//   PostController.searchTutors
-// );
+router.get('/tutors/search', 
+  tutorSearchValidator,
+  handleValidationErrors,
+  PostController.searchTutors
+);
 
-// // ✅ Get search filter options (for dropdowns)
-// router.get('/tutors/filters', 
-//   PostController.getSearchFilterOptions
-// );
+// ✅ Get search filter options (for dropdowns)
+router.get('/tutors/filters', 
+  PostController.getSearchFilterOptions
+);
 
-// // ✅ Get tutor detail + increment view count
-// router.get('/tutors/:tutorId', 
-//   PostController.getTutorById
-// );
+// ✅ NEW: Get featured tutors (homepage, landing page)
+router.get('/tutors/featured', 
+  PostController.getFeaturedTutors
+);
 
-// // ✅ Contact tutor (increment contact count)
-// router.post('/tutors/:tutorId/contact', 
-//   PostController.contactTutor
-// );
+// ✅ NEW: Get tutors by subject (subject detail page)
+router.get('/tutors/subject/:subjectId', 
+  PostController.getTutorsBySubject
+);
+
+// ✅ NEW: Get tutors by location (location browse page)
+router.get('/tutors/location', 
+  PostController.getTutorsByLocation
+);
+
+// ✅ Get tutor detail + increment view count
+router.get('/tutors/:tutorId', 
+  PostController.getTutorById
+);
+
+// ✅ Contact tutor (increment contact count)
+router.post('/tutors/:tutorId/contact', 
+  authenticateToken, // ✅ FIX: Cần auth để track contact
+  PostController.contactTutor
+);
 
 // ==================== EXISTING POST APIs ====================
 
@@ -69,7 +85,17 @@ router.get(
   PostController.getMyPosts
 );
 
-// Lấy chi tiết bài đăng (công khai)
+// ✅ MOVE UP: Smart search route (đặt trước generic /:id để tránh conflict)
+router.get(
+  '/:id/smart-tutors',
+  authenticateToken,
+  requireRole(UserRole.STUDENT),
+  getPostsValidator,
+  handleValidationErrors,
+  PostController.smartSearchTutors
+);
+
+// Lấy chi tiết bài đăng (công khai) - ✅ MOVED DOWN để tránh conflict với smart-tutors
 router.get('/:id', PostController.getPostById);
 
 // Cập nhật bài đăng (chỉ sinh viên sở hữu)
@@ -98,16 +124,6 @@ router.patch(
   reviewPostValidator,
   handleValidationErrors,
   PostController.reviewPost
-);
-
-// Tìm gia sư thông minh cho bài đăng của học viên
-router.get(
-  '/:id/smart-tutors',
-  authenticateToken,
-  requireRole(UserRole.STUDENT),
-  getPostsValidator,
-  handleValidationErrors,
-  PostController.smartSearchTutors
 );
 
 export default router;
