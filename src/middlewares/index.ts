@@ -7,3 +7,5 @@ export {
   requireTutorOrAdmin, 
   optionalAuth 
 } from './auth.middleware';
+
+export {requireStudentRole} from './student.middleware'
