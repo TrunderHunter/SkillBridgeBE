@@ -9,15 +9,27 @@ import addressRoutes from './address.routes';
 import subjectRoutes from './subject.routes';
 import tutorPostRoutes from './tutorPost.routes';
 import postRoutes from './post.routes';
+import contactRequestRoutes from './contactRequest.routes'; 
 
 const router = express.Router();
 
+// Authentication routes
 router.use('/auth', authRoutes);
+
+// Protected routes (general)
 router.use('/protected', protectedRoutes);
+
+// Profile routes
 router.use('/tutor', tutorProfileRoutes);
 router.use('/student', studentProfileRoutes); 
+
+// Qualification routes
 router.use('/tutor', tutorQualificationRoutes);
+
+// Admin routes
 router.use('/admin', adminVerificationRoutes);
+
+// Post routes
 router.use('/posts', postRoutes);
 
 // Address routes
@@ -28,5 +40,8 @@ router.use('/subjects', subjectRoutes);
 
 // Tutor post routes
 router.use('/tutor-posts', tutorPostRoutes);
+
+// ✅ Contact request routes
+router.use('/contact-requests', contactRequestRoutes);
 
 export default router;
