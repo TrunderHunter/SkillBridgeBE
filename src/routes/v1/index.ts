@@ -10,6 +10,8 @@ import subjectRoutes from './subject.routes';
 import tutorPostRoutes from './tutorPost.routes';
 import postRoutes from './post.routes';
 import contactRequestRoutes from './contactRequest.routes'; 
+// Add this import to your existing imports
+import classRoutes from './class.routes';
 
 const router = express.Router();
 
@@ -43,5 +45,8 @@ router.use('/tutor-posts', tutorPostRoutes);
 
 // ✅ Contact request routes
 router.use('/contact-requests', contactRequestRoutes);
+
+// Add this line to your router configuration
+router.use('/classes', classRoutes);
 
 export default router;

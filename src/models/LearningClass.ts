@@ -83,6 +83,18 @@ export interface ILearningClass extends Document {
   
   createdAt: Date;
   updatedAt: Date;
+
+  studentReview?: {
+    rating: number;
+    comment?: string;
+    submittedAt: Date;
+  };
+  
+  tutorReview?: {
+    rating: number;
+    comment?: string;
+    submittedAt: Date;
+  };
 }
 
 const LearningSessionSchema = new Schema<ILearningSession>({
@@ -177,6 +189,27 @@ const LearningClassSchema = new Schema<ILearningClass>(
       enum: ['PENDING', 'PARTIAL', 'COMPLETED'],
       default: 'PENDING'
     },
+    
+    // Move these fields inside the schema object
+    studentReview: {
+      rating: {
+        type: Number,
+        min: 1,
+        max: 5
+      },
+      comment: String,
+      submittedAt: Date
+    },
+    
+    tutorReview: {
+      rating: {
+        type: Number,
+        min: 1,
+        max: 5
+      },
+      comment: String,
+      submittedAt: Date
+    }
   },
   {
     timestamps: true,
