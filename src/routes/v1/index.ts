@@ -12,6 +12,7 @@ import postRoutes from './post.routes';
 import contactRequestRoutes from './contactRequest.routes'; 
 // Add this import to your existing imports
 import classRoutes from './class.routes';
+import messageRoutes from './messageRoutes';
 
 const router = express.Router();
 
@@ -48,5 +49,8 @@ router.use('/contact-requests', contactRequestRoutes);
 
 // Add this line to your router configuration
 router.use('/classes', classRoutes);
+
+// Message routes
+router.use('/messages', messageRoutes);
 
 export default router;

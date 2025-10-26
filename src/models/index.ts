@@ -14,3 +14,7 @@ export { Subject } from './Subject';
 export { TutorPost } from './TutorPost';
 export { Post, PostType, PostStatus } from './Post';
 export { StudentProfile } from './StudentProfile';
+export { ContactRequest } from './ContactRequest';
+export { LearningClass } from './LearningClass';
+export { Conversation } from './Conversation';
+export { Message } from './Message';

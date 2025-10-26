@@ -66,12 +66,12 @@ export const sendSuccessWithQualification = <T>(
 };
 
 export const sendError = (
-  res: Response,
-  message: string,
-  error?: string,
-  statusCode: number = 400
+  res: Response,
+  message: string,
+  data?: any, 
+  statusCode: number = 400
 ): void => {
-  sendResponse(res, statusCode, false, message, undefined, undefined, error);
+  sendResponse(res, statusCode, false, message, data, undefined, undefined);
 };
 
 export const createErrorResponse = (
