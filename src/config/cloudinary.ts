@@ -46,6 +46,8 @@ export const uploadToCloudinary = async (
     const uploadOptions: any = {
       folder: folder,
       allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      access_mode: 'public', // ← Make file publicly accessible
+      type: 'upload',
       transformation: [
         {
           width: 1000,
@@ -64,8 +66,10 @@ export const uploadToCloudinary = async (
     cloudinary.uploader
       .upload_stream(uploadOptions, (error, result) => {
         if (error) {
+          console.error('❌ Cloudinary image upload error:', error);
           reject(error);
         } else {
+          console.log('✅ Cloudinary image upload success:', result?.secure_url);
           resolve(result?.secure_url || '');
         }
       })
@@ -80,10 +84,21 @@ export const uploadToCloudinaryGeneric = async (
   filename?: string
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
+    // Determine resource type based on file extension
+    let resourceType: 'image' | 'raw' | 'video' | 'auto' = 'raw'; // Default to raw for documents
+    
+    if (filename) {
+      const ext = filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|svg)$/);
+      if (ext) {
+        resourceType = 'image';
+      }
+    }
+
     const uploadOptions: any = {
       folder: folder,
-      resource_type: 'auto',
-      overwrite: true,
+      resource_type: resourceType, // Use determined resource type
+      access_mode: 'public', // Make file publicly accessible
+      type: 'upload', // Upload type is public
     };
 
     // If filename provided, use it without extension (Cloudinary adds it automatically)
@@ -96,8 +111,14 @@ export const uploadToCloudinaryGeneric = async (
     cloudinary.uploader
       .upload_stream(uploadOptions, (error, result) => {
         if (error) {
+          console.error('❌ Cloudinary upload error:', error);
           reject(error);
         } else {
+          console.log('✅ Cloudinary upload success:', {
+            url: result?.secure_url,
+            resource_type: resourceType,
+            format: result?.format
+          });
           resolve(result?.secure_url || '');
         }
       })

@@ -242,7 +242,7 @@ export class MessageController {
 
       return sendSuccess(res, 'Upload tệp thành công', {
         url,
-        fileName: file.originalname,
+        fileName: sanitizedName, // Use sanitized name to avoid encoding issues
         fileType: file.mimetype,
         fileSize: file.size,
       });
