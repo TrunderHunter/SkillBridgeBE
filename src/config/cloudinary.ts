@@ -28,6 +28,14 @@ export const upload = multer({
   },
 });
 
+// Upload any file type (no filter), still using memory storage
+export const uploadAny = multer({
+  storage: storage,
+  limits: {
+    fileSize: 20 * 1024 * 1024, // 20MB limit for attachments
+  },
+});
+
 // Utility function to upload buffer to cloudinary
 export const uploadToCloudinary = async (
   buffer: Buffer,
@@ -51,6 +59,38 @@ export const uploadToCloudinary = async (
 
     if (filename) {
       uploadOptions.public_id = filename;
+    }
+
+    cloudinary.uploader
+      .upload_stream(uploadOptions, (error, result) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(result?.secure_url || '');
+        }
+      })
+      .end(buffer);
+  });
+};
+
+// Upload generic attachment (images, pdfs, docs, zips...) with resource_type auto
+export const uploadToCloudinaryGeneric = async (
+  buffer: Buffer,
+  folder: string,
+  filename?: string
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const uploadOptions: any = {
+      folder: folder,
+      resource_type: 'auto',
+      overwrite: true,
+    };
+
+    // If filename provided, use it without extension (Cloudinary adds it automatically)
+    if (filename) {
+      // Remove file extension from filename
+      const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+      uploadOptions.public_id = nameWithoutExt;
     }
 
     cloudinary.uploader

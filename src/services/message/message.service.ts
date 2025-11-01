@@ -118,7 +118,7 @@ export class MessageService {
         senderId: messageData.senderId,
         receiverId,
         content: messageData.content,
-        messageType: messageData.messageType || 'TEXT',
+        messageType: (messageData.messageType || 'TEXT').toUpperCase() as 'TEXT' | 'IMAGE' | 'FILE',
         fileMetadata: messageData.fileMetadata,
         replyTo: messageData.replyTo,
         status: 'SENT',
@@ -133,7 +133,7 @@ export class MessageService {
           content: messageData.content,
           senderId: messageData.senderId,
           sentAt: message.sentAt,
-          messageType: messageData.messageType || 'TEXT',
+          messageType: (messageData.messageType || 'TEXT').toUpperCase() as 'TEXT' | 'IMAGE' | 'FILE',
         },
       };
 

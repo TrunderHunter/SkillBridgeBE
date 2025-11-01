@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { body, param } from 'express-validator';
 import { MessageController } from '../../controllers/message/message.controller';
 import { authenticateToken } from '../../middlewares/auth.middleware';
+import { uploadAny } from '../../config/cloudinary';
 
 const router = Router();
 
@@ -103,6 +104,14 @@ router.get(
   authenticateToken,
   contactRequestIdValidation,
   MessageController.getConversationByContactRequest
+);
+
+// Upload chat attachment (Cloudinary)
+router.post(
+  '/conversations/:conversationId/attachments',
+  authenticateToken,
+  uploadAny.single('file'),
+  MessageController.uploadAttachment
 );
 
 export default router;

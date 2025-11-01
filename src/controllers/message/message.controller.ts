@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
 import { MessageService } from '../../services/message/message.service';
+import { uploadToCloudinaryGeneric } from '../../config/cloudinary';
 import { sendSuccess, sendError } from '../../utils/response';
 
 export class MessageController {
@@ -205,6 +206,49 @@ export class MessageController {
     } catch (error: any) {
       console.error('❌ Get conversation by contact request controller error:', error);
       sendError(res, error.message || 'Lỗi khi lấy cuộc trò chuyện', undefined, 500);
+    }
+  }
+
+  // Upload chat attachment (via Cloudinary)
+  static async uploadAttachment(req: Request, res: Response): Promise<void> {
+    try {
+      const { conversationId } = req.params;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return sendError(res, 'Không xác định được người dùng', undefined, 401);
+      }
+
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) {
+        return sendError(res, 'Không có tệp để tải lên', undefined, 400);
+      }
+
+      // Optional subdir, default to 'attachments'
+      const subdir = (req.query.subdir as string) || 'attachments';
+      const folder = `conversations/${conversationId}/${subdir}`;
+
+      // Sanitize filename properly
+      const originalName = file.originalname || 'file';
+      const sanitizedName = originalName
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/[^\w.-]/g, '_');
+      
+      const safeName = `${Date.now()}-${sanitizedName}`;
+
+      const url = await uploadToCloudinaryGeneric(file.buffer, folder, safeName);
+
+      return sendSuccess(res, 'Upload tệp thành công', {
+        url,
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        fileSize: file.size,
+      });
+    } catch (error: any) {
+      console.error('❌ Upload attachment controller error:', error);
+      return sendError(res, error.message || 'Lỗi khi upload tệp', undefined, 500);
     }
   }
 }
