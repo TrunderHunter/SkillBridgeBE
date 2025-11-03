@@ -1,0 +1,267 @@
+import { Request, Response } from 'express';
+import { smartRecommendationService } from '../../services/ai/smartRecommendation.service';
+import { profileVectorizationService } from '../../services/ai/profileVectorization.service';
+import { sendSuccess, sendError } from '../../utils/response';
+import { logger } from './../../utils/logger';
+
+export class SmartRecommendationController {
+  /**
+   * Get smart tutor recommendations for a student post
+   * POST /api/v1/posts/:postId/smart-recommendations
+   */
+  static async getSmartRecommendations(req: Request, res: Response): Promise<void> {
+    try {
+      const { postId } = req.params;
+      const userId = req.user!.id;
+
+      const {
+        limit = 10,
+        minScore = 0.5,
+        includeExplanations = true
+      } = req.query;
+
+      logger.info(`🎯 Getting smart recommendations for post: ${postId}`);
+
+      const recommendations = await smartRecommendationService.getRecommendations(
+        postId,
+        {
+          limit: parseInt(limit as string),
+          minScore: parseFloat(minScore as string),
+          includeExplanations: includeExplanations === 'true'
+        }
+      );
+
+      // Format response
+      const formattedRecs = recommendations.map(rec => ({
+        tutorId: rec.tutorId,
+        matchScore: Math.round(rec.matchScore * 100), // Convert to percentage
+        explanation: rec.explanation,
+        tutor: {
+          name: rec.tutorPost.tutorId.full_name,
+          email: rec.tutorPost.tutorId.email,
+          phone: rec.tutorPost.tutorId.phone_number,
+          avatar: rec.tutorPost.tutorId.avatar_url,
+          headline: rec.tutorProfile.headline,
+          introduction: rec.tutorProfile.introduction?.substring(0, 200), // Truncate
+        },
+        tutorPost: {
+          id: rec.tutorPost._id,
+          title: rec.tutorPost.title,
+          description: rec.tutorPost.description?.substring(0, 200), // Truncate
+          subjects: rec.tutorPost.subjects,
+          pricePerSession: rec.tutorPost.pricePerSession,
+          sessionDuration: rec.tutorPost.sessionDuration,
+          teachingMode: rec.tutorPost.teachingMode,
+          studentLevel: rec.tutorPost.studentLevel,
+        },
+        matchDetails: rec.matchDetails,
+      }));
+
+      sendSuccess(res, 'Tìm thấy các gợi ý phù hợp', {
+        total: formattedRecs.length,
+        recommendations: formattedRecs,
+      });
+
+    } catch (error: any) {
+      logger.error('❌ Smart recommendation controller error:', error);
+      sendError(
+        res,
+        error.message || 'Không thể tạo gợi ý thông minh',
+        undefined,
+        500
+      );
+    }
+  }
+
+  /**
+   * Trigger vectorization for a tutor profile
+   * POST /api/v1/tutors/profile/vectorize
+   */
+  static async vectorizeProfile(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+
+      logger.info(`🔄 Vectorizing profile for user: ${userId}`);
+
+      // Find tutor profile
+      const { TutorProfile } = await import('../../models/TutorProfile');
+      const profile = await TutorProfile.findOne({ user_id: userId });
+
+      if (!profile) {
+        return sendError(res, 'Không tìm thấy hồ sơ gia sư', undefined, 404);
+      }
+
+      const success = await profileVectorizationService.vectorizeTutorProfile(
+        profile._id
+      );
+
+      if (success) {
+        sendSuccess(res, 'Cập nhật vector thành công', {
+          profileId: profile._id,
+          vectorUpdatedAt: new Date(),
+        });
+      } else {
+        sendError(res, 'Không thể cập nhật vector', undefined, 500);
+      }
+
+    } catch (error: any) {
+      logger.error('❌ Vectorize profile controller error:', error);
+      sendError(
+        res,
+        error.message || 'Lỗi khi cập nhật vector',
+        undefined,
+        500
+      );
+    }
+  }
+
+  /**
+   * Admin: Batch vectorize all verified profiles
+   * POST /api/v1/admin/tutors/vectorize-all
+   */
+  static async batchVectorizeProfiles(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('🔄 Starting batch vectorization (admin)');
+
+      const result = await profileVectorizationService.vectorizeAllVerifiedProfiles();
+
+      sendSuccess(res, 'Hoàn thành vectorization', {
+        success: result.success,
+        failed: result.failed,
+        total: result.success + result.failed,
+      });
+
+    } catch (error: any) {
+      logger.error('❌ Batch vectorize controller error:', error);
+      sendError(
+        res,
+        error.message || 'Lỗi khi vectorize profiles',
+        undefined,
+        500
+      );
+    }
+  }
+
+  /**
+   * Check if Gemini AI service is available
+   * GET /api/v1/ai/status
+   */
+  static async checkAIStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const { geminiService } = await import('../../services/ai/gemini.service');
+      const { TutorProfile } = await import('../../models/TutorProfile');
+      const { TutorPost } = await import('../../models/TutorPost');
+      
+      const isAvailable = geminiService.isAvailable();
+      
+      // Count vectorized profiles
+      const vectorizedCount = await TutorProfile.countDocuments({
+        profileVector: { $exists: true, $ne: null }
+      });
+      
+      // Count total and active tutor posts
+      const totalPosts = await TutorPost.countDocuments();
+      const activePosts = await TutorPost.countDocuments({ status: 'ACTIVE' });
+
+      sendSuccess(res, 'AI service status', {
+        geminiAvailable: isAvailable,
+        vectorizedProfiles: vectorizedCount,
+        tutorPosts: {
+          total: totalPosts,
+          active: activePosts,
+        },
+        features: {
+          smartRecommendations: isAvailable,
+          semanticSearch: isAvailable,
+          matchExplanations: isAvailable,
+        },
+      });
+
+    } catch (error: any) {
+      logger.error('❌ AI status check error:', error);
+      sendError(res, error.message || 'Lỗi khi kiểm tra AI status', undefined, 500);
+    }
+  }
+
+  /**
+   * Debug: Check what filters are applied for a post
+   * GET /api/v1/ai/posts/:postId/debug-filters
+   */
+  static async debugFilters(req: Request, res: Response): Promise<void> {
+    try {
+      const { postId } = req.params;
+      const { Post } = await import('../../models/Post');
+      const { TutorPost } = await import('../../models/TutorPost');
+
+      // Get student post
+      const studentPost = await Post.findById(postId)
+        .populate('subjects', 'name')
+        .lean();
+
+      if (!studentPost) {
+        return sendError(res, 'Không tìm thấy bài đăng', undefined, 404);
+      }
+
+      // Build filters (copy logic from service)
+      const filters: any = {
+        status: 'ACTIVE',
+      };
+
+      if (studentPost.subjects && studentPost.subjects.length > 0) {
+        const subjectIds = studentPost.subjects.map((s: any) => 
+          typeof s === 'string' ? s : s._id
+        );
+        filters.subjects = { $in: subjectIds };
+      }
+
+      if (studentPost.grade_levels && studentPost.grade_levels.length > 0) {
+        filters.studentLevel = { $in: studentPost.grade_levels };
+      }
+
+      if (studentPost.hourly_rate) {
+        const { min, max } = studentPost.hourly_rate;
+        if (min !== undefined || max !== undefined) {
+          filters.pricePerSession = {};
+          if (min !== undefined) filters.pricePerSession.$gte = min;
+          if (max !== undefined) filters.pricePerSession.$lte = max;
+        }
+      }
+
+      // Count matches
+      const totalActive = await TutorPost.countDocuments({ status: 'ACTIVE' });
+      const matchingCount = await TutorPost.countDocuments(filters);
+      
+      // Get sample matches
+      const sampleMatches = await TutorPost.find(filters)
+        .populate('subjects', 'name')
+        .limit(3)
+        .lean();
+
+      sendSuccess(res, 'Debug info', {
+        studentPost: {
+          id: studentPost._id,
+          subjects: studentPost.subjects,
+          grade_levels: studentPost.grade_levels,
+          hourly_rate: studentPost.hourly_rate,
+          is_online: studentPost.is_online,
+        },
+        filters,
+        results: {
+          totalActivePosts: totalActive,
+          matchingPosts: matchingCount,
+          sampleMatches: sampleMatches.map(p => ({
+            id: p._id,
+            subjects: p.subjects,
+            studentLevel: p.studentLevel,
+            pricePerSession: p.pricePerSession,
+            teachingMode: p.teachingMode,
+          })),
+        },
+      });
+
+    } catch (error: any) {
+      logger.error('❌ Debug filters error:', error);
+      sendError(res, error.message || 'Lỗi khi debug', undefined, 500);
+    }
+  }
+}

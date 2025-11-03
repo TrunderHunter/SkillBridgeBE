@@ -86,6 +86,17 @@ const tutorProfileSchema = new Schema<ITutorProfileDocument>(
       type: Schema.Types.Mixed,
       default: null,
     },
+    // AI Vector for semantic search (Gemini embedding)
+    profileVector: {
+      type: [Number],
+      default: null,
+      select: false, // Don't include in normal queries for performance
+    },
+    // Last time vector was updated
+    vectorUpdatedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },

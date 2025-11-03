@@ -143,6 +143,9 @@ export interface ITutorProfile {
   verified_at?: Date;
   verified_by?: string;
   verified_data?: any;
+  // AI Vector fields
+  profileVector?: number[];
+  vectorUpdatedAt?: Date;
   created_at?: Date;
   updated_at?: Date;
 }
