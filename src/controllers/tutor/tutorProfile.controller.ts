@@ -207,7 +207,7 @@ export class TutorProfileController {
           canEdit: true,
           warning: canEditResult.warning,
           requiresConfirmation: true,
-        }); // 200 để frontend có thể xử lý warning
+        });
       }
 
       logger.info(`Updating introduction for user: ${userId}`);
@@ -400,44 +400,7 @@ export class TutorProfileController {
     }
   }
 
-  // ==================== NEW: TUTOR PROFILE VERIFICATION METHODS ====================
-
-  /**
-   * Submit TutorProfile for admin verification
-   * POST /api/v1/tutor/profile/submit-verification
-   */
-  static async submitProfileForVerification(
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const userId = req.user?.id;
-
-      if (!userId) {
-        return sendError(res, 'Người dùng chưa được xác thực', undefined, 401);
-      }
-
-      logger.info(`Submitting profile for verification: ${userId}`);
-
-      const result =
-        await tutorProfileService.submitProfileVerification(userId);
-
-      if (result.success) {
-        sendSuccess(res, result.message, result.data);
-      } else {
-        sendError(res, result.message, undefined, 400);
-      }
-    } catch (error) {
-      logger.error('Submit profile verification controller error:', error);
-      sendError(
-        res,
-        'Gửi yêu cầu xác thực thất bại. Vui lòng thử lại sau.',
-        undefined,
-        500
-      );
-    }
-  }
+  // ==================== CHECK TUTOR OPERATION STATUS ====================
 
   /**
    * Check if tutor can operate (create posts, etc.)
@@ -468,145 +431,6 @@ export class TutorProfileController {
       sendError(
         res,
         'Kiểm tra quyền hoạt động thất bại. Vui lòng thử lại sau.',
-        undefined,
-        500
-      );
-    }
-  }
-
-  /**
-   * Admin: Approve tutor profile
-   * POST /api/v1/admin/tutor-profiles/:profileId/approve
-   */
-  static async approveProfile(
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const adminUserId = req.user?.id;
-      const { profileId } = req.params;
-
-      if (!adminUserId) {
-        return sendError(res, 'Người dùng chưa được xác thực', undefined, 401);
-      }
-
-      if (!profileId) {
-        return sendError(res, 'Profile ID là bắt buộc', undefined, 400);
-      }
-
-      logger.info(`Admin ${adminUserId} approving profile: ${profileId}`);
-
-      const result = await tutorProfileService.approveProfile(
-        profileId,
-        adminUserId
-      );
-
-      if (result.success) {
-        sendSuccess(res, result.message, result.data);
-      } else {
-        sendError(res, result.message, undefined, 400);
-      }
-    } catch (error) {
-      logger.error('Approve profile controller error:', error);
-      sendError(
-        res,
-        'Phê duyệt hồ sơ thất bại. Vui lòng thử lại sau.',
-        undefined,
-        500
-      );
-    }
-  }
-
-  /**
-   * Admin: Reject tutor profile
-   * POST /api/v1/admin/tutor-profiles/:profileId/reject
-   */
-  static async rejectProfile(
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const adminUserId = req.user?.id;
-      const { profileId } = req.params;
-      const { rejectionReason } = req.body;
-
-      if (!adminUserId) {
-        return sendError(res, 'Người dùng chưa được xác thực', undefined, 401);
-      }
-
-      if (!profileId) {
-        return sendError(res, 'Profile ID là bắt buộc', undefined, 400);
-      }
-
-      if (!rejectionReason || rejectionReason.trim() === '') {
-        return sendError(res, 'Lý do từ chối là bắt buộc', undefined, 400);
-      }
-
-      logger.info(`Admin ${adminUserId} rejecting profile: ${profileId}`);
-
-      const result = await tutorProfileService.rejectProfile(
-        profileId,
-        adminUserId,
-        rejectionReason
-      );
-
-      if (result.success) {
-        sendSuccess(res, result.message, result.data);
-      } else {
-        sendError(res, result.message, undefined, 400);
-      }
-    } catch (error) {
-      logger.error('Reject profile controller error:', error);
-      sendError(
-        res,
-        'Từ chối hồ sơ thất bại. Vui lòng thử lại sau.',
-        undefined,
-        500
-      );
-    }
-  }
-
-  /**
-   * Admin: Get all pending verification profiles
-   * GET /api/v1/admin/tutor-profiles/pending
-   */
-  static async getPendingVerifications(
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) {
-    try {
-      const adminUserId = req.user?.id;
-
-      if (!adminUserId) {
-        return sendError(res, 'Người dùng chưa được xác thực', undefined, 401);
-      }
-
-      logger.info(`Admin ${adminUserId} getting pending verifications`);
-
-      const result = await tutorProfileService.getPendingVerifications();
-
-      if (result.success) {
-        sendSuccess(
-          res,
-          'Lấy danh sách yêu cầu xác thực thành công',
-          result.data
-        );
-      } else {
-        sendError(
-          res,
-          result.message || 'Lấy danh sách thất bại',
-          undefined,
-          500
-        );
-      }
-    } catch (error) {
-      logger.error('Get pending verifications controller error:', error);
-      sendError(
-        res,
-        'Lấy danh sách yêu cầu xác thực thất bại. Vui lòng thử lại sau.',
         undefined,
         500
       );

@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { AdminVerificationController } from '../../controllers/qualification';
-import { TutorProfileController } from '../../controllers/tutor';
 import { QualificationValidator } from '../../validators/qualification.validator';
 import { handleValidationErrors } from '../../middlewares/validation.middleware';
 import {
@@ -79,38 +78,6 @@ router.get(
   authenticateToken,
   requireAdmin,
   AdminVerificationController.getVerificationStats
-);
-
-// ==================== NEW: TUTOR PROFILE VERIFICATION ROUTES ====================
-
-/**
- * GET /api/admin/tutor-profiles/pending - Get all pending tutor profile verifications
- */
-router.get(
-  '/tutor-profiles/pending',
-  authenticateToken,
-  requireAdmin,
-  TutorProfileController.getPendingVerifications
-);
-
-/**
- * POST /api/admin/tutor-profiles/:profileId/approve - Approve tutor profile
- */
-router.post(
-  '/tutor-profiles/:profileId/approve',
-  authenticateToken,
-  requireAdmin,
-  TutorProfileController.approveProfile
-);
-
-/**
- * POST /api/admin/tutor-profiles/:profileId/reject - Reject tutor profile
- */
-router.post(
-  '/tutor-profiles/:profileId/reject',
-  authenticateToken,
-  requireAdmin,
-  TutorProfileController.rejectProfile
 );
 
 export { router as adminVerificationRoutes };

@@ -42,7 +42,7 @@ router.get(
 // NEW: Profile verification routes
 router.post(
   '/profile/submit-verification',
-  TutorProfileController.submitProfileForVerification
+  TutorProfileController.submitForVerification
 );
 router.get('/profile/can-operate', TutorProfileController.checkCanOperate);
 
