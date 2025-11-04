@@ -2,7 +2,10 @@ import { Router } from 'express';
 import { ClassController } from '../../controllers/class/class.controller';
 import { authenticateToken } from '../../middlewares/auth.middleware';
 import { requireStudentRole } from '../../middlewares/student.middleware';
-import { requireTutorRole } from '../../middlewares/tutor.middleware';
+import {
+  requireTutorRole,
+  requireApprovedTutorProfile,
+} from '../../middlewares/tutor.middleware';
 import { validateClass } from '../../validators/class.validator';
 import { handleValidationErrors } from '../../middlewares/validation.middleware';
 
@@ -12,28 +15,18 @@ const router = Router();
 router.use(authenticateToken);
 
 // Get classes
-router.get(
-  '/tutor',
-  requireTutorRole,
-  ClassController.getTutorClasses
-);
+router.get('/tutor', requireTutorRole, ClassController.getTutorClasses);
 
-router.get(
-  '/student',
-  requireStudentRole,
-  ClassController.getStudentClasses
-);
+router.get('/student', requireStudentRole, ClassController.getStudentClasses);
 
 // Get class details
-router.get(
-  '/:classId',
-  ClassController.getClassById
-);
+router.get('/:classId', ClassController.getClassById);
 
-// Update class status (tutor only)
+// Update class status (tutor only - requires approved profile)
 router.patch(
   '/:classId/status',
   requireTutorRole,
+  requireApprovedTutorProfile,
   validateClass.updateStatus,
   handleValidationErrors,
   ClassController.updateClassStatus
@@ -51,6 +44,7 @@ router.post(
 router.post(
   '/:classId/tutor-feedback',
   requireTutorRole,
+  requireApprovedTutorProfile,
   validateClass.addFeedback,
   handleValidationErrors,
   ClassController.addTutorFeedback

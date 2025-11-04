@@ -190,117 +190,124 @@ export class TutorPostService {
     }
   }
 
-// ✅ Enhanced search method - SIMPLIFIED AND FIXED
-async searchTutorPosts(query: ITutorPostQuery) {
-  try {
-    const {
-      subjects,
-      teachingMode,
-      studentLevel,
-      priceMin,
-      priceMax,
-      province,
-      district,
-      search,
-      page = 1,
-      limit = 12,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-    } = query;
+  // ✅ Enhanced search method - SIMPLIFIED AND FIXED
+  async searchTutorPosts(query: ITutorPostQuery) {
+    try {
+      const {
+        subjects,
+        teachingMode,
+        studentLevel,
+        priceMin,
+        priceMax,
+        province,
+        district,
+        search,
+        page = 1,
+        limit = 12,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+      } = query;
 
-    console.log('🔍 Searching tutor posts with query:', query);
+      console.log('🔍 Searching tutor posts with query:', query);
 
-    // Xây dựng bộ lọc (filter)
-    const filter: any = {
-      status: 'ACTIVE',
-    };
+      // Xây dựng bộ lọc (filter)
+      const filter: any = {
+        status: 'ACTIVE',
+      };
 
-    // Chỉ tìm các bài đăng từ gia sư đã được xác minh
-    const verifiedTutorIds = await this.getVerifiedTutorIds();
-    filter.tutorId = { $in: verifiedTutorIds };
-    
-    // Áp dụng các điều kiện lọc từ query
-    if (subjects && subjects.length > 0) {
-      filter.subjects = { $in: subjects };
-    }
-    if (teachingMode) {
+      // Chỉ tìm các bài đăng từ gia sư đã được xác minh
+      const verifiedTutorIds = await this.getVerifiedTutorIds();
+      filter.tutorId = { $in: verifiedTutorIds };
+
+      // Áp dụng các điều kiện lọc từ query
+      if (subjects && subjects.length > 0) {
+        filter.subjects = { $in: subjects };
+      }
+      if (teachingMode) {
         if (teachingMode === 'BOTH') {
-            filter.teachingMode = { $in: ['ONLINE', 'OFFLINE', 'BOTH'] };
+          filter.teachingMode = { $in: ['ONLINE', 'OFFLINE', 'BOTH'] };
         } else {
-            filter.teachingMode = { $in: [teachingMode, 'BOTH'] };
+          filter.teachingMode = { $in: [teachingMode, 'BOTH'] };
         }
-    }
-    if (studentLevel && studentLevel.length > 0) {
-      filter.studentLevel = { $in: studentLevel };
-    }
-    if (priceMin !== undefined || priceMax !== undefined) {
-      filter.pricePerSession = {};
-      if (priceMin !== undefined) filter.pricePerSession.$gte = priceMin;
-      if (priceMax !== undefined) filter.pricePerSession.$lte = priceMax;
-    }
-    if (province) {
+      }
+      if (studentLevel && studentLevel.length > 0) {
+        filter.studentLevel = { $in: studentLevel };
+      }
+      if (priceMin !== undefined || priceMax !== undefined) {
+        filter.pricePerSession = {};
+        if (priceMin !== undefined) filter.pricePerSession.$gte = priceMin;
+        if (priceMax !== undefined) filter.pricePerSession.$lte = priceMax;
+      }
+      if (province) {
         filter['address.province'] = province;
-    }
-    if (district) {
+      }
+      if (district) {
         filter['address.district'] = district;
-    }
-    
-    // Xử lý tìm kiếm bằng từ khóa (text search)
-    if (search && search.trim()) {
+      }
+
+      // Xử lý tìm kiếm bằng từ khóa (text search)
+      if (search && search.trim()) {
         const searchRegex = new RegExp(search.trim(), 'i');
         // Tìm ID của các môn học và gia sư khớp với từ khóa
-        const matchingSubjects = await Subject.find({ name: searchRegex }).select('_id').lean();
-        const matchingTutors = await User.find({ full_name: searchRegex }).select('_id').lean();
-        
+        const matchingSubjects = await Subject.find({ name: searchRegex })
+          .select('_id')
+          .lean();
+        const matchingTutors = await User.find({ full_name: searchRegex })
+          .select('_id')
+          .lean();
+
         filter.$or = [
-            { title: searchRegex },
-            { description: searchRegex },
-            { subjects: { $in: matchingSubjects.map(s => s._id) } },
-            { tutorId: { $in: matchingTutors.map(t => t._id) } },
+          { title: searchRegex },
+          { description: searchRegex },
+          { subjects: { $in: matchingSubjects.map((s) => s._id) } },
+          { tutorId: { $in: matchingTutors.map((t) => t._id) } },
         ];
+      }
+
+      console.log('📋 Built filter:', JSON.stringify(filter, null, 2));
+
+      const skip = (page - 1) * limit;
+      const sort: any = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+
+      // Thực hiện 2 query song song để lấy dữ liệu và tổng số lượng
+      const [posts, totalItems] = await Promise.all([
+        TutorPost.find(filter)
+          .populate('subjects', 'name category') // <-- POPULATE ĐÚNG CHO MÔN HỌC
+          .populate({
+            path: 'tutorId',
+            select:
+              'full_name avatar_url date_of_birth gender profile structured_address',
+            // Không dùng populate lồng nhau ở đây nữa để tránh lỗi
+          })
+          .sort(sort)
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        TutorPost.countDocuments(filter),
+      ]);
+
+      // Sau khi có kết quả, chúng ta sẽ bổ sung thông tin profile cho từng gia sư
+      const enhancedPosts = await Promise.all(
+        posts.map((post) => this.enhanceTutorInfo(post))
+      );
+
+      const totalPages = Math.ceil(totalItems / limit);
+
+      return {
+        posts: enhancedPosts,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalItems,
+          hasNext: page < totalPages,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      console.error('❌ Search tutor posts error:', error);
+      throw error;
     }
-    
-    console.log('📋 Built filter:', JSON.stringify(filter, null, 2));
-
-    const skip = (page - 1) * limit;
-    const sort: any = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
-
-    // Thực hiện 2 query song song để lấy dữ liệu và tổng số lượng
-    const [posts, totalItems] = await Promise.all([
-      TutorPost.find(filter)
-        .populate('subjects', 'name category') // <-- POPULATE ĐÚNG CHO MÔN HỌC
-        .populate({
-          path: 'tutorId',
-          select: 'full_name avatar_url date_of_birth gender profile structured_address',
-          // Không dùng populate lồng nhau ở đây nữa để tránh lỗi
-        })
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      TutorPost.countDocuments(filter)
-    ]);
-
-    // Sau khi có kết quả, chúng ta sẽ bổ sung thông tin profile cho từng gia sư
-    const enhancedPosts = await Promise.all(posts.map(post => this.enhanceTutorInfo(post)));
-    
-    const totalPages = Math.ceil(totalItems / limit);
-
-    return {
-      posts: enhancedPosts,
-      pagination: {
-        currentPage: page,
-        totalPages,
-        totalItems,
-        hasNext: page < totalPages,
-        hasPrev: page > 1,
-      },
-    };
-  } catch (error) {
-    console.error('❌ Search tutor posts error:', error);
-    throw error;
   }
-}
 
   // ✅ Fix getFilterOptions - Remove status checking for subjects
   async getFilterOptions() {
@@ -552,6 +559,10 @@ async searchTutorPosts(query: ITutorPostQuery) {
     }
   }
 
+  /**
+   * NEW: Simplified validation - only checks if TutorProfile is VERIFIED
+   * Qualifications are now optional
+   */
   private async validateTutorQualification(tutorId: string): Promise<void> {
     try {
       // 1. Kiểm tra user tồn tại và có role TUTOR
@@ -564,7 +575,7 @@ async searchTutorPosts(query: ITutorPostQuery) {
         throw new Error('User must have TUTOR role to create posts');
       }
 
-      // 2. Kiểm tra TutorProfile đã được xác thực
+      // 2. Kiểm tra TutorProfile đã được xác thực (ĐỦ ĐIỀU KIỆN)
       const tutorProfile = await TutorProfile.findOne({
         user_id: tutorId,
       }).select('status verified_at');
@@ -595,22 +606,9 @@ async searchTutorPosts(query: ITutorPostQuery) {
         );
       }
 
-      // 3. Kiểm tra có ít nhất một trình độ học vấn được xác thực
-      const verifiedEducations = await Education.find({
-        tutorId: tutorId, // Use the original tutorId (User ID)
-        status: 'VERIFIED',
-      }).select('_id level school major');
-
-      if (verifiedEducations.length === 0) {
-        throw new Error(
-          'At least one education qualification must be verified. Please add and verify your educational background.'
-        );
-      }
-
-      // 4. Log successful validation
+      // Log successful validation
       console.log(`✅ Tutor qualification validated for user ${tutorId}:`, {
         profileStatus: tutorProfile.status,
-        verifiedEducations: verifiedEducations.length,
         verifiedAt: tutorProfile.verified_at,
       });
     } catch (error) {
@@ -746,7 +744,11 @@ async searchTutorPosts(query: ITutorPostQuery) {
     }
   }
 
-  // Public method for frontend to check eligibility
+  /**
+   * NEW: Simplified eligibility check
+   * Only requires TutorProfile to be VERIFIED
+   * Education/Qualifications are now optional
+   */
   async checkTutorEligibility(
     tutorId: string
   ): Promise<ITutorEligibilityResponse> {
@@ -770,7 +772,7 @@ async searchTutorPosts(query: ITutorPostQuery) {
       }
       requirements.push(userRequirement);
 
-      // Check tutor profile
+      // Check tutor profile (ONLY REQUIRED CONDITION)
       const tutorProfile = await TutorProfile.findOne({
         user_id: tutorId,
       }).select('status verified_at');
@@ -787,7 +789,13 @@ async searchTutorPosts(query: ITutorPostQuery) {
           tutorProfile.status === 'MODIFIED_PENDING'
         ) {
           profileStatus = 'pending';
-          profileActionText = 'Chờ xác minh';
+          profileActionText = 'Đang chờ admin xác thực';
+        } else if (tutorProfile.status === 'REJECTED') {
+          profileStatus = 'missing';
+          profileActionText = 'Hồ sơ bị từ chối - Cần chỉnh sửa';
+        } else if (tutorProfile.status === 'DRAFT') {
+          profileStatus = 'missing';
+          profileActionText = 'Hoàn thiện và gửi xác thực';
         }
       }
 
@@ -795,53 +803,16 @@ async searchTutorPosts(query: ITutorPostQuery) {
         id: 'tutor-profile',
         title: 'Hồ sơ gia sư đã được xác thực',
         description:
-          'Thông tin cá nhân và kinh nghiệm giảng dạy đã được xác minh',
+          'Hồ sơ cá nhân, kinh nghiệm giảng dạy và CCCD đã được admin xác minh',
         status: profileStatus,
-        actionPath: '/tutor/profile',
+        actionPath: '/tutor/profile/complete',
       };
       if (profileActionText) {
         profileRequirement.actionText = profileActionText;
       }
       requirements.push(profileRequirement);
 
-      // Check education
-      let educationStatus: 'completed' | 'pending' | 'missing' = 'missing';
-      let educationActionText: string | undefined = 'Thêm bằng cấp';
-
-      if (tutorProfile) {
-        const educations = await Education.find({
-          tutorId: tutorId, // Use the original tutorId (User ID)
-        }).select('status');
-
-        const verifiedEducations = educations.filter(
-          (edu) => edu.status === 'VERIFIED'
-        );
-        const pendingEducations = educations.filter(
-          (edu) => edu.status === 'PENDING' || edu.status === 'MODIFIED_PENDING'
-        );
-
-        if (verifiedEducations.length > 0) {
-          educationStatus = 'completed';
-          educationActionText = undefined;
-        } else if (pendingEducations.length > 0) {
-          educationStatus = 'pending';
-          educationActionText = 'Chờ xác minh';
-        }
-      }
-
-      const educationRequirement: ITutorEligibilityRequirement = {
-        id: 'education',
-        title: 'Trình độ học vấn được xác thực',
-        description: 'Trình độ học vấn đã được kiểm tra và xác nhận',
-        status: educationStatus,
-        actionPath: '/tutor/qualifications?tab=education',
-      };
-      if (educationActionText) {
-        educationRequirement.actionText = educationActionText;
-      }
-      requirements.push(educationRequirement);
-
-      // Determine overall eligibility
+      // Determine overall eligibility (chỉ cần 2 điều kiện: role + profile verified)
       const completedCount = requirements.filter(
         (req) => req.status === 'completed'
       ).length;

@@ -4,6 +4,7 @@ import { TutorProfile } from '../models/TutorProfile';
 import { Education } from '../models/Education';
 import { sendError } from '../utils/response';
 import { logger } from '../utils/logger';
+import { VerificationStatus } from '../types/verification.types';
 
 // Middleware kiểm tra user có role TUTOR
 export const requireTutorRole = async (
@@ -166,5 +167,66 @@ export const requirePostOwnership = async (
   } catch (error) {
     logger.error('Post ownership check error:', error);
     return sendError(res, 'Ownership check failed', undefined, 500);
+  }
+};
+
+/**
+ * NEW MIDDLEWARE: Require Approved TutorProfile
+ * Checks if tutor's profile has been approved (status === VERIFIED)
+ * This is the new requirement for tutors to operate
+ */
+export const requireApprovedTutorProfile = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req.user!.id;
+
+    const tutorProfile = await TutorProfile.findOne({ user_id: userId });
+
+    if (!tutorProfile) {
+      return sendError(
+        res,
+        'Bạn chưa có hồ sơ gia sư. Vui lòng hoàn thiện hồ sơ trước.',
+        undefined,
+        400
+      );
+    }
+
+    if (tutorProfile.status !== VerificationStatus.VERIFIED) {
+      const statusMessages: Record<string, string> = {
+        [VerificationStatus.DRAFT]:
+          'Hồ sơ gia sư chưa hoàn thiện. Vui lòng hoàn thiện và gửi yêu cầu xác thực.',
+        [VerificationStatus.PENDING]:
+          'Hồ sơ gia sư đang chờ xác thực. Vui lòng chờ admin phê duyệt.',
+        [VerificationStatus.REJECTED]:
+          'Hồ sơ gia sư bị từ chối. Vui lòng chỉnh sửa và gửi lại yêu cầu xác thực.',
+        [VerificationStatus.MODIFIED_PENDING]:
+          'Hồ sơ đã chỉnh sửa đang chờ xác thực lại. Vui lòng chờ admin phê duyệt.',
+        [VerificationStatus.MODIFIED_AFTER_REJECTION]:
+          'Hồ sơ đã chỉnh sửa sau khi bị từ chối. Vui lòng gửi yêu cầu xác thực.',
+      };
+
+      return sendError(
+        res,
+        statusMessages[tutorProfile.status || ''] ||
+          'Hồ sơ gia sư chưa được xác thực',
+        undefined,
+        403
+      );
+    }
+
+    // Lưu tutorProfile vào request để sử dụng sau
+    req.tutorProfile = tutorProfile;
+    next();
+  } catch (error) {
+    logger.error('Approved tutor profile check error:', error);
+    return sendError(
+      res,
+      'Không thể kiểm tra trạng thái hồ sơ',
+      undefined,
+      500
+    );
   }
 };

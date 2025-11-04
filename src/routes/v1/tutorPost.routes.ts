@@ -7,6 +7,8 @@ import {
 import {
   requireTutorQualification,
   requirePostOwnership,
+  requireApprovedTutorProfile,
+  requireTutorRole,
 } from '../../middlewares/tutor.middleware';
 import { handleValidationErrors } from '../../middlewares/validation.middleware';
 import {
@@ -68,10 +70,11 @@ router.post(
 // Protected routes (require authentication)
 router.use(authenticateToken);
 
-// Tutor routes (require tutor qualification)
+// Tutor routes (NEW: require approved profile instead of full qualification)
 router.post(
   '/',
-  requireTutorQualification,
+  requireTutorRole,
+  requireApprovedTutorProfile,
   createTutorPostValidator,
   handleValidationErrors,
   tutorPostController.createTutorPost.bind(tutorPostController)
@@ -79,6 +82,7 @@ router.post(
 
 router.get(
   '/',
+  requireTutorRole,
   paginationValidator,
   handleValidationErrors,
   tutorPostController.getMyTutorPosts.bind(tutorPostController)
@@ -86,12 +90,15 @@ router.get(
 
 router.get(
   '/eligibility/check',
+  requireTutorRole,
   tutorPostController.checkEligibility.bind(tutorPostController)
 );
 
-// Tutor post management routes (require ownership)
+// Tutor post management routes (require ownership and approved profile)
 router.put(
   '/:postId',
+  requireTutorRole,
+  requireApprovedTutorProfile,
   requirePostOwnership,
   updateTutorPostValidator,
   handleValidationErrors,

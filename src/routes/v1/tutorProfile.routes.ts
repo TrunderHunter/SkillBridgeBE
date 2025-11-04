@@ -38,10 +38,13 @@ router.get(
   '/profile/check-edit-status',
   TutorProfileController.checkEditStatus
 );
+
+// NEW: Profile verification routes
 router.post(
   '/profile/submit-verification',
-  TutorProfileController.submitForVerification
+  TutorProfileController.submitProfileForVerification
 );
+router.get('/profile/can-operate', TutorProfileController.checkCanOperate);
 
 // CCCD routes
 router.get('/cccd', CCCDController.getImages);
