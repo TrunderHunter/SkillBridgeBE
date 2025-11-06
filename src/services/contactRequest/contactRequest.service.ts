@@ -178,7 +178,10 @@ class ContactRequestService {
       const [requests, total] = await Promise.all([
         ContactRequest.find(query)
           .populate('studentId', 'full_name avatar_url phone_number email')
-          .populate('tutorPostId', 'title pricePerSession')
+          .populate({
+            path: 'tutorPostId',
+            select: 'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
+          })
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)
@@ -290,6 +293,13 @@ class ContactRequestService {
       if (existingClass) {
         throw new Error('Lớp học đã được tạo cho yêu cầu này');
       }
+
+      // ✅ KIỂM TRA TRÙNG LỊCH HỌC
+      await this.validateScheduleConflict(
+        tutorId,
+        classData.schedule,
+        new Date(classData.startDate)
+      );
 
       const tutorPost = contactRequest.tutorPostId as any;
 
@@ -411,9 +421,104 @@ class ContactRequestService {
       };
     } catch (error: any) {
       logger.error('Cancel request error:', error);
-      throw new Error(error.message || 'Không thể hủy yêu cầu');
+      throw new Error('Không thể hủy yêu cầu');
     }
   }
+
+  /**
+   * ✅ Validate schedule conflict - Kiểm tra trùng lịch học
+   */
+  private async validateScheduleConflict(
+    tutorId: string,
+    newSchedule: { dayOfWeek: number[]; startTime: string; endTime: string },
+    startDate: Date
+  ): Promise<void> {
+    try {
+      // Lấy tất cả lớp học ACTIVE của gia sư
+      const activeClasses = await LearningClass.find({
+        tutorId,
+        status: { $in: ['ACTIVE', 'PAUSED'] },
+        // Chỉ check các lớp chưa kết thúc
+        $or: [
+          { actualEndDate: { $exists: false } },
+          { actualEndDate: { $gt: startDate } }
+        ]
+      });
+
+      if (activeClasses.length === 0) {
+        return; // Không có lớp nào, OK
+      }
+
+      // Kiểm tra từng lớp học
+      for (const existingClass of activeClasses) {
+        const existingSchedule = existingClass.schedule;
+
+        // Kiểm tra xem có ngày nào trùng nhau không
+        const commonDays = newSchedule.dayOfWeek.filter(day =>
+          existingSchedule.dayOfWeek.includes(day)
+        );
+
+        if (commonDays.length === 0) {
+          continue; // Không có ngày trùng, check lớp tiếp theo
+        }
+
+        // Có ngày trùng, kiểm tra giờ học
+        const isTimeOverlap = this.checkTimeOverlap(
+          newSchedule.startTime,
+          newSchedule.endTime,
+          existingSchedule.startTime,
+          existingSchedule.endTime
+        );
+
+        if (isTimeOverlap) {
+          // Tìm tên ngày trùng
+          const dayNames = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+          const conflictDays = commonDays.map(d => dayNames[d]).join(', ');
+
+          throw new Error(
+            `Lịch học bị trùng với lớp "${existingClass.title}".\n` +
+            `Ngày trùng: ${conflictDays}\n` +
+            `Giờ học hiện tại: ${existingSchedule.startTime} - ${existingSchedule.endTime}\n` +
+            `Giờ học mới: ${newSchedule.startTime} - ${newSchedule.endTime}\n` +
+            `Vui lòng chọn lịch khác hoặc điều chỉnh giờ học.`
+          );
+        }
+      }
+    } catch (error: any) {
+      // Re-throw validation errors
+      if (error.message.includes('Lịch học bị trùng')) {
+        throw error;
+      }
+      logger.error('Validate schedule conflict error:', error);
+      throw new Error('Không thể kiểm tra lịch học');
+    }
+  }
+
+  /**
+   * ✅ Check if two time ranges overlap
+   */
+  private checkTimeOverlap(
+    start1: string,
+    end1: string,
+    start2: string,
+    end2: string
+  ): boolean {
+    // Convert "HH:mm" to minutes
+    const toMinutes = (time: string): number => {
+      const [hours, minutes] = time.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+
+    const start1Min = toMinutes(start1);
+    const end1Min = toMinutes(end1);
+    const start2Min = toMinutes(start2);
+    const end2Min = toMinutes(end2);
+
+    // Check overlap: (start1 < end2) && (start2 < end1)
+    return start1Min < end2Min && start2Min < end1Min;
+  }
 }
+
+
 
 export const contactRequestService = new ContactRequestService();

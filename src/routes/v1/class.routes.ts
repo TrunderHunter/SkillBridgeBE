@@ -30,6 +30,12 @@ router.get(
   ClassController.getClassById
 );
 
+// Get class schedule with sessions
+router.get(
+  '/:classId/schedule',
+  ClassController.getClassSchedule
+);
+
 // Update class status (tutor only)
 router.patch(
   '/:classId/status',
@@ -37,6 +43,13 @@ router.patch(
   validateClass.updateStatus,
   handleValidationErrors,
   ClassController.updateClassStatus
+);
+
+// Update session status (tutor only)
+router.patch(
+  '/:classId/sessions/:sessionNumber/status',
+  requireTutorRole,
+  ClassController.updateSessionStatus
 );
 
 // Add reviews

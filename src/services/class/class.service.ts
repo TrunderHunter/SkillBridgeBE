@@ -208,6 +208,119 @@ class ClassService {
       throw new Error(error.message || 'Không thể thêm đánh giá');
     }
   }
+
+  /**
+   * Get class schedule with detailed sessions
+   */
+  async getClassSchedule(classId: string, userId: string) {
+    try {
+      const learningClass = await LearningClass.findById(classId)
+        .populate('tutorId', 'full_name avatar_url email phone_number')
+        .populate('studentId', 'full_name avatar_url email phone_number')
+        .populate('subject', 'name');
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Check authorization
+      const tutorId = typeof learningClass.tutorId === 'object' ? 
+        (learningClass.tutorId as any)._id.toString() :
+        learningClass.tutorId.toString();
+        
+      const studentId = typeof learningClass.studentId === 'object' ? 
+        (learningClass.studentId as any)._id.toString() :
+        learningClass.studentId.toString();
+
+      if (tutorId !== userId && studentId !== userId) {
+        throw new Error('Bạn không có quyền xem lịch học này');
+      }
+
+      // Format sessions with additional info
+      const formattedSessions = learningClass.sessions.map(session => ({
+        ...(session as any).toObject ? (session as any).toObject() : JSON.parse(JSON.stringify(session)),
+        isUpcoming: new Date(session.scheduledDate) > new Date(),
+        isPast: new Date(session.scheduledDate) < new Date(),
+        canEdit: tutorId === userId, // Only tutor can edit
+      }));
+
+      return {
+        success: true,
+        data: {
+          class: learningClass,
+          sessions: formattedSessions,
+          stats: {
+            total: learningClass.totalSessions,
+            completed: learningClass.completedSessions,
+            scheduled: formattedSessions.filter((s: any) => s.status === 'SCHEDULED').length,
+            cancelled: formattedSessions.filter((s: any) => s.status === 'CANCELLED').length,
+            missed: formattedSessions.filter((s: any) => s.status === 'MISSED').length,
+          }
+        }
+      };
+    } catch (error: any) {
+      logger.error('Get class schedule error:', error);
+      throw new Error(error.message || 'Không thể lấy lịch học');
+    }
+  }
+
+  /**
+   * Update session status
+   */
+  async updateSessionStatus(
+    classId: string,
+    sessionNumber: number,
+    status: 'COMPLETED' | 'CANCELLED' | 'MISSED',
+    userId: string,
+    notes?: string
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Only tutor can update session status
+      if (learningClass.tutorId.toString() !== userId) {
+        throw new Error('Chỉ gia sư mới có thể cập nhật trạng thái buổi học');
+      }
+
+      // Find session
+      const sessionIndex = learningClass.sessions.findIndex(
+        s => s.sessionNumber === sessionNumber
+      );
+
+      if (sessionIndex === -1) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      const session = learningClass.sessions[sessionIndex];
+
+      // Update session
+      session.status = status;
+      if (notes) {
+        session.notes = notes;
+      }
+
+      if (status === 'COMPLETED') {
+        session.actualStartTime = session.actualStartTime || session.scheduledDate;
+        session.actualEndTime = new Date();
+        learningClass.completedSessions += 1;
+      }
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Cập nhật trạng thái buổi học thành công',
+        data: learningClass
+      };
+    } catch (error: any) {
+      logger.error('Update session status error:', error);
+      throw new Error(error.message || 'Không thể cập nhật trạng thái buổi học');
+    }
+  }
 }
 
 export const classService = new ClassService();
