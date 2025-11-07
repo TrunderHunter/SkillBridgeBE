@@ -22,7 +22,10 @@ router.get('/student', requireStudentRole, ClassController.getStudentClasses);
 // Get class details
 router.get('/:classId', ClassController.getClassById);
 
-// Update class status (tutor only - requires approved profile)
+// Get class schedule with sessions
+router.get('/:classId/schedule', ClassController.getClassSchedule);
+
+// Update class status (tutor only)
 router.patch(
   '/:classId/status',
   requireTutorRole,
@@ -30,6 +33,13 @@ router.patch(
   validateClass.updateStatus,
   handleValidationErrors,
   ClassController.updateClassStatus
+);
+
+// Update session status (tutor only)
+router.patch(
+  '/:classId/sessions/:sessionNumber/status',
+  requireTutorRole,
+  ClassController.updateSessionStatus
 );
 
 // Add reviews

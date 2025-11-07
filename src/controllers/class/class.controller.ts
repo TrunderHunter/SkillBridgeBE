@@ -177,4 +177,66 @@ export class ClassController {
       });
     }
   }
+
+  /**
+   * Get class schedule with detailed sessions
+   */
+  static async getClassSchedule(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId } = req.params;
+      const userId = req.user!.id;
+      
+      const result = await classService.getClassSchedule(classId, userId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get class schedule controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể lấy lịch học'
+      });
+    }
+  }
+
+  /**
+   * Update session status
+   */
+  static async updateSessionStatus(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array()
+        });
+      }
+
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const { status, notes } = req.body;
+      
+      const result = await classService.updateSessionStatus(
+        classId,
+        parseInt(sessionNumber),
+        status,
+        userId,
+        notes
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Update session status controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể cập nhật trạng thái buổi học'
+      });
+    }
+  }
 }
