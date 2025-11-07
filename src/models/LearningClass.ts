@@ -1,6 +1,40 @@
 import { Schema, model, Document } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
+// Attendance tracking for each session
+export interface ISessionAttendance {
+  tutorAttended: boolean;
+  tutorAttendedAt?: Date;
+  studentAttended: boolean;
+  studentAttendedAt?: Date;
+}
+
+// Homework for each session
+export interface ISessionHomework {
+  // Homework assigned by tutor
+  assignment?: {
+    title: string;
+    description: string;
+    fileUrl?: string; // Link to file uploaded by tutor
+    deadline: Date;
+    assignedAt: Date;
+  };
+  
+  // Homework submission by student
+  submission?: {
+    fileUrl: string; // Link to file uploaded by student
+    notes?: string;
+    submittedAt: Date;
+  };
+  
+  // Grading by tutor
+  grade?: {
+    score: number; // 0-10
+    feedback?: string;
+    gradedAt: Date;
+  };
+}
+
 export interface ILearningSession {
   sessionNumber: number;
   scheduledDate: Date;
@@ -9,7 +43,13 @@ export interface ILearningSession {
   actualStartTime?: Date;
   actualEndTime?: Date;
   notes?: string;
-  homework?: string;
+  
+  // NEW: Attendance tracking
+  attendance: ISessionAttendance;
+  
+  // NEW: Homework management
+  homework?: ISessionHomework;
+  
   studentFeedback?: {
     rating: number; // 1-5
     comment?: string;
@@ -109,7 +149,35 @@ const LearningSessionSchema = new Schema<ILearningSession>({
   actualStartTime: Date,
   actualEndTime: Date,
   notes: { type: String, maxlength: 1000 },
-  homework: { type: String, maxlength: 1000 },
+  
+  // NEW: Attendance tracking
+  attendance: {
+    tutorAttended: { type: Boolean, default: false },
+    tutorAttendedAt: Date,
+    studentAttended: { type: Boolean, default: false },
+    studentAttendedAt: Date,
+  },
+  
+  // NEW: Homework management
+  homework: {
+    assignment: {
+      title: { type: String, maxlength: 200 },
+      description: { type: String, maxlength: 1000 },
+      fileUrl: String,
+      deadline: Date,
+      assignedAt: Date,
+    },
+    submission: {
+      fileUrl: String,
+      notes: { type: String, maxlength: 500 },
+      submittedAt: Date,
+    },
+    grade: {
+      score: { type: Number, min: 0, max: 10 },
+      feedback: { type: String, maxlength: 500 },
+      gradedAt: Date,
+    },
+  },
   
   studentFeedback: {
     rating: { type: Number, min: 1, max: 5 },

@@ -377,6 +377,11 @@ class ContactRequestService {
             scheduledDate: new Date(currentDate),
             duration: learningClass.sessionDuration,
             status: 'SCHEDULED' as const,
+            attendance: {
+              checkedIn: false,
+              tutorAttended: false,
+              studentAttended: false,
+            },
           });
           sessionNumber++;
         }

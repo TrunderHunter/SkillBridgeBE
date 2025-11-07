@@ -321,6 +321,477 @@ class ClassService {
       throw new Error(error.message || 'Không thể cập nhật trạng thái buổi học');
     }
   }
+
+  /**
+   * Mark attendance for session
+   */
+  async markAttendance(
+    classId: string,
+    sessionNumber: number,
+    userId: string,
+    userRole: string
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Check authorization
+      const isTutor = learningClass.tutorId.toString() === userId;
+      const isStudent = learningClass.studentId.toString() === userId;
+
+      if (!isTutor && !isStudent) {
+        throw new Error('Bạn không có quyền điểm danh buổi học này');
+      }
+
+      // Find session
+      const sessionIndex = learningClass.sessions.findIndex(
+        s => s.sessionNumber === sessionNumber
+      );
+
+      if (sessionIndex === -1) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      const session = learningClass.sessions[sessionIndex];
+      const now = new Date();
+      const scheduledDate = new Date(session.scheduledDate);
+      const sessionEndTime = new Date(scheduledDate.getTime() + session.duration * 60000);
+
+      // Check if attendance time is valid (15 mins before to session end)
+      const canAttendTime = new Date(scheduledDate.getTime() - 15 * 60000);
+      
+      if (now < canAttendTime) {
+        throw new Error('Chưa đến giờ điểm danh. Bạn có thể điểm danh từ 15 phút trước giờ học.');
+      }
+
+      if (now > sessionEndTime) {
+        throw new Error('Đã quá giờ điểm danh');
+      }
+
+      // Initialize attendance if not exists
+      if (!session.attendance) {
+        session.attendance = {
+          tutorAttended: false,
+          studentAttended: false
+        };
+      }
+
+      // Mark attendance based on role
+      if (isTutor) {
+        if (session.attendance.tutorAttended) {
+          throw new Error('Bạn đã điểm danh rồi');
+        }
+        session.attendance.tutorAttended = true;
+        session.attendance.tutorAttendedAt = now;
+      } else if (isStudent) {
+        if (session.attendance.studentAttended) {
+          throw new Error('Bạn đã điểm danh rồi');
+        }
+        session.attendance.studentAttended = true;
+        session.attendance.studentAttendedAt = now;
+      }
+
+      // Check if both attended -> auto complete session
+      const bothAttended = session.attendance.tutorAttended && session.attendance.studentAttended;
+      
+      if (bothAttended && session.status === 'SCHEDULED') {
+        session.status = 'COMPLETED';
+        session.actualStartTime = session.actualStartTime || now;
+        session.actualEndTime = sessionEndTime;
+        learningClass.completedSessions += 1;
+      }
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Điểm danh thành công',
+        data: {
+          attendance: session.attendance,
+          bothAttended,
+          sessionStatus: session.status,
+          canJoinMeeting: bothAttended
+        }
+      };
+    } catch (error: any) {
+      logger.error('Mark attendance error:', error);
+      throw new Error(error.message || 'Không thể điểm danh');
+    }
+  }
+
+  /**
+   * Assign homework (tutor only)
+   */
+  async assignHomework(
+    classId: string,
+    sessionNumber: number,
+    userId: string,
+    homeworkData: {
+      title: string;
+      description: string;
+      fileUrl?: string;
+      deadline: Date;
+    }
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Only tutor can assign homework
+      if (learningClass.tutorId.toString() !== userId) {
+        throw new Error('Chỉ gia sư mới có thể giao bài tập');
+      }
+
+      // Find session
+      const sessionIndex = learningClass.sessions.findIndex(
+        s => s.sessionNumber === sessionNumber
+      );
+
+      if (sessionIndex === -1) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      const session = learningClass.sessions[sessionIndex];
+
+      // Can only assign homework after session is completed
+      if (session.status !== 'COMPLETED') {
+        throw new Error('Chỉ có thể giao bài tập sau khi buổi học hoàn thành');
+      }
+
+      // Validate deadline
+      if (new Date(homeworkData.deadline) <= new Date()) {
+        throw new Error('Hạn nộp bài phải sau thời điểm hiện tại');
+      }
+
+      // Initialize homework if not exists
+      if (!session.homework) {
+        session.homework = {};
+      }
+
+      // Assign homework
+      session.homework.assignment = {
+        title: homeworkData.title,
+        description: homeworkData.description,
+        fileUrl: homeworkData.fileUrl,
+        deadline: new Date(homeworkData.deadline),
+        assignedAt: new Date()
+      };
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Giao bài tập thành công',
+        data: {
+          sessionNumber,
+          homework: session.homework
+        }
+      };
+    } catch (error: any) {
+      logger.error('Assign homework error:', error);
+      throw new Error(error.message || 'Không thể giao bài tập');
+    }
+  }
+
+  /**
+   * Submit homework (student only)
+   */
+  async submitHomework(
+    classId: string,
+    sessionNumber: number,
+    userId: string,
+    submissionData: {
+      fileUrl: string;
+      notes?: string;
+    }
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Only student can submit homework
+      if (learningClass.studentId.toString() !== userId) {
+        throw new Error('Chỉ học viên mới có thể nộp bài tập');
+      }
+
+      // Find session
+      const sessionIndex = learningClass.sessions.findIndex(
+        s => s.sessionNumber === sessionNumber
+      );
+
+      if (sessionIndex === -1) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      const session = learningClass.sessions[sessionIndex];
+
+      // Check if homework assignment exists
+      if (!session.homework || !session.homework.assignment) {
+        throw new Error('Chưa có bài tập được giao cho buổi học này');
+      }
+
+      // Check deadline
+      const now = new Date();
+      const deadline = new Date(session.homework.assignment.deadline);
+      const isLate = now > deadline;
+
+      // Submit homework
+      session.homework.submission = {
+        fileUrl: submissionData.fileUrl,
+        notes: submissionData.notes,
+        submittedAt: now
+      };
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: isLate ? 'Nộp bài thành công (Trễ hạn)' : 'Nộp bài thành công',
+        data: {
+          sessionNumber,
+          submission: session.homework.submission,
+          isLate,
+          deadline: session.homework.assignment.deadline
+        }
+      };
+    } catch (error: any) {
+      logger.error('Submit homework error:', error);
+      throw new Error(error.message || 'Không thể nộp bài tập');
+    }
+  }
+
+  /**
+   * Grade homework (tutor only)
+   */
+  async gradeHomework(
+    classId: string,
+    sessionNumber: number,
+    userId: string,
+    gradeData: {
+      score: number;
+      feedback?: string;
+    }
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Only tutor can grade homework
+      if (learningClass.tutorId.toString() !== userId) {
+        throw new Error('Chỉ gia sư mới có thể chấm điểm');
+      }
+
+      // Find session
+      const sessionIndex = learningClass.sessions.findIndex(
+        s => s.sessionNumber === sessionNumber
+      );
+
+      if (sessionIndex === -1) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      const session = learningClass.sessions[sessionIndex];
+
+      // Check if homework submission exists
+      if (!session.homework || !session.homework.submission) {
+        throw new Error('Học viên chưa nộp bài tập');
+      }
+
+      // Validate score
+      if (gradeData.score < 0 || gradeData.score > 10) {
+        throw new Error('Điểm phải từ 0 đến 10');
+      }
+
+      // Grade homework
+      session.homework.grade = {
+        score: gradeData.score,
+        feedback: gradeData.feedback,
+        gradedAt: new Date()
+      };
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Chấm điểm thành công',
+        data: {
+          sessionNumber,
+          grade: session.homework.grade
+        }
+      };
+    } catch (error: any) {
+      logger.error('Grade homework error:', error);
+      throw new Error(error.message || 'Không thể chấm điểm');
+    }
+  }
+
+  /**
+   * Get weekly schedule
+   */
+  async getWeeklySchedule(userId: string, userRole: string, targetDate: Date) {
+    try {
+      // Get start and end of week
+      const date = new Date(targetDate);
+      const dayOfWeek = date.getDay();
+      const diff = date.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust for Monday start
+      
+      const weekStart = new Date(date.setDate(diff));
+      weekStart.setHours(0, 0, 0, 0);
+      
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      // Find classes based on role
+      const query = userRole === 'TUTOR' 
+        ? { tutorId: userId }
+        : { studentId: userId };
+
+      const classes = await LearningClass.find(query)
+        .populate('tutorId', 'full_name avatar_url')
+        .populate('studentId', 'full_name avatar_url')
+        .populate('subject', 'name');
+
+      // Collect all sessions in the week
+      const weekSessions: any[] = [];
+
+      for (const learningClass of classes) {
+        for (const session of learningClass.sessions) {
+          const sessionDate = new Date(session.scheduledDate);
+          
+          if (sessionDate >= weekStart && sessionDate <= weekEnd) {
+            const now = new Date();
+            const sessionEndTime = new Date(sessionDate.getTime() + session.duration * 60000);
+            const canAttendTime = new Date(sessionDate.getTime() - 15 * 60000);
+            
+            const canAttend = now >= canAttendTime && now <= sessionEndTime;
+            const bothAttended = session.attendance?.tutorAttended && session.attendance?.studentAttended;
+
+            weekSessions.push({
+              classId: learningClass._id,
+              className: learningClass.subject ? (learningClass.subject as any).name : 'N/A',
+              sessionNumber: session.sessionNumber,
+              scheduledDate: session.scheduledDate,
+              dayOfWeek: sessionDate.getDay(),
+              timeSlot: `${sessionDate.getHours()}:${String(sessionDate.getMinutes()).padStart(2, '0')} - ${sessionEndTime.getHours()}:${String(sessionEndTime.getMinutes()).padStart(2, '0')}`,
+              duration: session.duration,
+              status: session.status,
+              meetingLink: learningClass.onlineInfo?.meetingLink,
+              location: learningClass.location,
+              attendance: session.attendance || {
+                tutorAttended: false,
+                studentAttended: false
+              },
+              homework: {
+                hasAssignment: !!session.homework?.assignment,
+                hasSubmission: !!session.homework?.submission,
+                hasGrade: !!session.homework?.grade,
+                isLate: session.homework?.submission && session.homework?.assignment
+                  ? new Date(session.homework.submission.submittedAt) > new Date(session.homework.assignment.deadline)
+                  : false,
+                // Include full homework details
+                assignment: session.homework?.assignment || null,
+                submission: session.homework?.submission || null,
+                grade: session.homework?.grade || null
+              },
+              canAttend,
+              canJoin: bothAttended,
+              tutor: learningClass.tutorId,
+              student: learningClass.studentId
+            });
+          }
+        }
+      }
+
+      // Sort by date
+      weekSessions.sort((a, b) => 
+        new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime()
+      );
+
+      return {
+        success: true,
+        data: {
+          weekStart,
+          weekEnd,
+          sessions: weekSessions,
+          totalSessions: weekSessions.length
+        }
+      };
+    } catch (error: any) {
+      logger.error('Get weekly schedule error:', error);
+      throw new Error(error.message || 'Không thể lấy lịch học tuần');
+    }
+  }
+
+  /**
+   * Cancel session
+   */
+  async cancelSession(
+    classId: string,
+    sessionNumber: number,
+    userId: string,
+    userRole: string,
+    reason?: string
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Verify user is tutor of this class (only tutor can cancel)
+      if (userRole !== 'TUTOR' || learningClass.tutorId.toString() !== userId) {
+        throw new Error('Chỉ gia sư của lớp học mới có thể huỷ buổi học');
+      }
+
+      // Find session
+      const session = learningClass.sessions.find(s => s.sessionNumber === sessionNumber);
+      if (!session) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      // Check if session can be cancelled
+      if (session.status === 'COMPLETED') {
+        throw new Error('Không thể huỷ buổi học đã hoàn thành');
+      }
+
+      if (session.status === 'CANCELLED') {
+        throw new Error('Buổi học đã được huỷ trước đó');
+      }
+
+      // Cancel session
+      session.status = 'CANCELLED';
+      if (reason) {
+        session.notes = (session.notes || '') + `\nLý do huỷ: ${reason}`;
+      }
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Huỷ buổi học thành công',
+        data: {
+          sessionNumber: session.sessionNumber,
+          status: session.status
+        }
+      };
+    } catch (error: any) {
+      logger.error('Cancel session error:', error);
+      throw new Error(error.message || 'Không thể huỷ buổi học');
+    }
+  }
 }
 
 export const classService = new ClassService();
