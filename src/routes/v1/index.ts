@@ -14,6 +14,7 @@ import contactRequestRoutes from './contactRequest.routes';
 import classRoutes from './class.routes';
 import messageRoutes from './messageRoutes';
 import aiRoutes from './ai.routes';
+import uploadRoutes from './upload.routes';
 
 const router = express.Router();
 
@@ -56,5 +57,8 @@ router.use('/messages', messageRoutes);
 
 // AI routes (smart recommendations, vectorization)
 router.use('/ai', aiRoutes);
+
+// Upload routes
+router.use('/upload', uploadRoutes);
 
 export default router;
