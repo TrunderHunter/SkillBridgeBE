@@ -357,7 +357,7 @@ class ContactRequestService {
   }
 
   /**
-   * ✅ Fix tên hàm: Generate learning sessions for a class
+   * ✅ Fix: Generate learning sessions with correct time
    */
   private async generateLearningSessions(classId: string) {
     try {
@@ -368,15 +368,27 @@ class ContactRequestService {
       let sessionNumber = 1;
       let currentDate = new Date(learningClass.startDate);
       
+      // Parse startTime from schedule (format: "HH:mm")
+      const [startHour, startMinute] = learningClass.schedule.startTime.split(':').map(Number);
+      
       while (sessionNumber <= learningClass.totalSessions) {
         const dayOfWeek = currentDate.getDay();
         
         if (learningClass.schedule.dayOfWeek.includes(dayOfWeek)) {
+          // Create scheduledDate with correct time
+          const scheduledDateTime = new Date(currentDate);
+          scheduledDateTime.setHours(startHour, startMinute, 0, 0);
+          
           sessions.push({
             sessionNumber,
-            scheduledDate: new Date(currentDate),
+            scheduledDate: scheduledDateTime,
             duration: learningClass.sessionDuration,
             status: 'SCHEDULED' as const,
+            attendance: {
+              checkedIn: false,
+              tutorAttended: false,
+              studentAttended: false,
+            },
           });
           sessionNumber++;
         }

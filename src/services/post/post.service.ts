@@ -15,6 +15,7 @@ import { Subject } from '../../models/Subject';
 import { mapTutorPostToResponse } from '../../utils/mappers/tutorPost.mapper';
 import { v4 as uuidv4, validate as validateUUID } from 'uuid';
 import { VerificationRequest } from '../../models/VerificationRequest';
+import { logger } from '../../utils/logger';
 
 export interface ITutorSearchQuery {
   // Core filters
@@ -260,6 +261,9 @@ export class PostService {
       const post = await Post.create({ ...postData, author_id: userId });
       await post.populate({ path: 'author_id', select: 'full_name avatar' });
 
+      // Notify all admins about new post
+      await this.notifyAdminsNewPost(post);
+
       return {
         success: true,
         message: 'Đăng bài thành công, đang chờ duyệt',
@@ -270,6 +274,44 @@ export class PostService {
         success: false,
         message: error.message || 'Lỗi khi tạo bài đăng',
       };
+    }
+  }
+
+  // Helper to notify admins about new post
+  private static async notifyAdminsNewPost(post: any): Promise<void> {
+    try {
+      const NotificationService = (
+        await import('../notification/notification.service')
+      ).default;
+
+      // Get all admin users
+      const admins = await User.find({
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      }).select('_id');
+
+      // Send notification to each admin
+      const notifications = admins.map((admin: any) =>
+        NotificationService.sendNotification({
+          type: 'socket',
+          userId: admin._id.toString(),
+          notificationType: 'SYSTEM',
+          title: 'Bài đăng mới cần duyệt',
+          message: `${(post.author_id as any).full_name} đã tạo bài đăng "${post.title}"`,
+          priority: 'high',
+          actionUrl: `/admin/posts/${post._id}`,
+          data: {
+            postId: post._id,
+            postTitle: post.title,
+            authorName: (post.author_id as any).full_name,
+          },
+        })
+      );
+
+      await Promise.allSettled(notifications);
+    } catch (error) {
+      logger.error('Failed to notify admins about new post:', error);
+      // Don't throw - notification failure shouldn't block post creation
     }
   }
 

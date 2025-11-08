@@ -239,4 +239,251 @@ export class ClassController {
       });
     }
   }
+
+  /**
+   * Mark attendance for session (tutor or student)
+   */
+  static async markAttendance(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const userRole = req.user!.role;
+      
+      const result = await classService.markAttendance(
+        classId,
+        parseInt(sessionNumber),
+        userId,
+        userRole
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Mark attendance controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể điểm danh'
+      });
+    }
+  }
+
+  /**
+   * Assign homework (tutor only)
+   */
+  static async assignHomework(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array()
+        });
+      }
+
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const { title, description, fileUrl, deadline } = req.body;
+      
+      const result = await classService.assignHomework(
+        classId,
+        parseInt(sessionNumber),
+        userId,
+        { title, description, fileUrl, deadline }
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Assign homework controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể giao bài tập'
+      });
+    }
+  }
+
+  /**
+   * Submit homework (student only)
+   */
+  static async submitHomework(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array()
+        });
+      }
+
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const { fileUrl, notes } = req.body;
+      
+      const result = await classService.submitHomework(
+        classId,
+        parseInt(sessionNumber),
+        userId,
+        { fileUrl, notes }
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Submit homework controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể nộp bài tập'
+      });
+    }
+  }
+
+  /**
+   * Grade homework (tutor only)
+   */
+  static async gradeHomework(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array()
+        });
+      }
+
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const { score, feedback } = req.body;
+      
+      const result = await classService.gradeHomework(
+        classId,
+        parseInt(sessionNumber),
+        userId,
+        { score, feedback }
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Grade homework controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể chấm điểm'
+      });
+    }
+  }
+
+  /**
+   * Get weekly schedule
+   */
+  static async getWeeklySchedule(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = req.user!.id;
+      const userRole = req.user!.role;
+      const { date } = req.query;
+      
+      const result = await classService.getWeeklySchedule(
+        userId,
+        userRole,
+        date ? new Date(date as string) : new Date()
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get weekly schedule controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể lấy lịch học tuần'
+      });
+    }
+  }
+
+  /**
+   * Request to cancel session (both tutor and student)
+   */
+  static async requestCancelSession(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const userRole = req.user!.role;
+      const { reason } = req.body;
+
+      if (!reason || typeof reason !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'Vui lòng cung cấp lý do huỷ buổi học'
+        });
+      }
+      
+      const result = await classService.requestCancelSession(
+        classId,
+        parseInt(sessionNumber),
+        userId,
+        userRole,
+        reason
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Request cancel session controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể gửi yêu cầu huỷ buổi học'
+      });
+    }
+  }
+
+  /**
+   * Respond to cancellation request (approve/reject)
+   */
+  static async respondToCancellationRequest(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const userRole = req.user!.role;
+      const { action } = req.body;
+
+      if (!action || !['APPROVE', 'REJECT'].includes(action)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Action phải là APPROVE hoặc REJECT'
+        });
+      }
+      
+      const result = await classService.respondToCancellationRequest(
+        classId,
+        parseInt(sessionNumber),
+        userId,
+        userRole,
+        action
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Respond to cancellation request controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể phản hồi yêu cầu huỷ buổi học'
+      });
+    }
+  }
 }
