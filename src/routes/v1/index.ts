@@ -15,6 +15,7 @@ import classRoutes from './class.routes';
 import messageRoutes from './messageRoutes';
 import aiRoutes from './ai.routes';
 import uploadRoutes from './upload.routes';
+import notificationRoutes from './notification.routes';
 
 const router = express.Router();
 
@@ -60,5 +61,8 @@ router.use('/ai', aiRoutes);
 
 // Upload routes
 router.use('/upload', uploadRoutes);
+
+// Notification routes
+router.use('/notifications', notificationRoutes);
 
 export default router;

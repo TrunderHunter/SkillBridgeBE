@@ -412,9 +412,9 @@ export class ClassController {
   }
 
   /**
-   * Cancel session (tutor only)
+   * Request to cancel session (both tutor and student)
    */
-  static async cancelSession(
+  static async requestCancelSession(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
@@ -424,8 +424,15 @@ export class ClassController {
       const userId = req.user!.id;
       const userRole = req.user!.role;
       const { reason } = req.body;
+
+      if (!reason || typeof reason !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'Vui lòng cung cấp lý do huỷ buổi học'
+        });
+      }
       
-      const result = await classService.cancelSession(
+      const result = await classService.requestCancelSession(
         classId,
         parseInt(sessionNumber),
         userId,
@@ -434,10 +441,48 @@ export class ClassController {
       );
       res.json(result);
     } catch (error: any) {
-      logger.error('Cancel session controller error:', error);
+      logger.error('Request cancel session controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể huỷ buổi học'
+        message: error.message || 'Không thể gửi yêu cầu huỷ buổi học'
+      });
+    }
+  }
+
+  /**
+   * Respond to cancellation request (approve/reject)
+   */
+  static async respondToCancellationRequest(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const userRole = req.user!.role;
+      const { action } = req.body;
+
+      if (!action || !['APPROVE', 'REJECT'].includes(action)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Action phải là APPROVE hoặc REJECT'
+        });
+      }
+      
+      const result = await classService.respondToCancellationRequest(
+        classId,
+        parseInt(sessionNumber),
+        userId,
+        userRole,
+        action
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Respond to cancellation request controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể phản hồi yêu cầu huỷ buổi học'
       });
     }
   }

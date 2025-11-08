@@ -706,6 +706,7 @@ class ClassService {
                 submission: session.homework?.submission || null,
                 grade: session.homework?.grade || null
               },
+              cancellationRequest: session.cancellationRequest || null,
               canAttend,
               canJoin: bothAttended,
               tutor: learningClass.tutorId,
@@ -736,14 +737,14 @@ class ClassService {
   }
 
   /**
-   * Cancel session
+   * Request to cancel session (both tutor and student can request)
    */
-  async cancelSession(
+  async requestCancelSession(
     classId: string,
     sessionNumber: number,
     userId: string,
     userRole: string,
-    reason?: string
+    reason: string
   ) {
     try {
       const learningClass = await LearningClass.findById(classId);
@@ -751,9 +752,12 @@ class ClassService {
         throw new Error('Không tìm thấy lớp học');
       }
 
-      // Verify user is tutor of this class (only tutor can cancel)
-      if (userRole !== 'TUTOR' || learningClass.tutorId.toString() !== userId) {
-        throw new Error('Chỉ gia sư của lớp học mới có thể huỷ buổi học');
+      // Verify user is part of this class
+      const isTutor = learningClass.tutorId.toString() === userId;
+      const isStudent = learningClass.studentId.toString() === userId;
+      
+      if (!isTutor && !isStudent) {
+        throw new Error('Bạn không có quyền huỷ buổi học này');
       }
 
       // Find session
@@ -768,28 +772,123 @@ class ClassService {
       }
 
       if (session.status === 'CANCELLED') {
-        throw new Error('Buổi học đã được huỷ trước đó');
+        throw new Error('Buổi học đã được huỷ');
       }
 
-      // Cancel session
-      session.status = 'CANCELLED';
-      if (reason) {
-        session.notes = (session.notes || '') + `\nLý do huỷ: ${reason}`;
+      if (session.status === 'PENDING_CANCELLATION') {
+        throw new Error('Đã có yêu cầu huỷ buổi học đang chờ phê duyệt');
       }
+
+      if (!reason || reason.trim().length < 10) {
+        throw new Error('Lý do huỷ phải có ít nhất 10 ký tự');
+      }
+
+      // Create cancellation request
+      session.status = 'PENDING_CANCELLATION';
+      session.cancellationRequest = {
+        requestedBy: isTutor ? 'TUTOR' : 'STUDENT',
+        reason: reason.trim(),
+        requestedAt: new Date(),
+        status: 'PENDING'
+      };
 
       await learningClass.save();
 
+      // TODO: Send notification to the other party
+      
       return {
         success: true,
-        message: 'Huỷ buổi học thành công',
+        message: 'Yêu cầu huỷ buổi học đã được gửi. Đang chờ phê duyệt.',
         data: {
           sessionNumber: session.sessionNumber,
-          status: session.status
+          status: session.status,
+          cancellationRequest: session.cancellationRequest
         }
       };
     } catch (error: any) {
-      logger.error('Cancel session error:', error);
-      throw new Error(error.message || 'Không thể huỷ buổi học');
+      logger.error('Request cancel session error:', error);
+      throw new Error(error.message || 'Không thể gửi yêu cầu huỷ buổi học');
+    }
+  }
+
+  /**
+   * Respond to cancellation request (approve or reject)
+   */
+  async respondToCancellationRequest(
+    classId: string,
+    sessionNumber: number,
+    userId: string,
+    userRole: string,
+    action: 'APPROVE' | 'REJECT'
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Verify user is part of this class
+      const isTutor = learningClass.tutorId.toString() === userId;
+      const isStudent = learningClass.studentId.toString() === userId;
+      
+      if (!isTutor && !isStudent) {
+        throw new Error('Bạn không có quyền phản hồi yêu cầu này');
+      }
+
+      // Find session
+      const session = learningClass.sessions.find(s => s.sessionNumber === sessionNumber);
+      if (!session) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      if (session.status !== 'PENDING_CANCELLATION' || !session.cancellationRequest) {
+        throw new Error('Không có yêu cầu huỷ buổi học nào đang chờ phê duyệt');
+      }
+
+      // Check if user is the one who should respond
+      const requestedByRole = session.cancellationRequest.requestedBy;
+      const shouldBeRespondedBy = requestedByRole === 'TUTOR' ? 'STUDENT' : 'TUTOR';
+      const currentUserRole = isTutor ? 'TUTOR' : 'STUDENT';
+
+      if (currentUserRole !== shouldBeRespondedBy) {
+        throw new Error('Bạn không thể phản hồi yêu cầu do chính mình tạo');
+      }
+
+      if (action === 'APPROVE') {
+        // Approve cancellation
+        session.status = 'CANCELLED';
+        session.cancellationRequest.status = 'APPROVED';
+        session.notes = (session.notes || '') + `\nLý do huỷ: ${session.cancellationRequest.reason}`;
+        
+        await learningClass.save();
+
+        return {
+          success: true,
+          message: 'Đã chấp nhận huỷ buổi học',
+          data: {
+            sessionNumber: session.sessionNumber,
+            status: session.status
+          }
+        };
+      } else {
+        // Reject cancellation
+        session.status = 'SCHEDULED';
+        session.cancellationRequest.status = 'REJECTED';
+        
+        await learningClass.save();
+
+        return {
+          success: true,
+          message: 'Đã từ chối yêu cầu huỷ buổi học',
+          data: {
+            sessionNumber: session.sessionNumber,
+            status: session.status
+          }
+        };
+      }
+    } catch (error: any) {
+      logger.error('Respond to cancellation request error:', error);
+      throw new Error(error.message || 'Không thể phản hồi yêu cầu huỷ buổi học');
     }
   }
 }

@@ -15,31 +15,32 @@ import { Subject } from '../../models/Subject';
 import { mapTutorPostToResponse } from '../../utils/mappers/tutorPost.mapper';
 import { v4 as uuidv4, validate as validateUUID } from 'uuid';
 import { VerificationRequest } from '../../models/VerificationRequest';
+import { logger } from '../../utils/logger';
 
 export interface ITutorSearchQuery {
   // Core filters
   subjects?: string[];
   teachingMode?: 'ONLINE' | 'OFFLINE' | 'BOTH';
   studentLevel?: string[];
-  
+
   // Price filters
   priceMin?: number;
   priceMax?: number;
-  
+
   // Location filters
   province?: string;
   district?: string;
   ward?: string;
-  
+
   // Search & pagination
   search?: string;
   page?: number;
   limit?: number;
-  
+
   // Sorting
   sortBy?: 'createdAt' | 'pricePerSession' | 'viewCount' | 'contactCount';
   sortOrder?: 'asc' | 'desc';
-  
+
   // Special filters
   featured?: boolean;
   subjectId?: string;
@@ -79,7 +80,7 @@ const DAYS_OF_WEEK_MAP: { [key: string]: number } = {
  */
 function parseAvailabilityString(availabilityString: string): TimeSlot[] {
   if (!availabilityString) return [];
-  
+
   const slots: TimeSlot[] = [];
   // Tách các ngày, đảm bảo không tách sai ở dấu phẩy trong tên
   const dayParts = availabilityString.split(/,\s*(?=[^)]+\()/);
@@ -90,7 +91,7 @@ function parseAvailabilityString(availabilityString: string): TimeSlot[] {
 
     const dayName = dayMatch[1].trim();
     const timesStr = dayMatch[2];
-    
+
     // Tìm key trong map khớp với tên ngày
     const dayKey = Object.keys(DAYS_OF_WEEK_MAP).find(key => dayName.includes(key));
     if (dayKey === undefined) return;
@@ -120,9 +121,9 @@ export class PostService {
    * @returns Object chứa thông tin về việc có trùng lặp hay không.
    */
   static async checkScheduleConflict(
-    userId: string, 
+    userId: string,
     newAvailability: string,
-    excludePostId?: string 
+    excludePostId?: string
   ): Promise<{ hasConflict: boolean; conflictingPostTitle?: string }> {
     try {
       // 1. Xây dựng query để lấy tất cả bài đăng đang hoạt động của sinh viên
@@ -135,7 +136,7 @@ export class PostService {
       if (excludePostId) {
         query._id = { $ne: excludePostId };
       }
-      
+
       const existingActivePosts = await Post.find(query).select('title availability').lean();
 
       if (existingActivePosts.length === 0) {
@@ -145,7 +146,7 @@ export class PostService {
       // 2. Phân tích chuỗi availability của bài đăng mới thành các TimeSlot
       const newSlots = parseAvailabilityString(newAvailability);
       if (newSlots.length === 0) {
-         return { hasConflict: false }; // Không có lịch để kiểm tra
+        return { hasConflict: false }; // Không có lịch để kiểm tra
       }
 
       // 3. Lặp qua từng bài đăng cũ để kiểm tra
@@ -164,9 +165,9 @@ export class PostService {
 
               if (startsBeforeEnd && endsAfterStart) {
                 // Tìm thấy trùng lặp!
-                return { 
-                  hasConflict: true, 
-                  conflictingPostTitle: post.title 
+                return {
+                  hasConflict: true,
+                  conflictingPostTitle: post.title
                 };
               }
             }
@@ -190,10 +191,10 @@ export class PostService {
       const verifiedRequests = await VerificationRequest.find({
         status: 'APPROVED'
       }).select('user_id').lean();
-      
+
       return verifiedRequests
-      .filter(req => req && req.tutorId) // << SỬA Ở ĐÂY (Kiểm tra sự tồn tại của trường)
-      .map(req => req.tutorId.toString());
+        .filter(req => req && req.tutorId) // << SỬA Ở ĐÂY (Kiểm tra sự tồn tại của trường)
+        .map(req => req.tutorId.toString());
     } catch (error) {
       console.error('Error getting verified tutor IDs:', error);
       return [];
@@ -229,8 +230,8 @@ export class PostService {
       // [THÊM] Gọi hàm kiểm tra trước khi tạo
       const conflictCheck = await this.checkScheduleConflict(userId, postData.availability || '');
       if (conflictCheck.hasConflict) {
-        return { 
-          success: false, 
+        return {
+          success: false,
           message: `Lịch học bị trùng với bài đăng đã có: "${conflictCheck.conflictingPostTitle}"`,
           isConflict: true // Thêm cờ để controller biết đây là lỗi trùng lịch
         };
@@ -239,6 +240,9 @@ export class PostService {
       const post = await Post.create({ ...postData, author_id: userId });
       await post.populate({ path: 'author_id', select: 'full_name avatar' });
 
+      // Notify all admins about new post
+      await this.notifyAdminsNewPost(post);
+
       return {
         success: true,
         message: 'Đăng bài thành công, đang chờ duyệt',
@@ -246,6 +250,39 @@ export class PostService {
       };
     } catch (error: any) {
       return { success: false, message: error.message || 'Lỗi khi tạo bài đăng' };
+    }
+  }
+
+  // Helper to notify admins about new post
+  private static async notifyAdminsNewPost(post: any): Promise<void> {
+    try {
+      const NotificationService = (await import('../notification/notification.service')).default;
+
+      // Get all admin users
+      const admins = await User.find({ role: 'ADMIN', status: 'ACTIVE' }).select('_id');
+
+      // Send notification to each admin
+      const notifications = admins.map((admin: any) =>
+        NotificationService.sendNotification({
+          type: 'socket',
+          userId: admin._id.toString(),
+          notificationType: 'SYSTEM',
+          title: 'Bài đăng mới cần duyệt',
+          message: `${(post.author_id as any).full_name} đã tạo bài đăng "${post.title}"`,
+          priority: 'high',
+          actionUrl: `/admin/posts/${post._id}`,
+          data: {
+            postId: post._id,
+            postTitle: post.title,
+            authorName: (post.author_id as any).full_name,
+          },
+        })
+      );
+
+      await Promise.allSettled(notifications);
+    } catch (error) {
+      logger.error('Failed to notify admins about new post:', error);
+      // Don't throw - notification failure shouldn't block post creation
     }
   }
 
@@ -331,8 +368,8 @@ export class PostService {
       if (updateData.availability) {
         const conflictCheck = await this.checkScheduleConflict(userId, updateData.availability, postId);
         if (conflictCheck.hasConflict) {
-          return { 
-            success: false, 
+          return {
+            success: false,
             message: `Lịch học bị trùng với bài đăng đã có: "${conflictCheck.conflictingPostTitle}"`,
             isConflict: true
           };
@@ -522,7 +559,7 @@ export class PostService {
         .lean();
 
 
-        // ✅ LOẠI BỎ: Bước lọc `validTutors` thừa và gây lỗi trong code. Việc lọc đã được DB thực hiện.
+      // ✅ LOẠI BỎ: Bước lọc `validTutors` thừa và gây lỗi trong code. Việc lọc đã được DB thực hiện.
       if (potentialTutors.length === 0) {
         return {
           success: true,
@@ -611,7 +648,7 @@ export class PostService {
       };
 
       // ✅ 11. BUILD RESPONSE
-      const averageCompatibility = paginatedTutors.length > 0 
+      const averageCompatibility = paginatedTutors.length > 0
         ? Math.round(paginatedTutors.reduce((sum, t) => sum + t.compatibility, 0) / paginatedTutors.length)
         : 0;
 
@@ -628,7 +665,7 @@ export class PostService {
               isOnline: studentPost.is_online,
               priceRange: studentPost.hourly_rate
             },
-            filtersApplied: Object.keys(searchQuery).filter(key => 
+            filtersApplied: Object.keys(searchQuery).filter(key =>
               searchQuery[key as keyof ITutorSearchQuery] !== undefined &&
               !['page', 'limit', 'sortBy', 'sortOrder'].includes(key)
             ),
@@ -642,8 +679,8 @@ export class PostService {
 
     } catch (error: any) {
       console.error('❌ Smart Search Error:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         message: error.message || 'Lỗi khi tìm kiếm gia sư thông minh'
       };
     }
@@ -696,7 +733,7 @@ export class PostService {
 
       // Execute query
       const skip = (page - 1) * limit;
-      
+
       const [tutorPosts, totalCount] = await Promise.all([
         TutorPost.find(baseFilter)
           .populate('subjects', 'name category')
@@ -738,9 +775,9 @@ export class PostService {
   // ✅ ADD: Get Featured Tutors
   static async getFeaturedTutors(limit: number = 8): Promise<any> {
     try {
-      const tutorPosts = await TutorPost.find({ 
+      const tutorPosts = await TutorPost.find({
         status: 'ACTIVE',
-        isFeatured: true 
+        isFeatured: true
       })
         .populate('subjects', 'name category')
         .populate('tutorId', 'full_name email avatar_url')
@@ -769,7 +806,7 @@ export class PostService {
     try {
       const skip = (page - 1) * limit;
       const [tutorPosts, totalCount] = await Promise.all([
-        TutorPost.find({ 
+        TutorPost.find({
           status: 'ACTIVE',
           subjects: subjectId
         })
@@ -779,7 +816,7 @@ export class PostService {
           .skip(skip)
           .limit(limit)
           .lean(),
-        TutorPost.countDocuments({ 
+        TutorPost.countDocuments({
           status: 'ACTIVE',
           subjects: subjectId
         })
@@ -814,9 +851,9 @@ export class PostService {
   // ✅ ADD: Get Tutors by Location
   static async getTutorsByLocation(province?: string, district?: string, page: number = 1, limit: number = 12): Promise<any> {
     try {
-      
+
       const locationFilter: any = { status: 'ACTIVE' };
-      
+
       if (province) {
         locationFilter['address.province'] = province;
       }
@@ -825,7 +862,7 @@ export class PostService {
       }
 
       const skip = (page - 1) * limit;
-      
+
       const [tutorPosts, totalCount] = await Promise.all([
         TutorPost.find(locationFilter)
           .populate('subjects', 'name category')
@@ -866,7 +903,7 @@ export class PostService {
   // ✅ ADD: Get Tutor by ID
   static async getTutorById(tutorPostId: string): Promise<any> {
     try {
-      
+
       const tutorPost = await TutorPost.findById(tutorPostId)
         .populate('subjects', 'name category description')
         .populate({
@@ -907,9 +944,9 @@ export class PostService {
   // ✅ ADD: Contact Tutor
   static async contactTutor(tutorPostId: string): Promise<any> {
     try {
-      
+
       const tutorPost = await TutorPost.findById(tutorPostId);
-      
+
       if (!tutorPost) {
         return {
           success: false,
@@ -939,7 +976,7 @@ export class PostService {
 
   // ✅ ADD: Get Search Filter Options
   static async getSearchFilterOptions(): Promise<any> {
-    try { 
+    try {
       const [subjects, studentLevels] = await Promise.all([
         Subject.find({ isActive: true }).select('_id name category').sort({ name: 1 }).lean(),
         TutorPost.distinct('studentLevel').then(levels => levels.filter(Boolean))
@@ -984,18 +1021,18 @@ export class PostService {
     if (studentPost.subjects && studentPost.subjects.length > 0 && tutorPost.subjects) {
       const studentSubjects = Array.isArray(studentPost.subjects) ? studentPost.subjects : [studentPost.subjects];
       const tutorSubjects = tutorPost.subjects.map((s: any) => s.name || s.toString());
-      
-      const matchingSubjects = studentSubjects.filter((subject: string) => 
-        tutorSubjects.some((tutorSubject: string) => 
+
+      const matchingSubjects = studentSubjects.filter((subject: string) =>
+        tutorSubjects.some((tutorSubject: string) =>
           tutorSubject.toLowerCase().includes(subject.toLowerCase()) ||
           subject.toLowerCase().includes(tutorSubject.toLowerCase())
         )
       );
-      
-      const subjectScore = studentSubjects.length > 0 
-        ? (matchingSubjects.length / studentSubjects.length) * 40 
+
+      const subjectScore = studentSubjects.length > 0
+        ? (matchingSubjects.length / studentSubjects.length) * 40
         : 20;
-      
+
       totalScore += subjectScore;
     } else {
       totalScore += 20; // Base score if no subjects specified
@@ -1006,18 +1043,18 @@ export class PostService {
     if (studentPost.grade_levels && studentPost.grade_levels.length > 0 && tutorPost.studentLevel) {
       const studentGrades = Array.isArray(studentPost.grade_levels) ? studentPost.grade_levels : [studentPost.grade_levels];
       const tutorLevels = Array.isArray(tutorPost.studentLevel) ? tutorPost.studentLevel : [tutorPost.studentLevel];
-      
-      const matchingGrades = studentGrades.filter((grade: string) => 
-        tutorLevels.some((level: string) => 
+
+      const matchingGrades = studentGrades.filter((grade: string) =>
+        tutorLevels.some((level: string) =>
           level.toLowerCase().includes(grade.toLowerCase()) ||
           grade.toLowerCase().includes(level.toLowerCase())
         )
       );
-      
-      const gradeScore = studentGrades.length > 0 
-        ? (matchingGrades.length / studentGrades.length) * 25 
+
+      const gradeScore = studentGrades.length > 0
+        ? (matchingGrades.length / studentGrades.length) * 25
         : 15;
-      
+
       totalScore += gradeScore;
     } else {
       totalScore += 15; // Base score
@@ -1027,7 +1064,7 @@ export class PostService {
     maxPossibleScore += 20;
     const studentMode = studentPost.is_online ? 'ONLINE' : 'OFFLINE';
     let modeScore = 10; // Base score
-    
+
     if (tutorPost.teachingMode) {
       if (tutorPost.teachingMode === studentMode) {
         modeScore = 20; // Perfect match
@@ -1037,29 +1074,29 @@ export class PostService {
         modeScore = 8; // Mismatch but still some points
       }
     }
-    
+
     totalScore += modeScore;
     // 4. Price matching (15 points)
     maxPossibleScore += 15;
     let priceScore = 10; // Base score
-    
-    if (studentPost.hourly_rate && 
-        studentPost.hourly_rate.min !== undefined && 
-        studentPost.hourly_rate.max !== undefined &&
-        tutorPost.pricePerSession !== undefined) {
-      
-      if (tutorPost.pricePerSession >= studentPost.hourly_rate.min && 
-          tutorPost.pricePerSession <= studentPost.hourly_rate.max) {
+
+    if (studentPost.hourly_rate &&
+      studentPost.hourly_rate.min !== undefined &&
+      studentPost.hourly_rate.max !== undefined &&
+      tutorPost.pricePerSession !== undefined) {
+
+      if (tutorPost.pricePerSession >= studentPost.hourly_rate.min &&
+        tutorPost.pricePerSession <= studentPost.hourly_rate.max) {
         priceScore = 15; // Perfect match - within range
       } else {
         // Calculate based on how far outside the range
         const midPoint = (studentPost.hourly_rate.min + studentPost.hourly_rate.max) / 2;
         const difference = Math.abs(tutorPost.pricePerSession - midPoint);
         const maxDifference = Math.max(
-          midPoint - studentPost.hourly_rate.min, 
+          midPoint - studentPost.hourly_rate.min,
           studentPost.hourly_rate.max - midPoint
         );
-        
+
         if (maxDifference > 0) {
           priceScore = Math.max(5, 15 * (1 - difference / (maxDifference * 2)));
         }
@@ -1074,23 +1111,23 @@ export class PostService {
   private static getDetailedMatchInfo(studentPost: any, tutorPost: any) {
     // Subject match percentage
     const subjectMatch = studentPost.subjects && studentPost.subjects.length > 0
-      ? (studentPost.subjects.filter((s: string) => 
-          tutorPost.subjects.some((ts: any) => ts.name === s)
-        ).length / studentPost.subjects.length) * 100
+      ? (studentPost.subjects.filter((s: string) =>
+        tutorPost.subjects.some((ts: any) => ts.name === s)
+      ).length / studentPost.subjects.length) * 100
       : 100;
 
     // Grade level match percentage
     const gradeMatch = studentPost.grade_levels && studentPost.grade_levels.length > 0
-      ? (studentPost.grade_levels.filter((g: string) => 
-          tutorPost.studentLevel.includes(g)
-        ).length / studentPost.grade_levels.length) * 100
+      ? (studentPost.grade_levels.filter((g: string) =>
+        tutorPost.studentLevel.includes(g)
+      ).length / studentPost.grade_levels.length) * 100
       : 100;
 
     // Price compatibility
     let priceMatch = 100;
     if (studentPost.hourly_rate && studentPost.hourly_rate.min && studentPost.hourly_rate.max) {
-      if (tutorPost.pricePerSession >= studentPost.hourly_rate.min && 
-          tutorPost.pricePerSession <= studentPost.hourly_rate.max) {
+      if (tutorPost.pricePerSession >= studentPost.hourly_rate.min &&
+        tutorPost.pricePerSession <= studentPost.hourly_rate.max) {
         priceMatch = 100;
       } else {
         const midPoint = (studentPost.hourly_rate.min + studentPost.hourly_rate.max) / 2;

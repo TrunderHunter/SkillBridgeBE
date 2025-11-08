@@ -39,7 +39,7 @@ export interface ILearningSession {
   sessionNumber: number;
   scheduledDate: Date;
   duration: number; // minutes
-  status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'MISSED';
+  status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'MISSED' | 'PENDING_CANCELLATION';
   actualStartTime?: Date;
   actualEndTime?: Date;
   notes?: string;
@@ -49,6 +49,14 @@ export interface ILearningSession {
   
   // NEW: Homework management
   homework?: ISessionHomework;
+  
+  // NEW: Cancellation request tracking
+  cancellationRequest?: {
+    requestedBy: 'TUTOR' | 'STUDENT';
+    reason: string;
+    requestedAt: Date;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  };
   
   studentFeedback?: {
     rating: number; // 1-5
@@ -143,7 +151,7 @@ const LearningSessionSchema = new Schema<ILearningSession>({
   duration: { type: Number, required: true },
   status: { 
     type: String, 
-    enum: ['SCHEDULED', 'COMPLETED', 'CANCELLED', 'MISSED'],
+    enum: ['SCHEDULED', 'COMPLETED', 'CANCELLED', 'MISSED', 'PENDING_CANCELLATION'],
     default: 'SCHEDULED'
   },
   actualStartTime: Date,
@@ -176,6 +184,21 @@ const LearningSessionSchema = new Schema<ILearningSession>({
       score: { type: Number, min: 0, max: 10 },
       feedback: { type: String, maxlength: 500 },
       gradedAt: Date,
+    },
+  },
+  
+  // NEW: Cancellation request tracking
+  cancellationRequest: {
+    requestedBy: {
+      type: String,
+      enum: ['TUTOR', 'STUDENT']
+    },
+    reason: { type: String, maxlength: 500 },
+    requestedAt: Date,
+    status: {
+      type: String,
+      enum: ['PENDING', 'APPROVED', 'REJECTED'],
+      default: 'PENDING'
     },
   },
   

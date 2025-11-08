@@ -89,12 +89,20 @@ router.post(
   ClassController.gradeHomework
 );
 
-// Cancel session
+// Request to cancel session (both tutor and student)
 router.post(
-  '/:classId/sessions/:sessionNumber/cancel',
-  requireTutorRole,
+  '/:classId/sessions/:sessionNumber/cancel/request',
+  authenticateToken, // Both roles allowed
   handleValidationErrors,
-  ClassController.cancelSession
+  ClassController.requestCancelSession
+);
+
+// Respond to cancellation request
+router.post(
+  '/:classId/sessions/:sessionNumber/cancel/respond',
+  authenticateToken, // Both roles allowed
+  handleValidationErrors,
+  ClassController.respondToCancellationRequest
 );
 
 // Add reviews
