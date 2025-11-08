@@ -2,7 +2,11 @@ import { Request, Response } from 'express';
 import { PostService, ITutorSearchQuery } from '../../services/post';
 import { sendSuccess, sendError } from '../../utils/response';
 import { validationResult } from 'express-validator';
-import { IPostInput, IPostUpdateInput, IPostReviewInput } from '../../types/post.types';
+import {
+  IPostInput,
+  IPostUpdateInput,
+  IPostReviewInput,
+} from '../../types/post.types';
 import { v4 as uuidv4, validate as validateUUID } from 'uuid';
 
 export interface CreatePostRequest extends Request {
@@ -19,7 +23,10 @@ export interface ReviewPostRequest extends Request {
 
 export class PostController {
   // Tạo bài đăng mới
-  static async createPost(req: CreatePostRequest, res: Response): Promise<void> {
+  static async createPost(
+    req: CreatePostRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const postData: IPostInput = req.body;
@@ -34,6 +41,72 @@ export class PostController {
       }
     } catch (error: any) {
       sendError(res, error.message || 'Lỗi khi tạo bài đăng', undefined, 500);
+    }
+  }
+
+  // Lấy danh sách bài đăng học viên đã được duyệt (dành cho Gia sư đã xác thực)
+  static async getApprovedStudentPostsForTutor(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const {
+        subjects,
+        grade_levels,
+        is_online,
+        author_id,
+        search_term,
+        min_hourly_rate,
+        max_hourly_rate,
+        page,
+        limit,
+        sort_by,
+        sort_order,
+      } = req.query;
+
+      const filterOptions: any = {};
+      if (subjects)
+        filterOptions.subjects = Array.isArray(subjects)
+          ? subjects
+          : [subjects];
+      if (grade_levels)
+        filterOptions.grade_levels = Array.isArray(grade_levels)
+          ? grade_levels
+          : [grade_levels];
+      if (is_online !== undefined)
+        filterOptions.is_online = is_online === 'true';
+      if (author_id) filterOptions.author_id = author_id;
+      if (search_term) filterOptions.search_term = search_term;
+      if (min_hourly_rate && !isNaN(Number(min_hourly_rate))) {
+        filterOptions.min_hourly_rate = parseFloat(min_hourly_rate as string);
+      }
+      if (max_hourly_rate && !isNaN(Number(max_hourly_rate))) {
+        filterOptions.max_hourly_rate = parseFloat(max_hourly_rate as string);
+      }
+
+      const paginationOptions: any = {};
+      if (page) paginationOptions.page = parseInt(page as string, 10);
+      if (limit) paginationOptions.limit = parseInt(limit as string, 10);
+      if (sort_by) paginationOptions.sort_by = sort_by;
+      if (sort_order) paginationOptions.sort_order = sort_order;
+
+      const result = await PostService.getApprovedStudentPostsForTutor(
+        filterOptions,
+        paginationOptions
+      );
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error: any) {
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy bài đăng đã duyệt cho gia sư',
+        undefined,
+        500
+      );
     }
   }
 
@@ -56,9 +129,16 @@ export class PostController {
       // Xử lý các tham số filter
       const filterOptions: any = {};
       if (status) filterOptions.status = status;
-      if (subjects) filterOptions.subjects = Array.isArray(subjects) ? subjects : [subjects];
-      if (grade_levels) filterOptions.grade_levels = Array.isArray(grade_levels) ? grade_levels : [grade_levels];
-      if (is_online !== undefined) filterOptions.is_online = is_online === 'true';
+      if (subjects)
+        filterOptions.subjects = Array.isArray(subjects)
+          ? subjects
+          : [subjects];
+      if (grade_levels)
+        filterOptions.grade_levels = Array.isArray(grade_levels)
+          ? grade_levels
+          : [grade_levels];
+      if (is_online !== undefined)
+        filterOptions.is_online = is_online === 'true';
       if (author_id) filterOptions.author_id = author_id;
       if (search_term) filterOptions.search_term = search_term;
 
@@ -69,7 +149,10 @@ export class PostController {
       if (sort_by) paginationOptions.sort_by = sort_by;
       if (sort_order) paginationOptions.sort_order = sort_order;
 
-      const result = await PostService.getPosts(filterOptions, paginationOptions);
+      const result = await PostService.getPosts(
+        filterOptions,
+        paginationOptions
+      );
 
       if (result.success) {
         sendSuccess(res, result.message, result.data);
@@ -77,7 +160,12 @@ export class PostController {
         sendError(res, result.message, undefined, 400);
       }
     } catch (error: any) {
-      sendError(res, error.message || 'Lỗi khi lấy danh sách bài đăng', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy danh sách bài đăng',
+        undefined,
+        500
+      );
     }
   }
 
@@ -100,9 +188,16 @@ export class PostController {
       // Xử lý các tham số filter
       const filterOptions: any = {};
       if (status) filterOptions.status = status;
-      if (subjects) filterOptions.subjects = Array.isArray(subjects) ? subjects : [subjects];
-      if (grade_levels) filterOptions.grade_levels = Array.isArray(grade_levels) ? grade_levels : [grade_levels];
-      if (is_online !== undefined) filterOptions.is_online = is_online === 'true';
+      if (subjects)
+        filterOptions.subjects = Array.isArray(subjects)
+          ? subjects
+          : [subjects];
+      if (grade_levels)
+        filterOptions.grade_levels = Array.isArray(grade_levels)
+          ? grade_levels
+          : [grade_levels];
+      if (is_online !== undefined)
+        filterOptions.is_online = is_online === 'true';
       if (author_id) filterOptions.author_id = author_id;
       if (search_term) filterOptions.search_term = search_term;
 
@@ -113,7 +208,10 @@ export class PostController {
       if (sort_by) paginationOptions.sort_by = sort_by;
       if (sort_order) paginationOptions.sort_order = sort_order;
 
-      const result = await PostService.getPosts(filterOptions, paginationOptions);
+      const result = await PostService.getPosts(
+        filterOptions,
+        paginationOptions
+      );
 
       if (result.success) {
         sendSuccess(res, result.message, result.data);
@@ -121,7 +219,12 @@ export class PostController {
         sendError(res, result.message, undefined, 400);
       }
     } catch (error: any) {
-      sendError(res, error.message || 'Lỗi khi lấy danh sách bài đăng', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy danh sách bài đăng',
+        undefined,
+        500
+      );
     }
   }
 
@@ -137,7 +240,12 @@ export class PostController {
         sendError(res, result.message, undefined, 404);
       }
     } catch (error: any) {
-      sendError(res, error.message || 'Lỗi khi lấy chi tiết bài đăng', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy chi tiết bài đăng',
+        undefined,
+        500
+      );
     }
   }
 
@@ -154,12 +262,20 @@ export class PostController {
         sendError(res, result.message, undefined, 400);
       }
     } catch (error: any) {
-      sendError(res, error.message || 'Lỗi khi lấy danh sách bài đăng', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy danh sách bài đăng',
+        undefined,
+        500
+      );
     }
   }
 
   // Cập nhật bài đăng
-  static async updatePost(req: UpdatePostRequest, res: Response): Promise<void> {
+  static async updatePost(
+    req: UpdatePostRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user!.id;
       const postId = req.params.id;
@@ -174,7 +290,12 @@ export class PostController {
         sendError(res, result.message, undefined, statusCode);
       }
     } catch (error: any) {
-      sendError(res, error.message || 'Lỗi khi cập nhật bài đăng', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi cập nhật bài đăng',
+        undefined,
+        500
+      );
     }
   }
 
@@ -197,7 +318,10 @@ export class PostController {
   }
 
   // Admin duyệt bài đăng
-  static async reviewPost(req: ReviewPostRequest, res: Response): Promise<void> {
+  static async reviewPost(
+    req: ReviewPostRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const adminId = req.user!.id;
       const postId = req.params.id;
@@ -239,31 +363,50 @@ export class PostController {
           postId: trimmedPostId,
           length: trimmedPostId.length,
           isUUID: isValidUUID,
-          isObjectId: isValidObjectId
+          isObjectId: isValidObjectId,
         });
-        return sendError(res, 'ID bài đăng phải là UUID hoặc MongoDB ObjectId hợp lệ', undefined, 400);
+        return sendError(
+          res,
+          'ID bài đăng phải là UUID hoặc MongoDB ObjectId hợp lệ',
+          undefined,
+          400
+        );
       }
 
       const {
-        subjects, teachingMode, studentLevel, priceMin, priceMax,
-        province, district, ward, search, page, limit, sort_by, sort_order,
+        subjects,
+        teachingMode,
+        studentLevel,
+        priceMin,
+        priceMax,
+        province,
+        district,
+        ward,
+        search,
+        page,
+        limit,
+        sort_by,
+        sort_order,
       } = req.query;
 
       const searchQuery: ITutorSearchQuery = {};
 
       if (subjects) {
         searchQuery.subjects = Array.isArray(subjects)
-          ? subjects as string[]
-          : [subjects] as string[];
+          ? (subjects as string[])
+          : ([subjects] as string[]);
       }
 
       if (studentLevel) {
         searchQuery.studentLevel = Array.isArray(studentLevel)
-          ? studentLevel as string[]
-          : [studentLevel] as string[];
+          ? (studentLevel as string[])
+          : ([studentLevel] as string[]);
       }
 
-      if (teachingMode && ['ONLINE', 'OFFLINE', 'BOTH'].includes(teachingMode as string)) {
+      if (
+        teachingMode &&
+        ['ONLINE', 'OFFLINE', 'BOTH'].includes(teachingMode as string)
+      ) {
         searchQuery.teachingMode = teachingMode as any;
       }
 
@@ -292,16 +435,29 @@ export class PostController {
       }
 
       const paginationOptions: any = {
-        page: page && !isNaN(Number(page)) ? Math.max(1, parseInt(page as string, 10)) : 1,
-        limit: limit && !isNaN(Number(limit)) ? Math.min(50, Math.max(1, parseInt(limit as string, 10))) : 12,
-        sort_by: sort_by && ['compatibility', 'createdAt', 'pricePerSession', 'viewCount'].includes(sort_by as string)
-          ? sort_by as string
-          : 'compatibility',
-        sort_order: sort_order && ['asc', 'desc'].includes(sort_order as string)
-          ? sort_order as string
-          : 'desc'
+        page:
+          page && !isNaN(Number(page))
+            ? Math.max(1, parseInt(page as string, 10))
+            : 1,
+        limit:
+          limit && !isNaN(Number(limit))
+            ? Math.min(50, Math.max(1, parseInt(limit as string, 10)))
+            : 12,
+        sort_by:
+          sort_by &&
+          [
+            'compatibility',
+            'createdAt',
+            'pricePerSession',
+            'viewCount',
+          ].includes(sort_by as string)
+            ? (sort_by as string)
+            : 'compatibility',
+        sort_order:
+          sort_order && ['asc', 'desc'].includes(sort_order as string)
+            ? (sort_order as string)
+            : 'desc',
       };
-
 
       const result = await PostService.smartSearchTutorsWithFilters(
         trimmedPostId,
@@ -317,9 +473,14 @@ export class PostController {
       console.error('❌ Smart Search Controller Error:', {
         message: error.message,
         stack: error.stack,
-        postId: req.params.id
+        postId: req.params.id,
       });
-      sendError(res, error.message || 'Lỗi server khi tìm kiếm gia sư thông minh', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi server khi tìm kiếm gia sư thông minh',
+        undefined,
+        500
+      );
     }
   }
 
@@ -344,21 +505,21 @@ export class PostController {
         page,
         limit,
         sortBy,
-        sortOrder
+        sortOrder,
       } = req.query;
 
       const searchQuery: ITutorSearchQuery = {};
 
       if (subjects) {
         searchQuery.subjects = Array.isArray(subjects)
-          ? subjects as string[]
-          : [subjects] as string[];
+          ? (subjects as string[])
+          : ([subjects] as string[]);
       }
 
       if (studentLevel) {
         searchQuery.studentLevel = Array.isArray(studentLevel)
-          ? studentLevel as string[]
-          : [studentLevel] as string[];
+          ? (studentLevel as string[])
+          : ([studentLevel] as string[]);
       }
 
       if (teachingMode) searchQuery.teachingMode = teachingMode as any;
@@ -382,7 +543,12 @@ export class PostController {
       }
     } catch (error: any) {
       console.error('❌ Search tutors controller error:', error);
-      sendError(res, error.message || 'Lỗi khi tìm kiếm gia sư', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi tìm kiếm gia sư',
+        undefined,
+        500
+      );
     }
   }
 
@@ -399,7 +565,12 @@ export class PostController {
       }
     } catch (error: any) {
       console.error('❌ Get featured tutors controller error:', error);
-      sendError(res, error.message || 'Lỗi khi lấy gia sư nổi bật', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy gia sư nổi bật',
+        undefined,
+        500
+      );
     }
   }
 
@@ -413,7 +584,11 @@ export class PostController {
       }
       const pageNum = page ? parseInt(page as string, 10) : 1;
       const limitNum = limit ? parseInt(limit as string, 10) : 12;
-      const result = await PostService.getTutorsBySubject(subjectId, pageNum, limitNum);
+      const result = await PostService.getTutorsBySubject(
+        subjectId,
+        pageNum,
+        limitNum
+      );
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
@@ -421,7 +596,12 @@ export class PostController {
       }
     } catch (error: any) {
       console.error('❌ Get tutors by subject controller error:', error);
-      sendError(res, error.message || 'Lỗi khi lấy gia sư theo môn học', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy gia sư theo môn học',
+        undefined,
+        500
+      );
     }
   }
 
@@ -444,7 +624,12 @@ export class PostController {
       }
     } catch (error: any) {
       console.error('❌ Get tutors by location controller error:', error);
-      sendError(res, error.message || 'Lỗi khi lấy gia sư theo khu vực', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy gia sư theo khu vực',
+        undefined,
+        500
+      );
     }
   }
 
@@ -459,11 +644,21 @@ export class PostController {
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
-        sendError(res, result.message, undefined, result.message.includes('Không tìm thấy') ? 404 : 400);
+        sendError(
+          res,
+          result.message,
+          undefined,
+          result.message.includes('Không tìm thấy') ? 404 : 400
+        );
       }
     } catch (error: any) {
       console.error('❌ Get tutor by ID controller error:', error);
-      sendError(res, error.message || 'Lỗi khi lấy chi tiết gia sư', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy chi tiết gia sư',
+        undefined,
+        500
+      );
     }
   }
 
@@ -487,7 +682,10 @@ export class PostController {
   }
 
   // Get Search Filter Options
-  static async getSearchFilterOptions(req: Request, res: Response): Promise<void> {
+  static async getSearchFilterOptions(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const result = await PostService.getSearchFilterOptions();
       if (result.success) {
@@ -497,7 +695,12 @@ export class PostController {
       }
     } catch (error: any) {
       console.error('❌ Get search filter options controller error:', error);
-      sendError(res, error.message || 'Lỗi khi lấy tùy chọn bộ lọc', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy tùy chọn bộ lọc',
+        undefined,
+        500
+      );
     }
   }
 }

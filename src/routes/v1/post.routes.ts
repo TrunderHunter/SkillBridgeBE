@@ -1,13 +1,22 @@
 import express from 'express';
 import { PostController } from '../../controllers/post';
-import { handleValidationErrors, authenticateToken, requireRole } from '../../middlewares';
+import {
+  requireTutorRole,
+  requireApprovedTutorProfile,
+} from '../../middlewares/tutor.middleware';
+import {
+  handleValidationErrors,
+  authenticateToken,
+  requireRole,
+} from '../../middlewares';
 import { UserRole } from '../../types/user.types';
 import {
   createPostValidator,
   updatePostValidator,
   reviewPostValidator,
   getPostsValidator,
-  tutorSearchValidator
+  tutorSearchValidator,
+  approvedStudentPostsValidator,
 } from '../../validators/post.validator';
 
 const router = express.Router();
@@ -15,39 +24,43 @@ const router = express.Router();
 // ==================== TUTOR SEARCH APIs (ENHANCED) ====================
 
 // ✅ MAIN API: Universal tutor search with all filters
-router.get('/tutors/search', 
+router.get(
+  '/tutors/search',
   tutorSearchValidator,
   handleValidationErrors,
   PostController.searchTutors
 );
 
 // ✅ Get search filter options (for dropdowns)
-router.get('/tutors/filters', 
-  PostController.getSearchFilterOptions
-);
+router.get('/tutors/filters', PostController.getSearchFilterOptions);
 
 // ✅ NEW: Get featured tutors (homepage, landing page)
-router.get('/tutors/featured', 
-  PostController.getFeaturedTutors
-);
+router.get('/tutors/featured', PostController.getFeaturedTutors);
 
 // ✅ NEW: Get tutors by subject (subject detail page)
-router.get('/tutors/subject/:subjectId', 
-  PostController.getTutorsBySubject
-);
+router.get('/tutors/subject/:subjectId', PostController.getTutorsBySubject);
 
 // ✅ NEW: Get tutors by location (location browse page)
-router.get('/tutors/location', 
-  PostController.getTutorsByLocation
+router.get('/tutors/location', PostController.getTutorsByLocation);
+
+// ==================== NEW: Approved Student Posts for Verified Tutors ====================
+// NOTE: Đặt TRƯỚC '/tutors/:tutorId' để tránh bị khớp nhầm vào param :tutorId
+router.get(
+  '/tutors/student-posts',
+  authenticateToken,
+  requireTutorRole,
+  requireApprovedTutorProfile,
+  approvedStudentPostsValidator,
+  handleValidationErrors,
+  PostController.getApprovedStudentPostsForTutor
 );
 
 // ✅ Get tutor detail + increment view count
-router.get('/tutors/:tutorId', 
-  PostController.getTutorById
-);
+router.get('/tutors/:tutorId', PostController.getTutorById);
 
 // ✅ Contact tutor (increment contact count)
-router.post('/tutors/:tutorId/contact', 
+router.post(
+  '/tutors/:tutorId/contact',
   authenticateToken, // ✅ FIX: Cần auth để track contact
   PostController.contactTutor
 );
@@ -58,14 +71,19 @@ router.post('/tutors/:tutorId/contact',
 router.post(
   '/',
   authenticateToken,
-  requireRole(UserRole.STUDENT), 
+  requireRole(UserRole.STUDENT),
   createPostValidator,
   handleValidationErrors,
   PostController.createPost
 );
 
 // Lấy danh sách bài đăng (công khai, chỉ bài đã duyệt)
-router.get('/', getPostsValidator, handleValidationErrors, PostController.getPosts);
+router.get(
+  '/',
+  getPostsValidator,
+  handleValidationErrors,
+  PostController.getPosts
+);
 
 // Admin lấy tất cả bài đăng (có thể filter theo status)
 router.get(
