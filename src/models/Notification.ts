@@ -1,10 +1,10 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface INotification extends Document {
-  userId: mongoose.Types.ObjectId;
-  type: 'CONTACT_REQUEST' | 'CLASS_CREATED' | 'HOMEWORK_ASSIGNED' | 'HOMEWORK_SUBMITTED' | 
-        'HOMEWORK_GRADED' | 'ATTENDANCE_MARKED' | 'CANCELLATION_REQUESTED' | 
-        'CANCELLATION_RESPONDED' | 'MESSAGE' | 'SYSTEM';
+  userId: string; // Changed from ObjectId to String to match User UUID format
+  type: 'CONTACT_REQUEST' | 'CLASS_CREATED' | 'HOMEWORK_ASSIGNED' | 'HOMEWORK_SUBMITTED' |
+  'HOMEWORK_GRADED' | 'ATTENDANCE_MARKED' | 'CANCELLATION_REQUESTED' |
+  'CANCELLATION_RESPONDED' | 'MESSAGE' | 'SYSTEM';
   title: string;
   message: string;
   data?: any;
@@ -18,8 +18,7 @@ export interface INotification extends Document {
 const NotificationSchema = new Schema<INotification>(
   {
     userId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
+      type: String, // Changed from ObjectId to String to match User UUID format
       required: true,
       index: true,
     },

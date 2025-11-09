@@ -3,6 +3,7 @@ import { Conversation, IConversation } from '../../models/Conversation';
 import { ContactRequest } from '../../models/ContactRequest';
 import { User } from '../../models/User';
 import { getSocketInstance } from '../../config/socket';
+import { notifyNewMessage } from '../notification/notification.helpers';
 
 export interface ICreateMessageInput {
   conversationId: string;
@@ -108,8 +109,8 @@ export class MessageService {
       }
 
       // Determine receiver
-      const receiverId = conversation.studentId === messageData.senderId 
-        ? conversation.tutorId 
+      const receiverId = conversation.studentId === messageData.senderId
+        ? conversation.tutorId
         : conversation.studentId;
 
       // Create message
@@ -161,6 +162,25 @@ export class MessageService {
 
         // Send to conversation room if both users are online
         io.to(`conversation-${messageData.conversationId}`).emit('message-received', populatedMessage);
+      }
+
+      // Send notification to receiver
+      try {
+        const sender = await User.findById(messageData.senderId);
+        const senderName = sender?.full_name || sender?.email || 'Người dùng';
+        const messagePreview = messageData.content.length > 50
+          ? messageData.content.substring(0, 50) + '...'
+          : messageData.content;
+
+        await notifyNewMessage(
+          receiverId.toString(),
+          senderName,
+          messagePreview,
+          messageData.conversationId
+        );
+      } catch (notifError) {
+        console.error('Failed to send notification:', notifError);
+        // Don't throw error, just log it
       }
 
       return {

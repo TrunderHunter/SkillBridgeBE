@@ -2,6 +2,13 @@ import { LearningClass } from '../../models/LearningClass';
 import { User } from '../../models/User';
 import { Subject } from '../../models/Subject';
 import { logger } from '../../utils/logger';
+import {
+  notifyHomeworkAssigned,
+  notifyHomeworkSubmitted,
+  notifyHomeworkGraded,
+  notifyCancellationRequested,
+  notifyCancellationResponded,
+} from '../notification/notification.helpers';
 
 class ClassService {
   /**
@@ -62,11 +69,11 @@ class ClassService {
 
       // Check if user is authorized to view this class
       // Fix: Extract IDs properly from populated objects
-      const tutorId = typeof learningClass.tutorId === 'object' ? 
+      const tutorId = typeof learningClass.tutorId === 'object' ?
         (learningClass.tutorId as any)._id.toString() :
         learningClass.tutorId.toString();
-        
-      const studentId = typeof learningClass.studentId === 'object' ? 
+
+      const studentId = typeof learningClass.studentId === 'object' ?
         (learningClass.studentId as any)._id.toString() :
         learningClass.studentId.toString();
 
@@ -113,7 +120,7 @@ class ClassService {
 
       // Update status
       learningClass.status = status as 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'PAUSED';
-      
+
       // If completed, set actual end date
       if (status === 'COMPLETED') {
         learningClass.actualEndDate = new Date();
@@ -224,11 +231,11 @@ class ClassService {
       }
 
       // Check authorization
-      const tutorId = typeof learningClass.tutorId === 'object' ? 
+      const tutorId = typeof learningClass.tutorId === 'object' ?
         (learningClass.tutorId as any)._id.toString() :
         learningClass.tutorId.toString();
-        
-      const studentId = typeof learningClass.studentId === 'object' ? 
+
+      const studentId = typeof learningClass.studentId === 'object' ?
         (learningClass.studentId as any)._id.toString() :
         learningClass.studentId.toString();
 
@@ -362,7 +369,7 @@ class ClassService {
 
       // Check if attendance time is valid (15 mins before to session end)
       const canAttendTime = new Date(scheduledDate.getTime() - 15 * 60000);
-      
+
       if (now < canAttendTime) {
         throw new Error('Chưa đến giờ điểm danh. Bạn có thể điểm danh từ 15 phút trước giờ học.');
       }
@@ -396,7 +403,7 @@ class ClassService {
 
       // Check if both attended -> auto complete session
       const bothAttended = session.attendance.tutorAttended && session.attendance.studentAttended;
-      
+
       if (bothAttended && session.status === 'SCHEDULED') {
         session.status = 'COMPLETED';
         session.actualStartTime = session.actualStartTime || now;
@@ -485,6 +492,27 @@ class ClassService {
 
       await learningClass.save();
 
+      // Send notification to student
+      try {
+        const tutor = await User.findById(userId);
+        const tutorName = tutor?.full_name || tutor?.email || 'Gia sư';
+        const subject = await Subject.findById(learningClass.subject);
+        const className = subject?.name || learningClass.title || 'Lớp học';
+
+        await notifyHomeworkAssigned(
+          learningClass.studentId.toString(),
+          tutorName,
+          className,
+          homeworkData.title,
+          homeworkData.deadline.toISOString(),
+          learningClass._id.toString(),
+          sessionNumber
+        );
+      } catch (notifError) {
+        logger.error('Failed to send notification:', notifError);
+        // Don't throw error, just log it
+      }
+
       return {
         success: true,
         message: 'Giao bài tập thành công',
@@ -552,6 +580,25 @@ class ClassService {
       };
 
       await learningClass.save();
+
+      // Send notification to tutor
+      try {
+        const student = await User.findById(userId);
+        const studentName = student?.full_name || student?.email || 'Học viên';
+        const subject = await Subject.findById(learningClass.subject);
+        const className = subject?.name || learningClass.title || 'Lớp học';
+
+        await notifyHomeworkSubmitted(
+          learningClass.tutorId.toString(),
+          studentName,
+          className,
+          learningClass._id.toString(),
+          sessionNumber
+        );
+      } catch (notifError) {
+        logger.error('Failed to send notification:', notifError);
+        // Don't throw error, just log it
+      }
 
       return {
         success: true,
@@ -623,6 +670,26 @@ class ClassService {
 
       await learningClass.save();
 
+      // Send notification to student
+      try {
+        const tutor = await User.findById(userId);
+        const tutorName = tutor?.full_name || tutor?.email || 'Gia sư';
+        const subject = await Subject.findById(learningClass.subject);
+        const className = subject?.name || learningClass.title || 'Lớp học';
+
+        await notifyHomeworkGraded(
+          learningClass.studentId.toString(),
+          tutorName,
+          className,
+          gradeData.score,
+          learningClass._id.toString(),
+          sessionNumber
+        );
+      } catch (notifError) {
+        logger.error('Failed to send notification:', notifError);
+        // Don't throw error, just log it
+      }
+
       return {
         success: true,
         message: 'Chấm điểm thành công',
@@ -646,16 +713,16 @@ class ClassService {
       const date = new Date(targetDate);
       const dayOfWeek = date.getDay();
       const diff = date.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust for Monday start
-      
+
       const weekStart = new Date(date.setDate(diff));
       weekStart.setHours(0, 0, 0, 0);
-      
+
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 6);
       weekEnd.setHours(23, 59, 59, 999);
 
       // Find classes based on role
-      const query = userRole === 'TUTOR' 
+      const query = userRole === 'TUTOR'
         ? { tutorId: userId }
         : { studentId: userId };
 
@@ -670,12 +737,12 @@ class ClassService {
       for (const learningClass of classes) {
         for (const session of learningClass.sessions) {
           const sessionDate = new Date(session.scheduledDate);
-          
+
           if (sessionDate >= weekStart && sessionDate <= weekEnd) {
             const now = new Date();
             const sessionEndTime = new Date(sessionDate.getTime() + session.duration * 60000);
             const canAttendTime = new Date(sessionDate.getTime() - 15 * 60000);
-            
+
             const canAttend = now >= canAttendTime && now <= sessionEndTime;
             const bothAttended = session.attendance?.tutorAttended && session.attendance?.studentAttended;
 
@@ -717,7 +784,7 @@ class ClassService {
       }
 
       // Sort by date
-      weekSessions.sort((a, b) => 
+      weekSessions.sort((a, b) =>
         new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime()
       );
 
@@ -755,7 +822,7 @@ class ClassService {
       // Verify user is part of this class
       const isTutor = learningClass.tutorId.toString() === userId;
       const isStudent = learningClass.studentId.toString() === userId;
-      
+
       if (!isTutor && !isStudent) {
         throw new Error('Bạn không có quyền huỷ buổi học này');
       }
@@ -794,8 +861,27 @@ class ClassService {
 
       await learningClass.save();
 
-      // TODO: Send notification to the other party
-      
+      // Send notification to the other party
+      try {
+        const requester = await User.findById(userId);
+        const requesterName = requester?.full_name || requester?.email || (isTutor ? 'Gia sư' : 'Học viên');
+        const subject = await Subject.findById(learningClass.subject);
+        const className = subject?.name || learningClass.title || 'Lớp học';
+        const recipientId = isTutor ? learningClass.studentId.toString() : learningClass.tutorId.toString();
+
+        await notifyCancellationRequested(
+          recipientId,
+          requesterName,
+          className,
+          sessionNumber,
+          reason.trim(),
+          learningClass._id.toString()
+        );
+      } catch (notifError) {
+        logger.error('Failed to send notification:', notifError);
+        // Don't throw error, just log it
+      }
+
       return {
         success: true,
         message: 'Yêu cầu huỷ buổi học đã được gửi. Đang chờ phê duyệt.',
@@ -830,7 +916,7 @@ class ClassService {
       // Verify user is part of this class
       const isTutor = learningClass.tutorId.toString() === userId;
       const isStudent = learningClass.studentId.toString() === userId;
-      
+
       if (!isTutor && !isStudent) {
         throw new Error('Bạn không có quyền phản hồi yêu cầu này');
       }
@@ -859,8 +945,30 @@ class ClassService {
         session.status = 'CANCELLED';
         session.cancellationRequest.status = 'APPROVED';
         session.notes = (session.notes || '') + `\nLý do huỷ: ${session.cancellationRequest.reason}`;
-        
+
         await learningClass.save();
+
+        // Send notification to requester
+        try {
+          const responder = await User.findById(userId);
+          const responderName = responder?.full_name || responder?.email || (isTutor ? 'Gia sư' : 'Học viên');
+          const subject = await Subject.findById(learningClass.subject);
+          const className = subject?.name || learningClass.title || 'Lớp học';
+          const requesterId = session.cancellationRequest.requestedBy === 'TUTOR'
+            ? learningClass.tutorId.toString()
+            : learningClass.studentId.toString();
+
+          await notifyCancellationResponded(
+            requesterId,
+            responderName,
+            'APPROVED',
+            className,
+            sessionNumber,
+            learningClass._id.toString()
+          );
+        } catch (notifError) {
+          logger.error('Failed to send notification:', notifError);
+        }
 
         return {
           success: true,
@@ -874,8 +982,30 @@ class ClassService {
         // Reject cancellation
         session.status = 'SCHEDULED';
         session.cancellationRequest.status = 'REJECTED';
-        
+
         await learningClass.save();
+
+        // Send notification to requester
+        try {
+          const responder = await User.findById(userId);
+          const responderName = responder?.full_name || responder?.email || (isTutor ? 'Gia sư' : 'Học viên');
+          const subject = await Subject.findById(learningClass.subject);
+          const className = subject?.name || learningClass.title || 'Lớp học';
+          const requesterId = session.cancellationRequest.requestedBy === 'TUTOR'
+            ? learningClass.tutorId.toString()
+            : learningClass.studentId.toString();
+
+          await notifyCancellationResponded(
+            requesterId,
+            responderName,
+            'REJECTED',
+            className,
+            sessionNumber,
+            learningClass._id.toString()
+          );
+        } catch (notifError) {
+          logger.error('Failed to send notification:', notifError);
+        }
 
         return {
           success: true,

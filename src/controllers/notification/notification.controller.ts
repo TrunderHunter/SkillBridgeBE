@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import NotificationService from '../../services/notification/notification.service';
+import { NotificationService } from '../../services/notification/notification.service';
 import { logger } from '../../utils/logger';
 
 interface AuthenticatedRequest extends Request {
@@ -145,6 +145,38 @@ export class NotificationController {
       res.status(500).json({
         success: false,
         message: error.message || 'Không thể lấy số thông báo chưa đọc',
+      });
+    }
+  }
+
+  /**
+   * Register FCM token for push notifications
+   */
+  static async registerToken(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user!.id;
+      const { token } = req.body;
+
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          message: 'FCM token is required',
+        });
+      }
+
+      // TODO: Store FCM token in database for push notifications
+      // For now, just log it
+      logger.info(`FCM token registered for user ${userId}: ${token.substring(0, 20)}...`);
+
+      res.json({
+        success: true,
+        message: 'FCM token registered successfully',
+      });
+    } catch (error: any) {
+      logger.error('Register FCM token error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Không thể đăng ký FCM token',
       });
     }
   }

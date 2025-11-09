@@ -4,19 +4,23 @@ import { User } from '../../models/User';
 import { Subject } from '../../models/Subject';
 import { LearningClass } from '../../models/LearningClass';
 import { logger } from '../../utils/logger';
-import { 
-  CreateContactRequestInput, 
-  TutorResponseInput, 
+import {
+  CreateContactRequestInput,
+  TutorResponseInput,
   CreateLearningClassInput,
-  ContactRequestFilters 
+  ContactRequestFilters
 } from '../../types/contactRequest.types';
+import {
+  notifyContactRequestSent,
+  notifyContactRequestResponded
+} from '../notification/notification.helpers';
 
 class ContactRequestService {
   /**
    * Create new contact request from student to tutor
    */
   async createContactRequest(
-    studentId: string, 
+    studentId: string,
     requestData: CreateContactRequestInput
   ) {
     try {
@@ -30,8 +34,13 @@ class ContactRequestService {
         throw new Error('Bài đăng gia sư không tồn tại hoặc đã bị khóa');
       }
 
+      // Get tutorId - handle both populated and non-populated cases
+      const tutorId = typeof tutorPost.tutorId === 'object' && tutorPost.tutorId !== null && '_id' in tutorPost.tutorId
+        ? (tutorPost.tutorId as any)._id.toString()
+        : tutorPost.tutorId.toString();
+
       // Prevent student from contacting themselves
-      if (tutorPost.tutorId === studentId) {
+      if (tutorId === studentId) {
         throw new Error('Bạn không thể gửi yêu cầu đến chính mình');
       }
 
@@ -60,7 +69,7 @@ class ContactRequestService {
       // Create contact request
       const contactRequest = new ContactRequest({
         studentId,
-        tutorId: tutorPost.tutorId,
+        tutorId: tutorId,
         tutorPostId: requestData.tutorPostId,
         subject: requestData.subject,
         message: requestData.message,
@@ -77,8 +86,18 @@ class ContactRequestService {
 
       await contactRequest.save();
 
-      // TODO: Send notification to tutor
-      // await notificationService.notifyNewContactRequest(tutorPost.tutorId, contactRequest._id);
+      // Send notification to tutor
+      try {
+        const studentName = student.full_name || student.email || 'Học viên';
+        await notifyContactRequestSent(
+          tutorId,
+          studentName,
+          contactRequest._id
+        );
+      } catch (notifError) {
+        logger.error('Failed to send notification:', notifError);
+        // Don't throw error, just log it
+      }
 
       return {
         success: true,
@@ -251,12 +270,24 @@ class ContactRequestService {
 
       await contactRequest.save();
 
-      // TODO: Send notification to student
-      // await notificationService.notifyRequestResponse(contactRequest.studentId, requestId, responseData.action);
+      // Send notification to student
+      try {
+        const tutor = await User.findById(tutorId);
+        const tutorName = tutor?.full_name || tutor?.email || 'Gia sư';
+        await notifyContactRequestResponded(
+          contactRequest.studentId.toString(),
+          tutorName,
+          responseData.action,
+          contactRequest._id
+        );
+      } catch (notifError) {
+        logger.error('Failed to send notification:', notifError);
+        // Don't throw error, just log it
+      }
 
       return {
         success: true,
-        message: responseData.action === 'ACCEPT' ? 
+        message: responseData.action === 'ACCEPT' ?
           'Chấp nhận yêu cầu thành công' : 'Từ chối yêu cầu thành công',
         data: contactRequest
       };
@@ -306,7 +337,7 @@ class ContactRequestService {
       // Calculate dates and amount
       const startDate = new Date(classData.startDate);
       const totalAmount = tutorPost.pricePerSession * classData.totalSessions;
-      
+
       // Estimate end date based on schedule
       const sessionsPerWeek = classData.schedule.dayOfWeek.length;
       const totalWeeks = Math.ceil(classData.totalSessions / sessionsPerWeek);
@@ -320,22 +351,22 @@ class ContactRequestService {
         tutorId: contactRequest.tutorId,
         tutorPostId: contactRequest.tutorPostId,
         subject: contactRequest.subject,
-        
+
         title: classData.title,
         description: classData.description,
         pricePerSession: tutorPost.pricePerSession,
         sessionDuration: contactRequest.sessionDuration,
         totalSessions: classData.totalSessions,
-        learningMode: contactRequest.learningMode === 'FLEXIBLE' ? 
-          (classData.location ? 'OFFLINE' : 'ONLINE') : 
+        learningMode: contactRequest.learningMode === 'FLEXIBLE' ?
+          (classData.location ? 'OFFLINE' : 'ONLINE') :
           contactRequest.learningMode,
-        
+
         schedule: classData.schedule,
         startDate,
         expectedEndDate,
         location: classData.location,
         onlineInfo: classData.onlineInfo,
-        
+
         sessions: [], // Will be generated separately
         totalAmount,
       });
@@ -344,6 +375,22 @@ class ContactRequestService {
 
       // Generate initial sessions
       await this.generateLearningSessions(learningClass._id); // ✅ Fix tên hàm
+
+      // Send notification to student
+      try {
+        const tutor = await User.findById(tutorId);
+        const tutorName = tutor?.full_name || tutor?.email || 'Gia sư';
+        const { notifyClassCreated } = await import('../notification/notification.helpers');
+        await notifyClassCreated(
+          contactRequest.studentId.toString(),
+          tutorName,
+          learningClass.title,
+          learningClass._id.toString()
+        );
+      } catch (notifError) {
+        logger.error('Failed to send notification:', notifError);
+        // Don't throw error, just log it
+      }
 
       return {
         success: true,
@@ -367,18 +414,18 @@ class ContactRequestService {
       const sessions = [];
       let sessionNumber = 1;
       let currentDate = new Date(learningClass.startDate);
-      
+
       // Parse startTime from schedule (format: "HH:mm")
       const [startHour, startMinute] = learningClass.schedule.startTime.split(':').map(Number);
-      
+
       while (sessionNumber <= learningClass.totalSessions) {
         const dayOfWeek = currentDate.getDay();
-        
+
         if (learningClass.schedule.dayOfWeek.includes(dayOfWeek)) {
           // Create scheduledDate with correct time
           const scheduledDateTime = new Date(currentDate);
           scheduledDateTime.setHours(startHour, startMinute, 0, 0);
-          
+
           sessions.push({
             sessionNumber,
             scheduledDate: scheduledDateTime,
@@ -392,10 +439,10 @@ class ContactRequestService {
           });
           sessionNumber++;
         }
-        
+
         // Move to next day
         currentDate.setDate(currentDate.getDate() + 1);
-        
+
         // Safety check to prevent infinite loop
         if (currentDate.getTime() > Date.now() + (365 * 24 * 60 * 60 * 1000)) {
           break;

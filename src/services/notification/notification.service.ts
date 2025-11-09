@@ -6,9 +6,9 @@ import { Notification } from '../../models/Notification';
 export interface NotificationData {
   type: 'email' | 'push' | 'socket';
   userId: string;
-  notificationType: 'CONTACT_REQUEST' | 'CLASS_CREATED' | 'HOMEWORK_ASSIGNED' | 'HOMEWORK_SUBMITTED' | 
-                    'HOMEWORK_GRADED' | 'ATTENDANCE_MARKED' | 'CANCELLATION_REQUESTED' | 
-                    'CANCELLATION_RESPONDED' | 'MESSAGE' | 'SYSTEM';
+  notificationType: 'CONTACT_REQUEST' | 'CLASS_CREATED' | 'HOMEWORK_ASSIGNED' | 'HOMEWORK_SUBMITTED' |
+  'HOMEWORK_GRADED' | 'ATTENDANCE_MARKED' | 'CANCELLATION_REQUESTED' |
+  'CANCELLATION_RESPONDED' | 'MESSAGE' | 'SYSTEM';
   title: string;
   message: string;
   data?: any;
@@ -40,8 +40,9 @@ export class NotificationService {
         case 'socket':
           const io = getSocketInstance();
           if (io) {
-            io.to(`notifications-${data.userId}`).emit('notification', {
-              _id: notification._id,
+            const roomName = `notifications-${data.userId}`;
+            const notificationPayload = {
+              _id: String(notification._id),
               type: notification.type,
               title: notification.title,
               message: notification.message,
@@ -49,9 +50,26 @@ export class NotificationService {
               priority: notification.priority,
               actionUrl: notification.actionUrl,
               isRead: false,
-              createdAt: notification.createdAt,
-            });
+              createdAt: notification.createdAt.toISOString(),
+              userId: notification.userId, // userId is already a string
+            };
+
+            logger.info(`Sending socket notification to room: ${roomName}`);
+            logger.info(`Notification payload:`, JSON.stringify(notificationPayload, null, 2));
+
+            io.to(roomName).emit('notification', notificationPayload);
+
+            // Log room members for debugging
+            const room = io.sockets.adapter.rooms.get(roomName);
+            if (room) {
+              logger.info(`Room ${roomName} has ${room.size} socket(s) connected`);
+            } else {
+              logger.warn(`Room ${roomName} does not exist - user may not be connected`);
+            }
+
             logger.info(`Socket notification sent to user ${data.userId}`);
+          } else {
+            logger.error('Socket instance not available');
           }
           break;
 

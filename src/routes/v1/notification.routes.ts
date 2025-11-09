@@ -22,4 +22,7 @@ router.patch('/mark-all-read', NotificationController.markAllAsRead);
 // Delete notification
 router.delete('/:notificationId', NotificationController.deleteNotification);
 
+// Register FCM token for push notifications
+router.post('/register-token', NotificationController.registerToken);
+
 export default router;

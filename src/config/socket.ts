@@ -24,10 +24,20 @@ export const initializeSocket = (server: HttpServer) => {
     logger.info(`User connected: ${socket.id}`);
 
     // Join user to their personal notification room
-    socket.on('join-notifications', (userId: string) => {
+    socket.on('join-notifications', (data: { userId: string } | string) => {
+      const userId = typeof data === 'string' ? data : data?.userId;
       if (userId) {
-        socket.join(`notifications-${userId}`);
-        logger.info(`User ${userId} joined notifications room`);
+        const roomName = `notifications-${userId}`;
+        socket.join(roomName);
+        logger.info(`User ${userId} joined notifications room: ${roomName}`);
+
+        // Verify join
+        const room = io.sockets.adapter.rooms.get(roomName);
+        if (room) {
+          logger.info(`Room ${roomName} now has ${room.size} socket(s)`);
+        }
+      } else {
+        logger.warn('join-notifications called without userId');
       }
     });
 
@@ -71,9 +81,14 @@ export const initializeSocket = (server: HttpServer) => {
     });
 
     // Handle notification acknowledgment
-    socket.on('notification-read', (notificationId: string) => {
-      logger.info(`Notification ${notificationId} marked as read`);
-      // TODO: Update notification status in database
+    socket.on('notification:read', (data: { notificationId: string }) => {
+      logger.info(`Notification ${data.notificationId} marked as read`);
+      // Notification is handled by API endpoint, socket just for real-time updates
+    });
+
+    socket.on('notifications:markAllRead', () => {
+      logger.info('All notifications marked as read');
+      // Notification is handled by API endpoint, socket just for real-time updates
     });
 
     socket.on('disconnect', (reason) => {
