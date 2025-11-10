@@ -2,6 +2,7 @@ import { LearningClass } from '../../models/LearningClass';
 import { User } from '../../models/User';
 import { Subject } from '../../models/Subject';
 import { logger } from '../../utils/logger';
+import { buildJitsiModeratorUrl } from '../meeting/meeting.service';
 import {
   notifyHomeworkAssigned,
   notifyHomeworkSubmitted,
@@ -94,6 +95,64 @@ class ClassService {
     } catch (error: any) {
       logger.error('Get class details error:', error);
       throw new Error(error.message || 'Không thể lấy thông tin lớp học');
+    }
+  }
+
+  /**
+   * Get moderator join link for online class (tutor only)
+   */
+  async getModeratorJoinLink(classId: string, tutorId: string, opts?: { displayName?: string; email?: string }) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      if (learningClass.tutorId.toString() !== tutorId) {
+        throw new Error('Chỉ gia sư của lớp mới có quyền lấy link quản trị');
+      }
+
+      if (learningClass.learningMode !== 'ONLINE') {
+        throw new Error('Lớp học này không phải học online');
+      }
+
+      const onlineInfo: any = learningClass.onlineInfo || {};
+      const roomName =
+        onlineInfo?.meetingId ||
+        (() => {
+          const link: string | undefined = onlineInfo?.meetingLink;
+          if (!link) return undefined;
+          try {
+            const url = new URL(link);
+            const segments = url.pathname.split('/').filter(Boolean);
+            return segments[segments.length - 1];
+          } catch {
+            return undefined;
+          }
+        })();
+
+      if (!roomName) {
+        throw new Error('Không tìm thấy thông tin phòng họp');
+      }
+
+      const moderatorUrl = buildJitsiModeratorUrl({
+        roomName,
+        displayName: opts?.displayName,
+        email: opts?.email,
+      });
+
+      if (!moderatorUrl) {
+        throw new Error('Thiếu cấu hình Jitsi JaaS để tạo link quản trị');
+      }
+
+      return {
+        success: true,
+        data: { moderatorUrl },
+      };
+    } catch (error: any) {
+      logger.error('Get moderator join link error:', error);
+      throw new Error(error.message || 'Không thể lấy link quản trị');
     }
   }
 
@@ -755,8 +814,13 @@ class ClassService {
               timeSlot: `${sessionDate.getHours()}:${String(sessionDate.getMinutes()).padStart(2, '0')} - ${sessionEndTime.getHours()}:${String(sessionEndTime.getMinutes()).padStart(2, '0')}`,
               duration: session.duration,
               status: session.status,
+              learningMode: learningClass.learningMode,
               meetingLink: learningClass.onlineInfo?.meetingLink,
-              location: learningClass.location,
+              location: learningClass.location
+                ? {
+                  details: (learningClass.location as any).address,
+                }
+                : undefined,
               attendance: session.attendance || {
                 tutorAttended: false,
                 studentAttended: false

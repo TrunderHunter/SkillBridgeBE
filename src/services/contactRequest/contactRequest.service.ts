@@ -344,6 +344,40 @@ class ContactRequestService {
       const expectedEndDate = new Date(startDate);
       expectedEndDate.setDate(expectedEndDate.getDate() + (totalWeeks * 7));
 
+      // Auto-provision online meeting if needed
+      const determinedLearningMode = contactRequest.learningMode === 'FLEXIBLE'
+        ? (classData.location ? 'OFFLINE' : 'ONLINE')
+        : contactRequest.learningMode;
+
+      let finalOnlineInfo = classData.onlineInfo;
+      if (determinedLearningMode === 'ONLINE') {
+        const missingMeetingLink = !finalOnlineInfo?.meetingLink;
+        if (missingMeetingLink) {
+          try {
+            const { provisionOnlineMeeting } = await import('../meeting/meeting.service');
+            const provisioned = await provisionOnlineMeeting(finalOnlineInfo?.platform || 'OTHER', {
+              title: classData.title,
+              startDate,
+              schedule: classData.schedule,
+            });
+            if (provisioned) {
+              finalOnlineInfo = provisioned;
+            }
+          } catch (provisionErr) {
+            logger.warn('Online meeting provisioning failed. Proceeding without auto meeting.', provisionErr);
+          }
+          // Fallback: ensure a shared online room link even if provisioning fails
+          if (!finalOnlineInfo || !finalOnlineInfo.meetingLink) {
+            finalOnlineInfo = {
+              platform: 'OTHER',
+              meetingLink: `https://8x8.vc/${process.env.JITSI_TENANT || 'skillbridge'}/skillbridge-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2, 8)}`,
+            } as any;
+          }
+        }
+      }
+
       // Create learning class
       const learningClass = new LearningClass({
         contactRequestId: classData.contactRequestId,
@@ -357,15 +391,13 @@ class ContactRequestService {
         pricePerSession: tutorPost.pricePerSession,
         sessionDuration: contactRequest.sessionDuration,
         totalSessions: classData.totalSessions,
-        learningMode: contactRequest.learningMode === 'FLEXIBLE' ?
-          (classData.location ? 'OFFLINE' : 'ONLINE') :
-          contactRequest.learningMode,
+        learningMode: determinedLearningMode,
 
         schedule: classData.schedule,
         startDate,
         expectedEndDate,
         location: classData.location,
-        onlineInfo: classData.onlineInfo,
+        onlineInfo: finalOnlineInfo,
 
         sessions: [], // Will be generated separately
         totalAmount,

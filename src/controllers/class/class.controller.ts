@@ -17,8 +17,8 @@ export class ClassController {
    * Get tutor's classes
    */
   static async getTutorClasses(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
@@ -38,8 +38,8 @@ export class ClassController {
    * Get student's classes
    */
   static async getStudentClasses(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
@@ -59,8 +59,8 @@ export class ClassController {
    * Get class details by ID
    */
   static async getClassById(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
@@ -83,8 +83,8 @@ export class ClassController {
    * Update class status
    */
   static async updateClassStatus(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
@@ -100,7 +100,7 @@ export class ClassController {
       const { classId } = req.params;
       const { status } = req.body;
       const userId = req.user!.id;
-      
+
       const result = await classService.updateClassStatus(classId, status, userId);
       res.json(result);
     } catch (error: any) {
@@ -116,8 +116,8 @@ export class ClassController {
    * Add student review for class
    */
   static async addStudentReview(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
@@ -133,7 +133,7 @@ export class ClassController {
       const { classId } = req.params;
       const studentId = req.user!.id;
       const { rating, review } = req.body;
-      
+
       const result = await classService.addStudentReview(classId, studentId, rating, review);
       res.json(result);
     } catch (error: any) {
@@ -149,8 +149,8 @@ export class ClassController {
    * Add tutor feedback for class
    */
   static async addTutorFeedback(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
@@ -166,7 +166,7 @@ export class ClassController {
       const { classId } = req.params;
       const tutorId = req.user!.id;
       const { rating, feedback } = req.body;
-      
+
       const result = await classService.addTutorFeedback(classId, tutorId, rating, feedback);
       res.json(result);
     } catch (error: any) {
@@ -189,7 +189,7 @@ export class ClassController {
     try {
       const { classId } = req.params;
       const userId = req.user!.id;
-      
+
       const result = await classService.getClassSchedule(classId, userId);
       res.json(result);
     } catch (error: any) {
@@ -222,7 +222,7 @@ export class ClassController {
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
       const { status, notes } = req.body;
-      
+
       const result = await classService.updateSessionStatus(
         classId,
         parseInt(sessionNumber),
@@ -252,7 +252,7 @@ export class ClassController {
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
       const userRole = req.user!.role;
-      
+
       const result = await classService.markAttendance(
         classId,
         parseInt(sessionNumber),
@@ -290,7 +290,7 @@ export class ClassController {
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
       const { title, description, fileUrl, deadline } = req.body;
-      
+
       const result = await classService.assignHomework(
         classId,
         parseInt(sessionNumber),
@@ -328,7 +328,7 @@ export class ClassController {
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
       const { fileUrl, notes } = req.body;
-      
+
       const result = await classService.submitHomework(
         classId,
         parseInt(sessionNumber),
@@ -366,7 +366,7 @@ export class ClassController {
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
       const { score, feedback } = req.body;
-      
+
       const result = await classService.gradeHomework(
         classId,
         parseInt(sessionNumber),
@@ -395,7 +395,7 @@ export class ClassController {
       const userId = req.user!.id;
       const userRole = req.user!.role;
       const { date } = req.query;
-      
+
       const result = await classService.getWeeklySchedule(
         userId,
         userRole,
@@ -407,6 +407,34 @@ export class ClassController {
       res.status(400).json({
         success: false,
         message: error.message || 'Không thể lấy lịch học tuần'
+      });
+    }
+  }
+
+  /**
+   * Get moderator (tutor) join link for an online class
+   */
+  static async getModeratorJoinLink(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId } = req.params;
+      const userId = req.user!.id;
+      const displayName = req.user?.email || 'Tutor';
+      const email = req.user?.email;
+
+      const result = await classService.getModeratorJoinLink(classId, userId, {
+        displayName,
+        email,
+      });
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get moderator join link controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể lấy link quản trị',
       });
     }
   }
@@ -431,7 +459,7 @@ export class ClassController {
           message: 'Vui lòng cung cấp lý do huỷ buổi học'
         });
       }
-      
+
       const result = await classService.requestCancelSession(
         classId,
         parseInt(sessionNumber),
@@ -469,7 +497,7 @@ export class ClassController {
           message: 'Action phải là APPROVE hoặc REJECT'
         });
       }
-      
+
       const result = await classService.respondToCancellationRequest(
         classId,
         parseInt(sessionNumber),

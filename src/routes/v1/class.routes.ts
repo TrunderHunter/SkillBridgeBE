@@ -25,11 +25,11 @@ router.get('/tutor', requireTutorRole, ClassController.getTutorClasses);
 
 router.get('/student', requireStudentRole, ClassController.getStudentClasses);
 
-// Get class details
-router.get('/:classId', ClassController.getClassById);
-
 // Get class schedule with sessions
 router.get('/:classId/schedule', ClassController.getClassSchedule);
+
+// Get class details
+router.get('/:classId', ClassController.getClassById);
 
 // Update class status (tutor only)
 router.patch(
