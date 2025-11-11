@@ -331,7 +331,7 @@ export class PostService {
       } = filterOptions;
       const {
         page = 1,
-        limit = 10,
+        limit = 20,
         sort_by = 'created_at',
         sort_order = 'desc',
       } = paginationOptions;
@@ -397,7 +397,7 @@ export class PostService {
    * Luôn ép buộc bộ lọc status/type cho use case của gia sư.
    */
   static async getApprovedStudentPostsForTutor(
-    filterOptions: Omit<IPostFilterOptions, 'status'> = {},
+    filterOptions: Omit<IPostFilterOptions, 'status'> & { __relax?: boolean } = {},
     paginationOptions: IPostPaginationOptions = {}
   ): Promise<any> {
     try {
@@ -409,6 +409,7 @@ export class PostService {
         search_term,
         min_hourly_rate,
         max_hourly_rate,
+        __relax,
       } = filterOptions as any;
       const {
         page = 1,
@@ -426,26 +427,27 @@ export class PostService {
         ],
       };
 
-      if (subjects && subjects.length > 0) query.subjects = { $in: subjects };
-      if (grade_levels && grade_levels.length > 0)
-        query.grade_levels = { $in: grade_levels };
-      if (is_online !== undefined) query.is_online = is_online;
-      if (author_id) query.author_id = author_id; // Trường hợp cần xem bài của một học viên cụ thể
-      if (search_term) {
-        query.$or = [
-          { title: { $regex: search_term, $options: 'i' } },
-          { content: { $regex: search_term, $options: 'i' } },
-        ];
-      }
+      // Apply filters only if not relaxed
+      if (!__relax) {
+        if (subjects && subjects.length > 0) query.subjects = { $in: subjects };
+        if (grade_levels && grade_levels.length > 0)
+          query.grade_levels = { $in: grade_levels };
+        if (is_online !== undefined) query.is_online = is_online;
+        if (author_id) query.author_id = author_id; // Trường hợp cần xem bài của một học viên cụ thể
+        if (search_term) {
+          query.$or = [
+            { title: { $regex: search_term, $options: 'i' } },
+            { content: { $regex: search_term, $options: 'i' } },
+          ];
+        }
 
-      // Lọc theo khoảng học phí (range overlap logic)
-      // Nếu người dùng đặt min_hourly_rate mong muốn, lấy các bài có hourly_rate.max >= min_hourly_rate
-      if (min_hourly_rate !== undefined && !isNaN(min_hourly_rate)) {
-        query['hourly_rate.max'] = { $gte: Number(min_hourly_rate) };
-      }
-      // Nếu người dùng đặt max_hourly_rate mong muốn, lấy các bài có hourly_rate.min <= max_hourly_rate
-      if (max_hourly_rate !== undefined && !isNaN(max_hourly_rate)) {
-        query['hourly_rate.min'] = { $lte: Number(max_hourly_rate) };
+        // Lọc theo khoảng học phí (range overlap logic)
+        if (min_hourly_rate !== undefined && !isNaN(min_hourly_rate)) {
+          query['hourly_rate.max'] = { $gte: Number(min_hourly_rate) };
+        }
+        if (max_hourly_rate !== undefined && !isNaN(max_hourly_rate)) {
+          query['hourly_rate.min'] = { $lte: Number(max_hourly_rate) };
+        }
       }
 
       const sortDirection = sort_order === 'asc' ? 1 : -1;
@@ -461,6 +463,19 @@ export class PostService {
           .lean(),
         Post.countDocuments(query),
       ]);
+
+      // Service-level logging
+      console.log('[PostService.getApprovedStudentPostsForTutor] query:', {
+        __relax: !!__relax,
+        subjects,
+        grade_levels,
+        is_online,
+        search_term,
+        min_hourly_rate,
+        max_hourly_rate,
+        page,
+        limit,
+      }, 'resultCount:', totalCount);
 
       return {
         success: true,
@@ -887,9 +902,9 @@ export class PostService {
       const averageCompatibility =
         paginatedTutors.length > 0
           ? Math.round(
-              paginatedTutors.reduce((sum, t) => sum + t.compatibility, 0) /
-                paginatedTutors.length
-            )
+            paginatedTutors.reduce((sum, t) => sum + t.compatibility, 0) /
+            paginatedTutors.length
+          )
           : 0;
 
       return {
@@ -926,6 +941,235 @@ export class PostService {
     }
   }
 
+  /**
+   * Smart search student posts for a given tutor post (tutor-side smart matching)
+   * Hybrid: DB filters from tutor post + compatibility scoring
+   */
+  static async smartSearchStudentPostsForTutor(
+    tutorPostId: string,
+    filterOptions: Partial<IPostFilterOptions> = {},
+    paginationOptions: IPostPaginationOptions = {}
+  ): Promise<any> {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        sort_by = 'compatibility',
+        sort_order = 'desc',
+      } = paginationOptions;
+
+      // 1) Load tutor post context
+      const tutorPost = await TutorPost.findById(tutorPostId)
+        .populate('subjects', 'name')
+        .lean();
+      if (!tutorPost) {
+        return { success: false, message: 'Không tìm thấy bài đăng gia sư' };
+      }
+
+      // Log incoming filter options briefly
+      console.log('[PostService.smartSearchStudentPostsForTutor] tutorPostId:', tutorPostId, {
+        filterOptions,
+        paginationOptions,
+      });
+
+      // 2) Build base query of student posts
+      const baseQuery: any = {
+        status: PostStatus.APPROVED,
+        type: PostType.STUDENT_REQUEST,
+        $or: [{ expiry_date: { $exists: false } }, { expiry_date: { $gte: new Date() } }],
+      };
+
+      // 3) Apply structured matching filters from tutorPost
+      if (tutorPost.subjects?.length) {
+        const subjectNames = tutorPost.subjects.map((s: any) => (s.name ? s.name : s.toString()));
+        baseQuery.subjects = { $in: subjectNames };
+      }
+      if (tutorPost.studentLevel?.length) {
+        baseQuery.grade_levels = { $in: tutorPost.studentLevel };
+      }
+
+      // teachingMode vs is_online
+      if (tutorPost.teachingMode) {
+        if (tutorPost.teachingMode === 'ONLINE') baseQuery.is_online = true;
+        else if (tutorPost.teachingMode === 'OFFLINE') baseQuery.is_online = false;
+        // BOTH -> no constraint
+      }
+
+      // Price overlap: student hourly_rate range overlaps tutor pricePerSession
+      if (typeof tutorPost.pricePerSession === 'number') {
+        baseQuery.$and = [
+          { 'hourly_rate.min': { $lte: tutorPost.pricePerSession } },
+          { 'hourly_rate.max': { $gte: tutorPost.pricePerSession } },
+        ];
+      }
+
+      // 4) Apply user-provided optional filters
+      if (filterOptions.subjects && filterOptions.subjects.length) {
+        baseQuery.subjects = { $in: filterOptions.subjects };
+      }
+      if (filterOptions.grade_levels && filterOptions.grade_levels.length) {
+        baseQuery.grade_levels = { $in: filterOptions.grade_levels };
+      }
+      if (filterOptions.is_online !== undefined) {
+        baseQuery.is_online = filterOptions.is_online;
+      }
+      if (filterOptions.search_term) {
+        const term = filterOptions.search_term;
+        baseQuery.$or = [
+          { title: { $regex: term, $options: 'i' } },
+          { content: { $regex: term, $options: 'i' } },
+        ];
+      }
+      if ((filterOptions as any).min_hourly_rate !== undefined) {
+        baseQuery['hourly_rate.max'] = { $gte: Number((filterOptions as any).min_hourly_rate) };
+      }
+      if ((filterOptions as any).max_hourly_rate !== undefined) {
+        baseQuery['hourly_rate.min'] = { $lte: Number((filterOptions as any).max_hourly_rate) };
+      }
+
+      // 5) Fetch candidates
+      let candidates = await Post.find(baseQuery)
+        .populate('author_id', 'full_name avatar')
+        .sort({ created_at: -1 })
+        .lean();
+
+      // 5.1) Fallback: If no candidates due to strict constraints (subjects/levels/price overlap),
+      // relax constraints step-by-step to still provide useful recommendations.
+      if (!candidates.length) {
+        console.log('[PostService.smartSearchStudentPostsForTutor] No candidates with strict filters. Applying relaxed query...');
+        const relaxedQuery: any = {
+          status: PostStatus.APPROVED,
+          type: PostType.STUDENT_REQUEST,
+          $or: [{ expiry_date: { $exists: false } }, { expiry_date: { $gte: new Date() } }],
+        };
+
+        // Keep user-provided optional filters first
+        if (filterOptions.subjects && (filterOptions.subjects as any).length) {
+          relaxedQuery.subjects = { $in: filterOptions.subjects };
+        }
+        if (filterOptions.grade_levels && (filterOptions.grade_levels as any).length) {
+          relaxedQuery.grade_levels = { $in: filterOptions.grade_levels };
+        }
+        if (filterOptions.is_online !== undefined) {
+          relaxedQuery.is_online = filterOptions.is_online;
+        }
+        if (filterOptions.search_term) {
+          const term = filterOptions.search_term;
+          relaxedQuery.$or = [
+            { title: { $regex: term, $options: 'i' } },
+            { content: { $regex: term, $options: 'i' } },
+          ];
+        }
+        if ((filterOptions as any).min_hourly_rate !== undefined) {
+          relaxedQuery['hourly_rate.max'] = { $gte: Number((filterOptions as any).min_hourly_rate) };
+        }
+        if ((filterOptions as any).max_hourly_rate !== undefined) {
+          relaxedQuery['hourly_rate.min'] = { $lte: Number((filterOptions as any).max_hourly_rate) };
+        }
+
+        // Note: intentionally NOT forcing subject/level from tutor post or price overlap here.
+        candidates = await Post.find(relaxedQuery)
+          .populate('author_id', 'full_name avatar')
+          .sort({ created_at: -1 })
+          .lean();
+      }
+
+      console.log('[PostService.smartSearchStudentPostsForTutor] candidates found:', candidates.length);
+
+      // 6) Score compatibility (reuse calculateCompatibility by swapping args)
+      const scored = candidates.map((studentPost: any) => {
+        // Use existing compatibility function in reverse perspective by adapting tutorPost to expected param
+        const compatibility = this.calculateCompatibility(studentPost, tutorPost as any);
+        const details = {
+          // mirror fields similar to getDetailedMatchInfo
+          subjectMatch: studentPost.subjects?.some((s: string) =>
+            (tutorPost.subjects || []).some((ts: any) => (ts.name || ts).toString() === s)
+          )
+            ? 100
+            : 0,
+          levelMatch: studentPost.grade_levels?.some((g: string) =>
+            (tutorPost.studentLevel || []).includes(g)
+          )
+            ? 100
+            : 0,
+          priceMatch:
+            studentPost.hourly_rate &&
+              typeof tutorPost.pricePerSession === 'number' &&
+              tutorPost.pricePerSession >= (studentPost.hourly_rate.min ?? 0) &&
+              tutorPost.pricePerSession <= (studentPost.hourly_rate.max ?? Number.MAX_SAFE_INTEGER)
+              ? 100
+              : 0,
+          modeMatch:
+            tutorPost.teachingMode === 'BOTH' ||
+              (studentPost.is_online && tutorPost.teachingMode === 'ONLINE') ||
+              (!studentPost.is_online && tutorPost.teachingMode === 'OFFLINE')
+              ? 100
+              : 30,
+        };
+        return {
+          ...mapPostToResponse(studentPost),
+          compatibility: Math.round(compatibility),
+          matchDetails: details,
+        };
+      });
+
+      // 7) Sort by compatibility or created_at
+      let sorted = [...scored];
+      if (sort_by === 'compatibility') {
+        sorted.sort((a, b) =>
+          sort_order === 'asc' ? a.compatibility - b.compatibility : b.compatibility - a.compatibility
+        );
+      } else {
+        sorted.sort((a: any, b: any) => {
+          const dir = sort_order === 'asc' ? 1 : -1;
+          return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        });
+      }
+
+      // 8) Paginate
+      const total = sorted.length;
+      const skip = (page - 1) * limit;
+      const pageItems = sorted.slice(skip, skip + limit);
+
+      return {
+        success: true,
+        message: 'Tìm kiếm bài đăng học viên phù hợp thành công',
+        data: {
+          posts: pageItems,
+          pagination: {
+            total,
+            page,
+            limit,
+            pages: Math.ceil(total / limit),
+            hasNext: page * limit < total,
+            hasPrev: page > 1,
+          },
+          aiAnalysis: {
+            tutorPostAnalyzed: {
+              subjects: (tutorPost.subjects || []).map((s: any) => s.name || s),
+              studentLevels: tutorPost.studentLevel,
+              teachingMode: tutorPost.teachingMode,
+              pricePerSession: tutorPost.pricePerSession,
+            },
+            totalStudentPostsAnalyzed: candidates.length,
+            totalFound: total,
+            averageCompatibility:
+              pageItems.length > 0
+                ? Math.round(
+                  pageItems.reduce((sum: number, p: any) => sum + (p.compatibility || 0), 0) /
+                  pageItems.length
+                )
+                : 0,
+          },
+        },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: error.message || 'Lỗi khi tìm kiếm bài đăng học viên thông minh',
+      };
+    }
+  }
   // ✅ ADD: Search Tutors (Regular Search)
   static async searchTutors(searchQuery: ITutorSearchQuery): Promise<any> {
     try {
@@ -1410,20 +1654,20 @@ export class PostService {
     const subjectMatch =
       studentPost.subjects && studentPost.subjects.length > 0
         ? (studentPost.subjects.filter((s: string) =>
-            tutorPost.subjects.some((ts: any) => ts.name === s)
-          ).length /
-            studentPost.subjects.length) *
-          100
+          tutorPost.subjects.some((ts: any) => ts.name === s)
+        ).length /
+          studentPost.subjects.length) *
+        100
         : 100;
 
     // Grade level match percentage
     const gradeMatch =
       studentPost.grade_levels && studentPost.grade_levels.length > 0
         ? (studentPost.grade_levels.filter((g: string) =>
-            tutorPost.studentLevel.includes(g)
-          ).length /
-            studentPost.grade_levels.length) *
-          100
+          tutorPost.studentLevel.includes(g)
+        ).length /
+          studentPost.grade_levels.length) *
+        100
         : 100;
 
     // Price compatibility

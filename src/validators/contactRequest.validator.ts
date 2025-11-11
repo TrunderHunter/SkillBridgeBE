@@ -50,6 +50,38 @@ export const validateContactRequest = {
       .withMessage('Email không hợp lệ'),
   ] as ValidationChain[],
 
+  createRequestFromTutor: [
+    body('tutorPostId')
+      .notEmpty()
+      .withMessage('ID bài đăng gia sư là bắt buộc'),
+    body('studentPostId')
+      .notEmpty()
+      .withMessage('ID bài đăng học viên là bắt buộc'),
+    body('subject')
+      .notEmpty()
+      .withMessage('Môn học là bắt buộc'),
+    body('message')
+      .trim()
+      .isLength({ min: 10, max: 1000 })
+      .withMessage('Tin nhắn phải có từ 10 đến 1000 ký tự'),
+    body('learningMode')
+      .isIn(['ONLINE', 'OFFLINE', 'FLEXIBLE'])
+      .withMessage('Hình thức học không hợp lệ'),
+    body('expectedPrice')
+      .optional()
+      .isInt({ min: 50000, max: 10000000 })
+      .withMessage('Giá mong muốn phải từ 50,000 đến 10,000,000 VNĐ'),
+    body('sessionDuration')
+      .optional()
+      .isIn([60, 90, 120, 150, 180])
+      .withMessage('Thời lượng buổi học không hợp lệ'),
+    body('preferredSchedule')
+      .optional()
+      .trim()
+      .isLength({ max: 500 })
+      .withMessage('Lịch học mong muốn không được vượt quá 500 ký tự'),
+  ] as ValidationChain[],
+
   respondToRequest: [
     body('action')
       .isIn(['ACCEPT', 'REJECT'])

@@ -202,7 +202,7 @@ class ProfileVectorizationService {
     const fullText = parts.join('. ');
 
     // Limit text length to avoid token limits (max ~8000 tokens ≈ 32000 chars)
-    return fullText.length > 30000 
+    return fullText.length > 30000
       ? fullText.substring(0, 30000) + '...'
       : fullText;
   }

@@ -3,6 +3,7 @@ import { validationResult } from 'express-validator';
 import { contactRequestService } from '../../services/contactRequest/contactRequest.service';
 import { logger } from '../../utils/logger';
 import { ContactRequest } from '../../models/ContactRequest';
+import { mapContactRequestToResponse } from '../../utils/mappers/contactRequest.mapper';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -41,6 +42,35 @@ export class ContactRequestController {
       res.status(400).json({
         success: false,
         message: error.message || 'Không thể gửi yêu cầu liên hệ'
+      });
+    }
+  }
+
+  /**
+   * Tutor creates teach request to a student's post
+   */
+  static async createRequestFromTutor(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array()
+        });
+      }
+
+      const tutorId = req.user!.id;
+      const result = await contactRequestService.createRequestFromTutor(tutorId, req.body);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể gửi đề nghị dạy'
       });
     }
   }
@@ -87,6 +117,40 @@ export class ContactRequestController {
       res.status(400).json({
         success: false,
         message: error.message || 'Không thể lấy danh sách yêu cầu'
+      });
+    }
+  }
+
+  /**
+   * Student responds to a tutor-initiated request
+   */
+  static async studentRespondToRequest(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array()
+        });
+      }
+
+      const studentId = req.user!.id;
+      const requestId = req.params.requestId;
+      const result = await contactRequestService.studentRespondToRequest(
+        studentId,
+        requestId,
+        req.body
+      );
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể phản hồi đề nghị'
       });
     }
   }
@@ -201,7 +265,8 @@ export class ContactRequestController {
       .populate('studentId', 'full_name avatar_url email phone_number')
       .populate('tutorId', 'full_name avatar_url email phone_number')
       .populate('tutorPostId', 'title description pricePerSession sessionDuration')
-      .populate('subject', 'name');
+      .populate('subject', 'name')
+      .lean();
 
       if (!contactRequest) {
         return res.status(404).json({
@@ -210,9 +275,12 @@ export class ContactRequestController {
         });
       }
 
+      // Transform to frontend format
+      const transformedRequest = mapContactRequestToResponse(contactRequest);
+
       res.json({
         success: true,
-        data: contactRequest
+        data: transformedRequest
       });
     } catch (error: any) {
       logger.error('Get request detail controller error:', error);

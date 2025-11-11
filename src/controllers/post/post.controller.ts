@@ -50,6 +50,8 @@ export class PostController {
     res: Response
   ): Promise<void> {
     try {
+      // Lightweight logging for incoming queries
+      console.log('GET /posts/tutors/student-posts query:', req.query);
       const {
         subjects,
         grade_levels,
@@ -62,6 +64,7 @@ export class PostController {
         limit,
         sort_by,
         sort_order,
+        relax,
       } = req.query;
 
       const filterOptions: any = {};
@@ -83,6 +86,11 @@ export class PostController {
       if (max_hourly_rate && !isNaN(Number(max_hourly_rate))) {
         filterOptions.max_hourly_rate = parseFloat(max_hourly_rate as string);
       }
+      // Optional relax flag to loosen strict filters if needed
+      const relaxFilters =
+        typeof relax === 'string'
+          ? relax.toLowerCase() === 'true'
+          : (relax as any) === true;
 
       const paginationOptions: any = {};
       if (page) paginationOptions.page = parseInt(page as string, 10);
@@ -91,11 +99,13 @@ export class PostController {
       if (sort_order) paginationOptions.sort_order = sort_order;
 
       const result = await PostService.getApprovedStudentPostsForTutor(
-        filterOptions,
+        { ...filterOptions, __relax: relaxFilters },
         paginationOptions
       );
 
       if (result.success) {
+        // Log result size for quick debugging
+        console.log('Approved student posts count:', result.data?.pagination?.total ?? (result.data?.posts?.length || 0));
         sendSuccess(res, result.message, result.data);
       } else {
         sendError(res, result.message, undefined, 400);
@@ -484,6 +494,70 @@ export class PostController {
     }
   }
 
+  // Tutor-side: Smart search student posts by tutorPost context
+  static async smartSearchStudentPosts(req: Request, res: Response): Promise<void> {
+    try {
+      const { tutorPostId } = req.query;
+      if (!tutorPostId || typeof tutorPostId !== 'string') {
+        return sendError(res, 'tutorPostId là bắt buộc', undefined, 400);
+      }
+
+      const {
+        subjects,
+        grade_levels,
+        is_online,
+        search_term,
+        min_hourly_rate,
+        max_hourly_rate,
+        page,
+        limit,
+        sort_by,
+        sort_order,
+      } = req.query;
+
+      // Lightweight logging for incoming queries
+      console.log('GET /posts/tutors/student-posts/smart query:', req.query);
+
+      const filterOptions: any = {};
+      if (subjects) filterOptions.subjects = Array.isArray(subjects) ? subjects : [subjects];
+      if (grade_levels)
+        filterOptions.grade_levels = Array.isArray(grade_levels) ? grade_levels : [grade_levels];
+      if (is_online !== undefined) filterOptions.is_online = is_online === 'true';
+      if (search_term) filterOptions.search_term = search_term;
+      if (min_hourly_rate && !isNaN(Number(min_hourly_rate))) {
+        filterOptions.min_hourly_rate = parseFloat(min_hourly_rate as string);
+      }
+      if (max_hourly_rate && !isNaN(Number(max_hourly_rate))) {
+        filterOptions.max_hourly_rate = parseFloat(max_hourly_rate as string);
+      }
+
+      const paginationOptions: any = {};
+      if (page) paginationOptions.page = parseInt(page as string, 10);
+      if (limit) paginationOptions.limit = parseInt(limit as string, 10);
+      if (sort_by) paginationOptions.sort_by = sort_by;
+      if (sort_order) paginationOptions.sort_order = sort_order;
+
+      const result = await PostService.smartSearchStudentPostsForTutor(
+        tutorPostId,
+        filterOptions,
+        paginationOptions
+      );
+
+      if (result.success) {
+        console.log('Smart search student posts count:', result.data?.pagination?.total ?? (result.data?.posts?.length || 0));
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error: any) {
+      sendError(
+        res,
+        error.message || 'Lỗi khi tìm kiếm bài đăng học viên thông minh',
+        undefined,
+        500
+      );
+    }
+  }
   // Search Tutors for Students (Regular Search)
   static async searchTutors(req: Request, res: Response): Promise<void> {
     try {

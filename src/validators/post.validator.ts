@@ -442,4 +442,39 @@ export const approvedStudentPostsValidator = [
     .optional()
     .isIn(['asc', 'desc'])
     .withMessage('sort_order phải là asc hoặc desc'),
+  // Optional relax flag to loosen filters
+  query('relax').optional().isBoolean().withMessage('relax phải là boolean'),
+];
+
+// Tutor-side smart search student posts validator
+export const tutorSmartStudentPostsValidator = [
+  query('tutorPostId').notEmpty().isString().withMessage('tutorPostId là bắt buộc'),
+  query('subjects')
+    .optional()
+    .custom((value) => Array.isArray(value) || typeof value === 'string')
+    .withMessage('subjects phải là chuỗi hoặc mảng chuỗi'),
+  query('grade_levels')
+    .optional()
+    .custom((value) => Array.isArray(value) || typeof value === 'string')
+    .withMessage('grade_levels phải là chuỗi hoặc mảng chuỗi'),
+  query('is_online').optional().isBoolean().withMessage('is_online phải là boolean'),
+  query('search_term').optional().isString().isLength({ max: 200 }),
+  query('min_hourly_rate').optional().isNumeric().custom((v) => parseFloat(v) >= 0),
+  query('max_hourly_rate')
+    .optional()
+    .isNumeric()
+    .custom((value, { req }) => {
+      const minVal = req.query?.min_hourly_rate;
+      if (minVal !== undefined && parseFloat(value) < parseFloat(minVal as string)) {
+        throw new Error('max_hourly_rate phải >= min_hourly_rate');
+      }
+      return true;
+    }),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 }),
+  query('sort_by')
+    .optional()
+    .isIn(['compatibility', 'created_at'])
+    .withMessage('sort_by phải là compatibility hoặc created_at'),
+  query('sort_order').optional().isIn(['asc', 'desc']),
 ];

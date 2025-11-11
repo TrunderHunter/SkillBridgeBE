@@ -55,6 +55,7 @@ export interface ContactRequestFilters {
   status?: string;
   subject?: string;
   learningMode?: string;
+  initiatedBy?: 'STUDENT' | 'TUTOR';
   dateFrom?: string;
   dateTo?: string;
   page?: number;

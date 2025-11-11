@@ -20,6 +20,15 @@ router.post(
   ContactRequestController.createContactRequest
 );
 
+// Student respond to tutor-initiated request
+router.put(
+  '/:requestId/student-respond',
+  requireStudentRole,
+  validateContactRequest.respondToRequest,
+  handleValidationErrors,
+  ContactRequestController.studentRespondToRequest
+);
+
 router.get(
   '/student/my-requests',
   requireStudentRole,
@@ -45,6 +54,15 @@ router.put(
   validateContactRequest.respondToRequest,
   handleValidationErrors,
   ContactRequestController.respondToRequest
+);
+
+// Tutor creates teach request to student's post
+router.post(
+  '/from-tutor',
+  requireTutorRole,
+  validateContactRequest.createRequestFromTutor,
+  handleValidationErrors,
+  ContactRequestController.createRequestFromTutor
 );
 
 router.post(

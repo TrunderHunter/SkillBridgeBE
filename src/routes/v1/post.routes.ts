@@ -17,6 +17,7 @@ import {
   getPostsValidator,
   tutorSearchValidator,
   approvedStudentPostsValidator,
+  tutorSmartStudentPostsValidator,
 } from '../../validators/post.validator';
 
 const router = express.Router();
@@ -53,6 +54,17 @@ router.get(
   approvedStudentPostsValidator,
   handleValidationErrors,
   PostController.getApprovedStudentPostsForTutor
+);
+
+// ✅ Tutor-side smart search student posts using a tutorPost as context
+router.get(
+  '/tutors/student-posts/smart',
+  authenticateToken,
+  requireTutorRole,
+  requireApprovedTutorProfile,
+  tutorSmartStudentPostsValidator,
+  handleValidationErrors,
+  PostController.smartSearchStudentPosts
 );
 
 // ✅ Get tutor detail + increment view count

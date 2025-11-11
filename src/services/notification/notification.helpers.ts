@@ -17,6 +17,19 @@ export const notifyContactRequestSent = async (tutorId: string, studentName: str
   });
 };
 
+export const notifyTeachRequestSent = async (studentId: string, tutorName: string, requestId: string) => {
+  await NotificationService.sendNotification({
+    type: 'socket',
+    userId: studentId,
+    notificationType: 'CONTACT_REQUEST',
+    title: 'Đề nghị dạy mới',
+    message: `${tutorName} đã gửi đề nghị dạy cho bạn`,
+    priority: 'high',
+    actionUrl: `/student/contact-requests`,
+    data: { requestId, tutorName },
+  });
+};
+
 export const notifyContactRequestResponded = async (
   studentId: string,
   tutorName: string,
@@ -36,6 +49,29 @@ export const notifyContactRequestResponded = async (
     priority: 'high',
     actionUrl: `/student/contact-requests`,
     data: { requestId, tutorName, action },
+  });
+};
+
+export const notifyTeachRequestResponded = async (
+  tutorId: string,
+  studentName: string,
+  action: 'ACCEPT' | 'REJECT',
+  requestId: string
+) => {
+  const message =
+    action === 'ACCEPT'
+      ? `${studentName} đã chấp nhận đề nghị dạy của bạn`
+      : `${studentName} đã từ chối đề nghị dạy của bạn`;
+
+  await NotificationService.sendNotification({
+    type: 'socket',
+    userId: tutorId,
+    notificationType: 'CONTACT_REQUEST',
+    title: action === 'ACCEPT' ? 'Đề nghị được chấp nhận' : 'Đề nghị bị từ chối',
+    message,
+    priority: 'high',
+    actionUrl: `/tutor/contact-requests`,
+    data: { requestId, studentName, action },
   });
 };
 

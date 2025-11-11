@@ -4,6 +4,7 @@ import { ContactRequest } from '../../models/ContactRequest';
 import { User } from '../../models/User';
 import { getSocketInstance } from '../../config/socket';
 import { notifyNewMessage } from '../notification/notification.helpers';
+import { filterSensitiveContent, getFilterErrorMessage } from '../../utils/contentFilter';
 
 export interface ICreateMessageInput {
   conversationId: string;
@@ -112,6 +113,18 @@ export class MessageService {
       const receiverId = conversation.studentId === messageData.senderId
         ? conversation.tutorId
         : conversation.studentId;
+
+      // Kiểm tra và lọc nội dung nhạy cảm (chỉ áp dụng cho tin nhắn TEXT)
+      if (messageData.messageType === 'TEXT' || !messageData.messageType) {
+        const filterResult = filterSensitiveContent(messageData.content, true);
+
+        if (!filterResult.isValid) {
+          return {
+            success: false,
+            message: getFilterErrorMessage(filterResult.violations),
+          };
+        }
+      }
 
       // Create message
       const message = new Message({

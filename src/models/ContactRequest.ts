@@ -6,6 +6,9 @@ export interface IContactRequest extends Document {
   studentId: string; // Reference to User (Student)
   tutorId: string; // Reference to User (Tutor)
   tutorPostId: string; // Reference to TutorPost
+
+  // Who initiated this request
+  initiatedBy: 'STUDENT' | 'TUTOR';
   
   // Request details
   subject: string; // Subject ID they want to learn
@@ -67,6 +70,14 @@ const ContactRequestSchema = new Schema<IContactRequest>(
       type: String,
       required: true,
       ref: 'TutorPost',
+    },
+
+    // Initiator
+    initiatedBy: {
+      type: String,
+      enum: ['STUDENT', 'TUTOR'],
+      required: true,
+      default: 'STUDENT',
     },
     
     // Request details

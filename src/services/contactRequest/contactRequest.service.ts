@@ -14,6 +14,8 @@ import {
   notifyContactRequestSent,
   notifyContactRequestResponded
 } from '../notification/notification.helpers';
+import { mapContactRequestToResponse } from '../../utils/mappers/contactRequest.mapper';
+import { Post } from '../../models/Post';
 
 class ContactRequestService {
   /**
@@ -71,6 +73,7 @@ class ContactRequestService {
         studentId,
         tutorId: tutorId,
         tutorPostId: requestData.tutorPostId,
+        initiatedBy: 'STUDENT',
         subject: requestData.subject,
         message: requestData.message,
         preferredSchedule: requestData.preferredSchedule,
@@ -111,6 +114,118 @@ class ContactRequestService {
   }
 
   /**
+   * Tutor creates a teach request to a student's post
+   */
+  async createRequestFromTutor(
+    tutorId: string,
+    requestData: {
+      tutorPostId: string;
+      studentPostId: string;
+      subject: string;
+      message: string;
+      preferredSchedule?: string;
+      expectedPrice?: number;
+      sessionDuration?: number;
+      learningMode: 'ONLINE' | 'OFFLINE' | 'FLEXIBLE';
+    }
+  ) {
+    try {
+      // Validate tutor's post ownership and status
+      const tutorPost = await TutorPost.findOne({
+        _id: requestData.tutorPostId,
+        tutorId,
+        status: 'ACTIVE'
+      }).populate('subjects');
+
+      if (!tutorPost) {
+        throw new Error('Bài đăng gia sư không hợp lệ hoặc không thuộc sở hữu của bạn');
+      }
+
+      // Validate student post
+      const studentPost = await Post.findById(requestData.studentPostId).lean();
+      if (!studentPost || !studentPost.author_id) {
+        throw new Error('Bài đăng của học viên không tồn tại');
+      }
+
+      // Prevent contacting self (in case roles overlap in system)
+      const studentId =
+        typeof studentPost.author_id === 'object' && (studentPost as any).author_id._id
+          ? (studentPost as any).author_id._id.toString()
+          : studentPost.author_id.toString();
+      if (studentId === tutorId) {
+        throw new Error('Bạn không thể gửi yêu cầu đến chính mình');
+      }
+
+      // Validate subject exists in tutor post subjects
+      const subjectIds = (tutorPost.subjects || []).map((s: any) =>
+        typeof s === 'object' && s._id ? s._id.toString() : s.toString()
+      );
+      if (!subjectIds.includes(requestData.subject)) {
+        throw new Error('Môn học không có trong danh sách dạy của bài đăng gia sư');
+      }
+
+      // Check existing pending request between tutor and this student for the same tutorPost
+      const existing = await ContactRequest.findOne({
+        studentId,
+        tutorId,
+        tutorPostId: requestData.tutorPostId,
+        status: 'PENDING'
+      });
+      if (existing) {
+        throw new Error('Bạn đã gửi yêu cầu và đang chờ phản hồi từ học viên');
+      }
+
+      // Build student contact info from student user
+      const studentUser = await User.findById(studentId);
+
+      const contactRequest = new ContactRequest({
+        studentId,
+        tutorId,
+        tutorPostId: requestData.tutorPostId,
+        initiatedBy: 'TUTOR',
+        subject: requestData.subject,
+        message: requestData.message,
+        preferredSchedule: requestData.preferredSchedule,
+        expectedPrice: requestData.expectedPrice ?? tutorPost.pricePerSession,
+        sessionDuration: requestData.sessionDuration || tutorPost.sessionDuration || 60,
+        learningMode: requestData.learningMode,
+        studentContact: {
+          phone: (studentUser as any)?.phone_number,
+          email: studentUser?.email,
+          preferredContactMethod: 'both',
+        },
+      });
+
+      await contactRequest.save();
+
+      // Notify student about tutor's teach request
+      try {
+        const tutor = await User.findById(tutorId);
+        const tutorName = tutor?.full_name || tutor?.email || 'Gia sư';
+        const { notifyTeachRequestSent } = await import('../notification/notification.helpers');
+        await notifyTeachRequestSent(studentId, tutorName, contactRequest._id);
+      } catch (notifErr) {
+        logger.error('Failed to send teach request notification:', notifErr);
+      }
+
+      // Populate minimal for response
+      const populated = await ContactRequest.findById(contactRequest._id)
+        .populate('subject', 'name')
+        .populate('tutorPostId', 'title pricePerSession')
+        .lean();
+
+      return {
+        success: true,
+        message: 'Đã gửi đề nghị dạy tới học viên',
+        data: populated ? mapContactRequestToResponse(populated) : contactRequest,
+      };
+    } catch (error: any) {
+      logger.error('Create request from tutor error:', error);
+      throw new Error(error.message || 'Không thể gửi đề nghị dạy');
+    }
+  }
+
+  /**
    * Get contact requests for student
    */
   async getStudentRequests(studentId: string, filters: ContactRequestFilters) {
@@ -119,6 +234,7 @@ class ContactRequestService {
         status,
         subject,
         learningMode,
+        initiatedBy,
         dateFrom,
         dateTo,
         page = 1,
@@ -130,6 +246,7 @@ class ContactRequestService {
       if (status) query.status = status;
       if (subject) query.subject = subject;
       if (learningMode) query.learningMode = learningMode;
+      if (initiatedBy) query.initiatedBy = initiatedBy;
       if (dateFrom || dateTo) {
         query.createdAt = {};
         if (dateFrom) query.createdAt.$gte = new Date(dateFrom);
@@ -140,19 +257,23 @@ class ContactRequestService {
 
       const [requests, total] = await Promise.all([
         ContactRequest.find(query)
-          .populate('tutorId', 'full_name avatar_url')
+          .populate('tutorId', 'full_name avatar_url email phone_number')
           .populate('tutorPostId', 'title pricePerSession')
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)
-          .limit(limit),
+          .limit(limit)
+          .lean(),
         ContactRequest.countDocuments(query)
       ]);
+
+      // Transform requests to frontend format
+      const transformedRequests = requests.map(mapContactRequestToResponse);
 
       return {
         success: true,
         data: {
-          requests,
+          requests: transformedRequests,
           pagination: {
             current: page,
             total: Math.ceil(total / limit),
@@ -197,6 +318,7 @@ class ContactRequestService {
       const [requests, total] = await Promise.all([
         ContactRequest.find(query)
           .populate('studentId', 'full_name avatar_url phone_number email')
+          .populate('tutorId', 'full_name avatar_url email phone_number')
           .populate({
             path: 'tutorPostId',
             select: 'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
@@ -204,14 +326,18 @@ class ContactRequestService {
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)
-          .limit(limit),
+          .limit(limit)
+          .lean(),
         ContactRequest.countDocuments(query)
       ]);
+
+      // Transform requests to frontend format
+      const transformedRequests = requests.map(mapContactRequestToResponse);
 
       return {
         success: true,
         data: {
-          requests,
+          requests: transformedRequests,
           pagination: {
             current: page,
             total: Math.ceil(total / limit),
@@ -222,6 +348,84 @@ class ContactRequestService {
     } catch (error: any) {
       logger.error('Get tutor requests error:', error);
       throw new Error('Không thể lấy danh sách yêu cầu');
+    }
+  }
+
+  /**
+   * Student responds to a tutor-initiated request
+   */
+  async studentRespondToRequest(
+    studentId: string,
+    requestId: string,
+    responseData: { action: 'ACCEPT' | 'REJECT'; message?: string }
+  ) {
+    try {
+      const contactRequest = await ContactRequest.findOne({
+        _id: requestId,
+        studentId,
+        status: 'PENDING'
+      });
+
+      if (!contactRequest) {
+        throw new Error('Không tìm thấy yêu cầu hoặc yêu cầu đã được xử lý');
+      }
+
+      if (responseData.action === 'ACCEPT') {
+        contactRequest.status = 'ACCEPTED';
+      } else {
+        contactRequest.status = 'REJECTED';
+      }
+
+      // Build a fresh tutorResponse object with only safe fields to avoid
+      // accidentally persisting undefined subdocuments (e.g. counterOffer: undefined).
+      const nextTutorResponse: any = {};
+      if (responseData?.message) {
+        nextTutorResponse.message = responseData.message;
+      }
+      if (responseData.action === 'ACCEPT') {
+        nextTutorResponse.acceptedAt = new Date();
+      } else {
+        nextTutorResponse.rejectedAt = new Date();
+      }
+      contactRequest.tutorResponse = nextTutorResponse;
+
+      await contactRequest.save();
+
+      // Notify tutor about student's decision
+      try {
+        const student = await User.findById(studentId);
+        const studentName = student?.full_name || student?.email || 'Học viên';
+        const { notifyTeachRequestResponded } = await import('../notification/notification.helpers');
+        await notifyTeachRequestResponded(
+          contactRequest.tutorId.toString(),
+          studentName,
+          responseData.action,
+          contactRequest._id
+        );
+      } catch (notifErr) {
+        logger.error('Failed to notify tutor about student response:', notifErr);
+      }
+
+      const populatedRequest = await ContactRequest.findById(contactRequest._id)
+        .populate('studentId', 'full_name avatar_url email phone_number')
+        .populate('tutorId', 'full_name avatar_url email phone_number')
+        .populate('tutorPostId', 'title description pricePerSession sessionDuration')
+        .populate('subject', 'name')
+        .lean();
+
+      const transformed = populatedRequest ? mapContactRequestToResponse(populatedRequest) : null;
+
+      return {
+        success: true,
+        message:
+          responseData.action === 'ACCEPT'
+            ? 'Bạn đã chấp nhận đề nghị dạy. Gia sư sẽ tạo lớp học.'
+            : 'Bạn đã từ chối đề nghị dạy.',
+        data: transformed,
+      };
+    } catch (error: any) {
+      logger.error('Student respond to request error:', error);
+      throw new Error(error.message || 'Không thể phản hồi đề nghị');
     }
   }
 
@@ -285,11 +489,21 @@ class ContactRequestService {
         // Don't throw error, just log it
       }
 
+      // Populate and transform before returning
+      const populatedRequest = await ContactRequest.findById(contactRequest._id)
+        .populate('studentId', 'full_name avatar_url email phone_number')
+        .populate('tutorId', 'full_name avatar_url email phone_number')
+        .populate('tutorPostId', 'title description pricePerSession sessionDuration')
+        .populate('subject', 'name')
+        .lean();
+
+      const transformedRequest = populatedRequest ? mapContactRequestToResponse(populatedRequest) : null;
+
       return {
         success: true,
         message: responseData.action === 'ACCEPT' ?
           'Chấp nhận yêu cầu thành công' : 'Từ chối yêu cầu thành công',
-        data: contactRequest
+        data: transformedRequest
       };
     } catch (error: any) {
       logger.error('Respond to request error:', error);
