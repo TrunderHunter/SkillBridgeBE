@@ -65,6 +65,23 @@ export const mapContactRequestToResponse = (request: any): any => {
         }
     }
 
+    // Map studentPostId -> studentPost (when tutor initiates request)
+    if (mapped.studentPostId) {
+        if (typeof mapped.studentPostId === 'object' && mapped.studentPostId !== null) {
+            mapped.studentPost = {
+                id: mapped.studentPostId._id || mapped.studentPostId.id || mapped.studentPostId,
+                title: mapped.studentPostId.title || '',
+                content: mapped.studentPostId.content,
+                subjects: mapped.studentPostId.subjects || [],
+                grade_levels: mapped.studentPostId.grade_levels || [],
+                hourly_rate: mapped.studentPostId.hourly_rate,
+                is_online: mapped.studentPostId.is_online,
+            };
+        } else {
+            mapped.studentPost = null;
+        }
+    }
+
     // Map subject -> subjectInfo
     if (mapped.subject) {
         if (typeof mapped.subject === 'object' && mapped.subject !== null) {

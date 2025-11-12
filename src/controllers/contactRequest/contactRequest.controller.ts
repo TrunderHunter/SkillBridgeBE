@@ -19,8 +19,8 @@ export class ContactRequestController {
    * Student creates contact request
    */
   static async createContactRequest(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
@@ -79,14 +79,14 @@ export class ContactRequestController {
    * Get student's contact requests
    */
   static async getStudentRequests(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
       const studentId = req.user!.id;
       const filters = req.query;
-      
+
       const result = await contactRequestService.getStudentRequests(studentId, filters);
       res.json(result);
     } catch (error: any) {
@@ -102,14 +102,14 @@ export class ContactRequestController {
    * Get tutor's contact requests
    */
   static async getTutorRequests(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
       const tutorId = req.user!.id;
       const filters = req.query;
-      
+
       const result = await contactRequestService.getTutorRequests(tutorId, filters);
       res.json(result);
     } catch (error: any) {
@@ -159,8 +159,8 @@ export class ContactRequestController {
    * Tutor responds to contact request
    */
   static async respondToRequest(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
@@ -175,13 +175,13 @@ export class ContactRequestController {
 
       const tutorId = req.user!.id;
       const requestId = req.params.requestId;
-      
+
       const result = await contactRequestService.respondToRequest(
-        tutorId, 
-        requestId, 
+        tutorId,
+        requestId,
         req.body
       );
-      
+
       res.json(result);
     } catch (error: any) {
       logger.error('Respond to request controller error:', error);
@@ -196,8 +196,8 @@ export class ContactRequestController {
    * Create learning class from accepted request
    */
   static async createLearningClass(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
@@ -212,7 +212,7 @@ export class ContactRequestController {
 
       const tutorId = req.user!.id;
       const result = await contactRequestService.createLearningClass(tutorId, req.body);
-      
+
       res.status(201).json(result);
     } catch (error: any) {
       logger.error('Create learning class controller error:', error);
@@ -227,14 +227,14 @@ export class ContactRequestController {
    * Cancel contact request (by student)
    */
   static async cancelRequest(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
       const studentId = req.user!.id;
       const requestId = req.params.requestId;
-      
+
       const result = await contactRequestService.cancelRequest(studentId, requestId);
       res.json(result);
     } catch (error: any) {
@@ -250,23 +250,23 @@ export class ContactRequestController {
    * Get contact request detail
    */
   static async getRequestDetail(
-    req: AuthenticatedRequest, 
-    res: Response, 
+    req: AuthenticatedRequest,
+    res: Response,
     next: NextFunction
   ) {
     try {
       const userId = req.user!.id;
       const requestId = req.params.requestId;
-      
+
       const contactRequest = await ContactRequest.findOne({
         _id: requestId,
         $or: [{ studentId: userId }, { tutorId: userId }]
       })
-      .populate('studentId', 'full_name avatar_url email phone_number')
-      .populate('tutorId', 'full_name avatar_url email phone_number')
-      .populate('tutorPostId', 'title description pricePerSession sessionDuration')
-      .populate('subject', 'name')
-      .lean();
+        .populate('studentId', 'full_name avatar_url email phone_number')
+        .populate('tutorId', 'full_name avatar_url email phone_number')
+        .populate('tutorPostId', 'title description pricePerSession sessionDuration')
+        .populate('subject', 'name')
+        .lean();
 
       if (!contactRequest) {
         return res.status(404).json({

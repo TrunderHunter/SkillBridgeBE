@@ -182,6 +182,7 @@ class ContactRequestService {
         studentId,
         tutorId,
         tutorPostId: requestData.tutorPostId,
+        studentPostId: requestData.studentPostId, // Save student post ID when tutor initiates
         initiatedBy: 'TUTOR',
         subject: requestData.subject,
         message: requestData.message,
@@ -259,6 +260,7 @@ class ContactRequestService {
         ContactRequest.find(query)
           .populate('tutorId', 'full_name avatar_url email phone_number')
           .populate('tutorPostId', 'title pricePerSession')
+          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online')
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)
@@ -323,6 +325,7 @@ class ContactRequestService {
             path: 'tutorPostId',
             select: 'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
           })
+          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online')
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)

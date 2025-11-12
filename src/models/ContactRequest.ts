@@ -6,10 +6,11 @@ export interface IContactRequest extends Document {
   studentId: string; // Reference to User (Student)
   tutorId: string; // Reference to User (Tutor)
   tutorPostId: string; // Reference to TutorPost
+  studentPostId?: string; // Reference to Post (Student Post) - used when initiatedBy = 'TUTOR'
 
   // Who initiated this request
   initiatedBy: 'STUDENT' | 'TUTOR';
-  
+
   // Request details
   subject: string; // Subject ID they want to learn
   message: string; // Student's message to tutor
@@ -17,17 +18,17 @@ export interface IContactRequest extends Document {
   expectedPrice?: number; // Student's expected price per session
   sessionDuration?: number; // Preferred session duration (minutes)
   learningMode: 'ONLINE' | 'OFFLINE' | 'FLEXIBLE'; // Preferred learning mode
-  
+
   // Contact info
   studentContact: {
     phone?: string;
     email?: string;
     preferredContactMethod: 'phone' | 'email' | 'both';
   };
-  
+
   // Status tracking
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED';
-  
+
   // Tutor response
   tutorResponse?: {
     message?: string;
@@ -41,10 +42,10 @@ export interface IContactRequest extends Document {
       conditions?: string;
     };
   };
-  
+
   // Auto-expire
   expiresAt: Date; // Auto expire after 7 days if no response
-  
+
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -71,6 +72,11 @@ const ContactRequestSchema = new Schema<IContactRequest>(
       required: true,
       ref: 'TutorPost',
     },
+    studentPostId: {
+      type: String,
+      required: false,
+      ref: 'Post',
+    },
 
     // Initiator
     initiatedBy: {
@@ -79,7 +85,7 @@ const ContactRequestSchema = new Schema<IContactRequest>(
       required: true,
       default: 'STUDENT',
     },
-    
+
     // Request details
     subject: {
       type: String,
@@ -112,7 +118,7 @@ const ContactRequestSchema = new Schema<IContactRequest>(
       required: true,
       enum: ['ONLINE', 'OFFLINE', 'FLEXIBLE'],
     },
-    
+
     // Contact info
     studentContact: {
       phone: {
@@ -130,7 +136,7 @@ const ContactRequestSchema = new Schema<IContactRequest>(
         default: 'both',
       },
     },
-    
+
     // Status
     status: {
       type: String,
@@ -138,7 +144,7 @@ const ContactRequestSchema = new Schema<IContactRequest>(
       enum: ['PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED', 'EXPIRED'],
       default: 'PENDING',
     },
-    
+
     // Tutor response
     tutorResponse: {
       message: {
@@ -152,7 +158,7 @@ const ContactRequestSchema = new Schema<IContactRequest>(
         type: String,
         enum: [
           'SCHEDULE_CONFLICT',
-          'PRICE_DISAGREEMENT', 
+          'PRICE_DISAGREEMENT',
           'STUDENT_LEVEL_MISMATCH',
           'LOCATION_ISSUE',
           'PERSONAL_REASON',
@@ -179,12 +185,12 @@ const ContactRequestSchema = new Schema<IContactRequest>(
         },
       },
     },
-    
+
     // Auto expire
     expiresAt: {
       type: Date,
       required: true,
-      default: function() {
+      default: function () {
         return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
       },
     },
@@ -199,11 +205,12 @@ const ContactRequestSchema = new Schema<IContactRequest>(
 ContactRequestSchema.index({ studentId: 1, createdAt: -1 });
 ContactRequestSchema.index({ tutorId: 1, createdAt: -1 });
 ContactRequestSchema.index({ tutorPostId: 1 });
+ContactRequestSchema.index({ studentPostId: 1 });
 ContactRequestSchema.index({ status: 1 });
 ContactRequestSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Middleware to update TutorPost contactCount
-ContactRequestSchema.post('save', async function(doc) {
+ContactRequestSchema.post('save', async function (doc) {
   if (doc.isNew) {
     await model('TutorPost').findByIdAndUpdate(
       doc.tutorPostId,
@@ -214,7 +221,7 @@ ContactRequestSchema.post('save', async function(doc) {
 
 // Transform output
 ContactRequestSchema.set('toJSON', {
-  transform: function(doc: any, ret: any) {
+  transform: function (doc: any, ret: any) {
     ret.id = ret._id;
     delete ret._id;
     return ret;
