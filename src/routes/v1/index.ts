@@ -12,6 +12,7 @@ import postRoutes from './post.routes';
 import contactRequestRoutes from './contactRequest.routes'; 
 // Add this import to your existing imports
 import classRoutes from './class.routes';
+import contractRoutes from './contract.routes';
 import messageRoutes from './messageRoutes';
 import aiRoutes from './ai.routes';
 import uploadRoutes from './upload.routes';
@@ -49,6 +50,9 @@ router.use('/tutor-posts', tutorPostRoutes);
 
 // ✅ Contact request routes
 router.use('/contact-requests', contactRequestRoutes);
+
+// ✅ Contract routes
+router.use('/contracts', contractRoutes);
 
 // Add this line to your router configuration
 router.use('/classes', classRoutes);
