@@ -397,6 +397,17 @@ class ContractService {
         contract.status = 'ACTIVE';
         contract.activatedAt = new Date();
 
+        await contract.save();
+
+        // Automatically create learning class from contract
+        try {
+          const { contactRequestService } = await import('../contactRequest/contactRequest.service');
+          await contactRequestService.createLearningClassFromContract(contract._id);
+        } catch (classError) {
+          logger.error('Failed to create learning class from contract:', classError);
+          // Don't throw error, just log it - contract is still valid
+        }
+
         // Notify the other party
         try {
           const otherUserId = userRole === 'STUDENT' ? contract.tutorId.toString() : contract.studentId.toString();
@@ -406,6 +417,8 @@ class ContractService {
           logger.error('Failed to send notification:', notifError);
         }
       } else {
+        await contract.save();
+        
         // Notify the other party to sign
         try {
           const otherUserId = userRole === 'STUDENT' ? contract.tutorId.toString() : contract.studentId.toString();
@@ -416,12 +429,10 @@ class ContractService {
         }
       }
 
-      await contract.save();
-
       return {
         success: true,
         message: contract.isFullySigned 
-          ? 'Hợp đồng đã được ký kết hoàn tất' 
+          ? 'Hợp đồng đã được ký kết hoàn tất và lớp học đã được tạo' 
           : 'Đã ký hợp đồng thành công, đang chờ bên kia ký',
         data: contract,
       };
