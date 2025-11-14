@@ -825,6 +825,110 @@ class ContactRequestService {
     // Check overlap: (start1 < end2) && (start2 < end1)
     return start1Min < end2Min && start2Min < end1Min;
   }
+
+  /**
+   * Create learning class from an active contract
+   * This is called automatically when a contract becomes fully signed (ACTIVE)
+   */
+  async createLearningClassFromContract(contractId: string) {
+    try {
+      const { Contract } = await import('../../models/Contract');
+      
+      // Get the active contract
+      const contract = await Contract.findOne({
+        _id: contractId,
+        status: 'ACTIVE',
+        isFullySigned: true,
+      });
+
+      if (!contract) {
+        throw new Error('Không tìm thấy hợp đồng đã được ký kết');
+      }
+
+      // Check if class already exists for this contract
+      const existingClass = await LearningClass.findOne({
+        contactRequestId: contract.contactRequestId,
+      });
+
+      if (existingClass) {
+        // Update contract with learning class ID
+        contract.learningClassId = existingClass._id;
+        await contract.save();
+        throw new Error('Lớp học đã được tạo cho hợp đồng này');
+      }
+
+      // Create learning class from contract data
+      const learningClass = new LearningClass({
+        contactRequestId: contract.contactRequestId,
+        studentId: contract.studentId,
+        tutorId: contract.tutorId,
+        tutorPostId: (await ContactRequest.findById(contract.contactRequestId))?.tutorPostId,
+        subject: contract.subject,
+
+        title: contract.title,
+        description: contract.description,
+        pricePerSession: contract.pricePerSession,
+        sessionDuration: contract.sessionDuration,
+        totalSessions: contract.totalSessions,
+        learningMode: contract.learningMode,
+
+        schedule: contract.schedule,
+        startDate: contract.startDate,
+        expectedEndDate: contract.endDate,
+        location: contract.location,
+        onlineInfo: contract.onlineInfo,
+
+        sessions: [],
+        totalAmount: contract.totalAmount,
+      });
+
+      await learningClass.save();
+
+      // Update contract with learning class ID
+      contract.learningClassId = learningClass._id;
+      await contract.save();
+
+      // Generate initial sessions
+      await this.generateLearningSessions(learningClass._id);
+
+      // Send notification to both parties
+      try {
+        const student = await User.findById(contract.studentId);
+        const tutor = await User.findById(contract.tutorId);
+        const studentName = student?.full_name || student?.email || 'Học viên';
+        const tutorName = tutor?.full_name || tutor?.email || 'Gia sư';
+        
+        const { notifyClassCreated } = await import('../notification/notification.helpers');
+        
+        // Notify student
+        await notifyClassCreated(
+          contract.studentId.toString(),
+          tutorName,
+          learningClass.title,
+          learningClass._id.toString()
+        );
+        
+        // Notify tutor
+        await notifyClassCreated(
+          contract.tutorId.toString(),
+          studentName,
+          learningClass.title,
+          learningClass._id.toString()
+        );
+      } catch (notifError) {
+        logger.error('Failed to send notification:', notifError);
+      }
+
+      return {
+        success: true,
+        message: 'Tạo lớp học từ hợp đồng thành công',
+        data: learningClass,
+      };
+    } catch (error: any) {
+      logger.error('Create learning class from contract error:', error);
+      throw new Error(error.message || 'Không thể tạo lớp học từ hợp đồng');
+    }
+  }
 }
 
 

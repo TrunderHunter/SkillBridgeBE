@@ -233,3 +233,58 @@ export const notifyNewMessage = async (
     data: { conversationId, senderName },
   });
 };
+
+/**
+ * Contract-related notifications
+ */
+export const notifyContractCreated = async (studentId: string, tutorName: string, contractTitle: string, contractId: string) => {
+  await NotificationService.sendNotification({
+    type: 'socket',
+    userId: studentId,
+    notificationType: 'CONTRACT',
+    title: 'Hợp đồng mới',
+    message: `${tutorName} đã tạo hợp đồng "${contractTitle}". Vui lòng xem xét và ký hợp đồng`,
+    priority: 'high',
+    actionUrl: `/student/contracts/${contractId}`,
+    data: { contractId, tutorName, contractTitle },
+  });
+};
+
+export const notifyContractSignatureNeeded = async (userId: string, contractTitle: string, contractId: string) => {
+  await NotificationService.sendNotification({
+    type: 'socket',
+    userId,
+    notificationType: 'CONTRACT',
+    title: 'Cần ký hợp đồng',
+    message: `Hợp đồng "${contractTitle}" đang chờ chữ ký của bạn`,
+    priority: 'high',
+    actionUrl: `/contracts/${contractId}`,
+    data: { contractId, contractTitle },
+  });
+};
+
+export const notifyContractFullySigned = async (userId: string, contractTitle: string, contractId: string) => {
+  await NotificationService.sendNotification({
+    type: 'socket',
+    userId,
+    notificationType: 'CONTRACT',
+    title: 'Hợp đồng đã hoàn tất',
+    message: `Hợp đồng "${contractTitle}" đã được ký kết hoàn tất bởi cả hai bên`,
+    priority: 'high',
+    actionUrl: `/contracts/${contractId}`,
+    data: { contractId, contractTitle },
+  });
+};
+
+export const notifyContractCancelled = async (userId: string, contractTitle: string, reason: string) => {
+  await NotificationService.sendNotification({
+    type: 'socket',
+    userId,
+    notificationType: 'CONTRACT',
+    title: 'Hợp đồng đã bị hủy',
+    message: `Hợp đồng "${contractTitle}" đã bị hủy. Lý do: ${reason}`,
+    priority: 'high',
+    actionUrl: `/contracts`,
+    data: { contractTitle, reason },
+  });
+};
