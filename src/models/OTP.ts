@@ -38,6 +38,14 @@ const otpSchema = new Schema<IOTPDocument>(
       required: true,
       default: OTPType.REGISTRATION,
     },
+    reference_id: {
+      type: String,
+      required: false, // For linking to related documents (e.g., contractId)
+    },
+    metadata: {
+      type: Schema.Types.Mixed,
+      required: false, // Additional context data (e.g., contractCode, tutorName)
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: false },

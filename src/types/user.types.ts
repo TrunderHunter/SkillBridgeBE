@@ -80,12 +80,15 @@ export interface IOTPRecord {
   expires_at: Date;
   is_used: boolean;
   otp_type: OTPType;
+  reference_id?: string; // For linking to related documents (e.g., contractId)
+  metadata?: Record<string, any>; // Additional context data
   created_at?: Date;
 }
 
 export enum OTPType {
   REGISTRATION = 'registration',
   PASSWORD_RESET = 'password_reset',
+  CONTRACT_SIGNING = 'contract_signing',
 }
 
 export interface ILoginInput {

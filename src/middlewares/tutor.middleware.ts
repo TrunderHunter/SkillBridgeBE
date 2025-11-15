@@ -175,6 +175,9 @@ export const requirePostOwnership = async (
  * Checks if tutor's profile has been approved (status === VERIFIED)
  * This is the new requirement for tutors to operate
  */
+// Export alias for compatibility
+export const tutorMiddleware = requireTutorRole;
+
 export const requireApprovedTutorProfile = async (
   req: Request,
   res: Response,

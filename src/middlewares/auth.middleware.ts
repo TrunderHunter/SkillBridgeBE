@@ -152,6 +152,9 @@ export const requireAdmin = requireRole('ADMIN');
 // Middleware to check if user is TUTOR or ADMIN
 export const requireTutorOrAdmin = requireRole('TUTOR', 'ADMIN');
 
+// Export alias for compatibility
+export const authMiddleware = authenticateToken;
+
 // Optional authentication - doesn't fail if no token, but adds user if valid token
 export const optionalAuth = async (
   req: Request,

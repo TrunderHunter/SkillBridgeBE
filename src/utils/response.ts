@@ -66,12 +66,12 @@ export const sendSuccessWithQualification = <T>(
 };
 
 export const sendError = (
-  res: Response,
-  message: string,
-  data?: any, 
-  statusCode: number = 400
+  res: Response,
+  message: string,
+  data?: any,
+  statusCode: number = 400
 ): void => {
-  sendResponse(res, statusCode, false, message, data, undefined, undefined);
+  sendResponse(res, statusCode, false, message, data, undefined, undefined);
 };
 
 export const createErrorResponse = (
@@ -96,3 +96,22 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 }
+
+// Contract controller compatible functions
+export const successResponse = <T>(
+  res: Response,
+  message: string,
+  data?: T,
+  statusCode: number = 200
+): void => {
+  sendSuccess(res, message, data, statusCode);
+};
+
+export const errorResponse = (
+  res: Response,
+  message: string,
+  statusCode: number = 400,
+  data?: any
+): void => {
+  sendError(res, message, data, statusCode);
+};

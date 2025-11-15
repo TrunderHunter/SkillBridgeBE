@@ -22,7 +22,12 @@ export const requireStudentRole = (
     const user = req.user;
 
     if (!user) {
-      return sendError(res, 'Không tìm thấy thông tin xác thực', undefined, 401);
+      return sendError(
+        res,
+        'Không tìm thấy thông tin xác thực',
+        undefined,
+        401
+      );
     }
 
     // Kiểm tra role
@@ -47,11 +52,9 @@ export const requireStudentRole = (
 
     next();
   } catch (error) {
-    return sendError(
-      res,
-      'Lỗi xác thực quyền truy cập',
-      undefined,
-      500
-    );
+    return sendError(res, 'Lỗi xác thực quyền truy cập', undefined, 500);
   }
 };
+
+// Export alias for compatibility
+export const studentMiddleware = requireStudentRole;

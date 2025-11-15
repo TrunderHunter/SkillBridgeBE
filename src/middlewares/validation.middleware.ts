@@ -43,3 +43,6 @@ export const handleValidationErrors = (
 
   next();
 };
+
+// Export alias for compatibility
+export const validationMiddleware = handleValidationErrors;

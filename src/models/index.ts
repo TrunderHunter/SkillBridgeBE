@@ -16,5 +16,8 @@ export { Post, PostType, PostStatus } from './Post';
 export { StudentProfile } from './StudentProfile';
 export { ContactRequest } from './ContactRequest';
 export { LearningClass } from './LearningClass';
+export { Contract } from './Contract';
+export { ContractSignature } from './ContractSignature';
+export { PaymentSchedule } from './PaymentSchedule';
 export { Conversation } from './Conversation';
 export { Message } from './Message';

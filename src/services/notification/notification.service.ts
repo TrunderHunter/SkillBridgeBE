@@ -6,9 +6,22 @@ import { Notification } from '../../models/Notification';
 export interface NotificationData {
   type: 'email' | 'push' | 'socket';
   userId: string;
-  notificationType: 'CONTACT_REQUEST' | 'CLASS_CREATED' | 'HOMEWORK_ASSIGNED' | 'HOMEWORK_SUBMITTED' |
-  'HOMEWORK_GRADED' | 'ATTENDANCE_MARKED' | 'CANCELLATION_REQUESTED' |
-  'CANCELLATION_RESPONDED' | 'MESSAGE' | 'SYSTEM';
+  notificationType:
+    | 'CONTACT_REQUEST'
+    | 'CLASS_CREATED'
+    | 'HOMEWORK_ASSIGNED'
+    | 'HOMEWORK_SUBMITTED'
+    | 'HOMEWORK_GRADED'
+    | 'ATTENDANCE_MARKED'
+    | 'CANCELLATION_REQUESTED'
+    | 'CANCELLATION_RESPONDED'
+    | 'MESSAGE'
+    | 'SYSTEM'
+    | 'CONTRACT_CREATED'
+    | 'CONTRACT_APPROVED'
+    | 'CONTRACT_REJECTED'
+    | 'CONTRACT_EXPIRED'
+    | 'CONTRACT_CANCELLED';
   title: string;
   message: string;
   data?: any;
@@ -55,16 +68,23 @@ export class NotificationService {
             };
 
             logger.info(`Sending socket notification to room: ${roomName}`);
-            logger.info(`Notification payload:`, JSON.stringify(notificationPayload, null, 2));
+            logger.info(
+              `Notification payload:`,
+              JSON.stringify(notificationPayload, null, 2)
+            );
 
             io.to(roomName).emit('notification', notificationPayload);
 
             // Log room members for debugging
             const room = io.sockets.adapter.rooms.get(roomName);
             if (room) {
-              logger.info(`Room ${roomName} has ${room.size} socket(s) connected`);
+              logger.info(
+                `Room ${roomName} has ${room.size} socket(s) connected`
+              );
             } else {
-              logger.warn(`Room ${roomName} does not exist - user may not be connected`);
+              logger.warn(
+                `Room ${roomName} does not exist - user may not be connected`
+              );
             }
 
             logger.info(`Socket notification sent to user ${data.userId}`);
@@ -95,7 +115,10 @@ export class NotificationService {
   }
 
   // Mark notification as read
-  static async markAsRead(notificationId: string, userId: string): Promise<boolean> {
+  static async markAsRead(
+    notificationId: string,
+    userId: string
+  ): Promise<boolean> {
     try {
       const result = await Notification.updateOne(
         { _id: notificationId, userId },
@@ -163,9 +186,15 @@ export class NotificationService {
   }
 
   // Delete notification
-  static async deleteNotification(notificationId: string, userId: string): Promise<boolean> {
+  static async deleteNotification(
+    notificationId: string,
+    userId: string
+  ): Promise<boolean> {
     try {
-      const result = await Notification.deleteOne({ _id: notificationId, userId });
+      const result = await Notification.deleteOne({
+        _id: notificationId,
+        userId,
+      });
       return result.deletedCount > 0;
     } catch (error) {
       logger.error(`Failed to delete notification:`, error);

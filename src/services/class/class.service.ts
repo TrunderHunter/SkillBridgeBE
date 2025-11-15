@@ -1,6 +1,7 @@
 import { LearningClass } from '../../models/LearningClass';
 import { User } from '../../models/User';
 import { Subject } from '../../models/Subject';
+import { Contract } from '../../models/Contract';
 import { logger } from '../../utils/logger';
 import { buildJitsiModeratorUrl } from '../meeting/meeting.service';
 import {
@@ -24,7 +25,7 @@ class ClassService {
 
       return {
         success: true,
-        data: classes
+        data: classes,
       };
     } catch (error: any) {
       logger.error('Get tutor classes error:', error);
@@ -44,7 +45,7 @@ class ClassService {
 
       return {
         success: true,
-        data: classes
+        data: classes,
       };
     } catch (error: any) {
       logger.error('Get student classes error:', error);
@@ -70,18 +71,20 @@ class ClassService {
 
       // Check if user is authorized to view this class
       // Fix: Extract IDs properly from populated objects
-      const tutorId = typeof learningClass.tutorId === 'object' ?
-        (learningClass.tutorId as any)._id.toString() :
-        learningClass.tutorId.toString();
+      const tutorId =
+        typeof learningClass.tutorId === 'object'
+          ? (learningClass.tutorId as any)._id.toString()
+          : learningClass.tutorId.toString();
 
-      const studentId = typeof learningClass.studentId === 'object' ?
-        (learningClass.studentId as any)._id.toString() :
-        learningClass.studentId.toString();
+      const studentId =
+        typeof learningClass.studentId === 'object'
+          ? (learningClass.studentId as any)._id.toString()
+          : learningClass.studentId.toString();
 
       console.log('Comparing IDs:', {
         userId,
         tutorId,
-        studentId
+        studentId,
       });
 
       if (tutorId !== userId && studentId !== userId) {
@@ -90,7 +93,7 @@ class ClassService {
 
       return {
         success: true,
-        data: learningClass
+        data: learningClass,
       };
     } catch (error: any) {
       logger.error('Get class details error:', error);
@@ -101,7 +104,11 @@ class ClassService {
   /**
    * Get moderator join link for online class (tutor only)
    */
-  async getModeratorJoinLink(classId: string, tutorId: string, opts?: { displayName?: string; email?: string }) {
+  async getModeratorJoinLink(
+    classId: string,
+    tutorId: string,
+    opts?: { displayName?: string; email?: string }
+  ) {
     try {
       const learningClass = await LearningClass.findById(classId);
 
@@ -178,7 +185,11 @@ class ClassService {
       }
 
       // Update status
-      learningClass.status = status as 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'PAUSED';
+      learningClass.status = status as
+        | 'ACTIVE'
+        | 'COMPLETED'
+        | 'CANCELLED'
+        | 'PAUSED';
 
       // If completed, set actual end date
       if (status === 'COMPLETED') {
@@ -190,7 +201,7 @@ class ClassService {
       return {
         success: true,
         message: 'Cập nhật trạng thái lớp học thành công',
-        data: learningClass
+        data: learningClass,
       };
     } catch (error: any) {
       logger.error('Update class status error:', error);
@@ -201,7 +212,12 @@ class ClassService {
   /**
    * Add student review for class
    */
-  async addStudentReview(classId: string, studentId: string, rating: number, review: string) {
+  async addStudentReview(
+    classId: string,
+    studentId: string,
+    rating: number,
+    review: string
+  ) {
     try {
       const learningClass = await LearningClass.findById(classId);
 
@@ -223,7 +239,7 @@ class ClassService {
       learningClass.studentReview = {
         rating,
         comment: review,
-        submittedAt: new Date()
+        submittedAt: new Date(),
       };
 
       await learningClass.save();
@@ -231,7 +247,7 @@ class ClassService {
       return {
         success: true,
         message: 'Đánh giá lớp học thành công',
-        data: learningClass
+        data: learningClass,
       };
     } catch (error: any) {
       logger.error('Add student review error:', error);
@@ -242,7 +258,12 @@ class ClassService {
   /**
    * Add tutor feedback for class
    */
-  async addTutorFeedback(classId: string, tutorId: string, rating: number, feedback: string) {
+  async addTutorFeedback(
+    classId: string,
+    tutorId: string,
+    rating: number,
+    feedback: string
+  ) {
     try {
       const learningClass = await LearningClass.findById(classId);
 
@@ -259,7 +280,7 @@ class ClassService {
       learningClass.tutorReview = {
         rating,
         comment: feedback,
-        submittedAt: new Date()
+        submittedAt: new Date(),
       };
 
       await learningClass.save();
@@ -267,7 +288,7 @@ class ClassService {
       return {
         success: true,
         message: 'Đánh giá học viên thành công',
-        data: learningClass
+        data: learningClass,
       };
     } catch (error: any) {
       logger.error('Add tutor feedback error:', error);
@@ -290,21 +311,25 @@ class ClassService {
       }
 
       // Check authorization
-      const tutorId = typeof learningClass.tutorId === 'object' ?
-        (learningClass.tutorId as any)._id.toString() :
-        learningClass.tutorId.toString();
+      const tutorId =
+        typeof learningClass.tutorId === 'object'
+          ? (learningClass.tutorId as any)._id.toString()
+          : learningClass.tutorId.toString();
 
-      const studentId = typeof learningClass.studentId === 'object' ?
-        (learningClass.studentId as any)._id.toString() :
-        learningClass.studentId.toString();
+      const studentId =
+        typeof learningClass.studentId === 'object'
+          ? (learningClass.studentId as any)._id.toString()
+          : learningClass.studentId.toString();
 
       if (tutorId !== userId && studentId !== userId) {
         throw new Error('Bạn không có quyền xem lịch học này');
       }
 
       // Format sessions with additional info
-      const formattedSessions = learningClass.sessions.map(session => ({
-        ...(session as any).toObject ? (session as any).toObject() : JSON.parse(JSON.stringify(session)),
+      const formattedSessions = learningClass.sessions.map((session) => ({
+        ...((session as any).toObject
+          ? (session as any).toObject()
+          : JSON.parse(JSON.stringify(session))),
         isUpcoming: new Date(session.scheduledDate) > new Date(),
         isPast: new Date(session.scheduledDate) < new Date(),
         canEdit: tutorId === userId, // Only tutor can edit
@@ -318,11 +343,16 @@ class ClassService {
           stats: {
             total: learningClass.totalSessions,
             completed: learningClass.completedSessions,
-            scheduled: formattedSessions.filter((s: any) => s.status === 'SCHEDULED').length,
-            cancelled: formattedSessions.filter((s: any) => s.status === 'CANCELLED').length,
-            missed: formattedSessions.filter((s: any) => s.status === 'MISSED').length,
-          }
-        }
+            scheduled: formattedSessions.filter(
+              (s: any) => s.status === 'SCHEDULED'
+            ).length,
+            cancelled: formattedSessions.filter(
+              (s: any) => s.status === 'CANCELLED'
+            ).length,
+            missed: formattedSessions.filter((s: any) => s.status === 'MISSED')
+              .length,
+          },
+        },
       };
     } catch (error: any) {
       logger.error('Get class schedule error:', error);
@@ -354,7 +384,7 @@ class ClassService {
 
       // Find session
       const sessionIndex = learningClass.sessions.findIndex(
-        s => s.sessionNumber === sessionNumber
+        (s) => s.sessionNumber === sessionNumber
       );
 
       if (sessionIndex === -1) {
@@ -370,7 +400,8 @@ class ClassService {
       }
 
       if (status === 'COMPLETED') {
-        session.actualStartTime = session.actualStartTime || session.scheduledDate;
+        session.actualStartTime =
+          session.actualStartTime || session.scheduledDate;
         session.actualEndTime = new Date();
         learningClass.completedSessions += 1;
       }
@@ -380,11 +411,13 @@ class ClassService {
       return {
         success: true,
         message: 'Cập nhật trạng thái buổi học thành công',
-        data: learningClass
+        data: learningClass,
       };
     } catch (error: any) {
       logger.error('Update session status error:', error);
-      throw new Error(error.message || 'Không thể cập nhật trạng thái buổi học');
+      throw new Error(
+        error.message || 'Không thể cập nhật trạng thái buổi học'
+      );
     }
   }
 
@@ -414,7 +447,7 @@ class ClassService {
 
       // Find session
       const sessionIndex = learningClass.sessions.findIndex(
-        s => s.sessionNumber === sessionNumber
+        (s) => s.sessionNumber === sessionNumber
       );
 
       if (sessionIndex === -1) {
@@ -424,13 +457,17 @@ class ClassService {
       const session = learningClass.sessions[sessionIndex];
       const now = new Date();
       const scheduledDate = new Date(session.scheduledDate);
-      const sessionEndTime = new Date(scheduledDate.getTime() + session.duration * 60000);
+      const sessionEndTime = new Date(
+        scheduledDate.getTime() + session.duration * 60000
+      );
 
       // Check if attendance time is valid (15 mins before to session end)
       const canAttendTime = new Date(scheduledDate.getTime() - 15 * 60000);
 
       if (now < canAttendTime) {
-        throw new Error('Chưa đến giờ điểm danh. Bạn có thể điểm danh từ 15 phút trước giờ học.');
+        throw new Error(
+          'Chưa đến giờ điểm danh. Bạn có thể điểm danh từ 15 phút trước giờ học.'
+        );
       }
 
       if (now > sessionEndTime) {
@@ -441,7 +478,7 @@ class ClassService {
       if (!session.attendance) {
         session.attendance = {
           tutorAttended: false,
-          studentAttended: false
+          studentAttended: false,
         };
       }
 
@@ -461,7 +498,8 @@ class ClassService {
       }
 
       // Check if both attended -> auto complete session
-      const bothAttended = session.attendance.tutorAttended && session.attendance.studentAttended;
+      const bothAttended =
+        session.attendance.tutorAttended && session.attendance.studentAttended;
 
       if (bothAttended && session.status === 'SCHEDULED') {
         session.status = 'COMPLETED';
@@ -479,8 +517,8 @@ class ClassService {
           attendance: session.attendance,
           bothAttended,
           sessionStatus: session.status,
-          canJoinMeeting: bothAttended
-        }
+          canJoinMeeting: bothAttended,
+        },
       };
     } catch (error: any) {
       logger.error('Mark attendance error:', error);
@@ -516,7 +554,7 @@ class ClassService {
 
       // Find session
       const sessionIndex = learningClass.sessions.findIndex(
-        s => s.sessionNumber === sessionNumber
+        (s) => s.sessionNumber === sessionNumber
       );
 
       if (sessionIndex === -1) {
@@ -546,7 +584,7 @@ class ClassService {
         description: homeworkData.description,
         fileUrl: homeworkData.fileUrl,
         deadline: new Date(homeworkData.deadline),
-        assignedAt: new Date()
+        assignedAt: new Date(),
       };
 
       await learningClass.save();
@@ -577,8 +615,8 @@ class ClassService {
         message: 'Giao bài tập thành công',
         data: {
           sessionNumber,
-          homework: session.homework
-        }
+          homework: session.homework,
+        },
       };
     } catch (error: any) {
       logger.error('Assign homework error:', error);
@@ -612,7 +650,7 @@ class ClassService {
 
       // Find session
       const sessionIndex = learningClass.sessions.findIndex(
-        s => s.sessionNumber === sessionNumber
+        (s) => s.sessionNumber === sessionNumber
       );
 
       if (sessionIndex === -1) {
@@ -635,7 +673,7 @@ class ClassService {
       session.homework.submission = {
         fileUrl: submissionData.fileUrl,
         notes: submissionData.notes,
-        submittedAt: now
+        submittedAt: now,
       };
 
       await learningClass.save();
@@ -666,8 +704,8 @@ class ClassService {
           sessionNumber,
           submission: session.homework.submission,
           isLate,
-          deadline: session.homework.assignment.deadline
-        }
+          deadline: session.homework.assignment.deadline,
+        },
       };
     } catch (error: any) {
       logger.error('Submit homework error:', error);
@@ -701,7 +739,7 @@ class ClassService {
 
       // Find session
       const sessionIndex = learningClass.sessions.findIndex(
-        s => s.sessionNumber === sessionNumber
+        (s) => s.sessionNumber === sessionNumber
       );
 
       if (sessionIndex === -1) {
@@ -724,7 +762,7 @@ class ClassService {
       session.homework.grade = {
         score: gradeData.score,
         feedback: gradeData.feedback,
-        gradedAt: new Date()
+        gradedAt: new Date(),
       };
 
       await learningClass.save();
@@ -754,8 +792,8 @@ class ClassService {
         message: 'Chấm điểm thành công',
         data: {
           sessionNumber,
-          grade: session.homework.grade
-        }
+          grade: session.homework.grade,
+        },
       };
     } catch (error: any) {
       logger.error('Grade homework error:', error);
@@ -781,9 +819,8 @@ class ClassService {
       weekEnd.setHours(23, 59, 59, 999);
 
       // Find classes based on role
-      const query = userRole === 'TUTOR'
-        ? { tutorId: userId }
-        : { studentId: userId };
+      const query =
+        userRole === 'TUTOR' ? { tutorId: userId } : { studentId: userId };
 
       const classes = await LearningClass.find(query)
         .populate('tutorId', 'full_name avatar_url')
@@ -799,15 +836,21 @@ class ClassService {
 
           if (sessionDate >= weekStart && sessionDate <= weekEnd) {
             const now = new Date();
-            const sessionEndTime = new Date(sessionDate.getTime() + session.duration * 60000);
+            const sessionEndTime = new Date(
+              sessionDate.getTime() + session.duration * 60000
+            );
             const canAttendTime = new Date(sessionDate.getTime() - 15 * 60000);
 
             const canAttend = now >= canAttendTime && now <= sessionEndTime;
-            const bothAttended = session.attendance?.tutorAttended && session.attendance?.studentAttended;
+            const bothAttended =
+              session.attendance?.tutorAttended &&
+              session.attendance?.studentAttended;
 
             weekSessions.push({
               classId: learningClass._id,
-              className: learningClass.subject ? (learningClass.subject as any).name : 'N/A',
+              className: learningClass.subject
+                ? (learningClass.subject as any).name
+                : 'N/A',
               sessionNumber: session.sessionNumber,
               scheduledDate: session.scheduledDate,
               dayOfWeek: sessionDate.getDay(),
@@ -818,38 +861,42 @@ class ClassService {
               meetingLink: learningClass.onlineInfo?.meetingLink,
               location: learningClass.location
                 ? {
-                  details: (learningClass.location as any).address,
-                }
+                    details: (learningClass.location as any).address,
+                  }
                 : undefined,
               attendance: session.attendance || {
                 tutorAttended: false,
-                studentAttended: false
+                studentAttended: false,
               },
               homework: {
                 hasAssignment: !!session.homework?.assignment,
                 hasSubmission: !!session.homework?.submission,
                 hasGrade: !!session.homework?.grade,
-                isLate: session.homework?.submission && session.homework?.assignment
-                  ? new Date(session.homework.submission.submittedAt) > new Date(session.homework.assignment.deadline)
-                  : false,
+                isLate:
+                  session.homework?.submission && session.homework?.assignment
+                    ? new Date(session.homework.submission.submittedAt) >
+                      new Date(session.homework.assignment.deadline)
+                    : false,
                 // Include full homework details
                 assignment: session.homework?.assignment || null,
                 submission: session.homework?.submission || null,
-                grade: session.homework?.grade || null
+                grade: session.homework?.grade || null,
               },
               cancellationRequest: session.cancellationRequest || null,
               canAttend,
               canJoin: bothAttended,
               tutor: learningClass.tutorId,
-              student: learningClass.studentId
+              student: learningClass.studentId,
             });
           }
         }
       }
 
       // Sort by date
-      weekSessions.sort((a, b) =>
-        new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime()
+      weekSessions.sort(
+        (a, b) =>
+          new Date(a.scheduledDate).getTime() -
+          new Date(b.scheduledDate).getTime()
       );
 
       return {
@@ -858,8 +905,8 @@ class ClassService {
           weekStart,
           weekEnd,
           sessions: weekSessions,
-          totalSessions: weekSessions.length
-        }
+          totalSessions: weekSessions.length,
+        },
       };
     } catch (error: any) {
       logger.error('Get weekly schedule error:', error);
@@ -892,7 +939,9 @@ class ClassService {
       }
 
       // Find session
-      const session = learningClass.sessions.find(s => s.sessionNumber === sessionNumber);
+      const session = learningClass.sessions.find(
+        (s) => s.sessionNumber === sessionNumber
+      );
       if (!session) {
         throw new Error('Không tìm thấy buổi học');
       }
@@ -920,7 +969,7 @@ class ClassService {
         requestedBy: isTutor ? 'TUTOR' : 'STUDENT',
         reason: reason.trim(),
         requestedAt: new Date(),
-        status: 'PENDING'
+        status: 'PENDING',
       };
 
       await learningClass.save();
@@ -928,10 +977,15 @@ class ClassService {
       // Send notification to the other party
       try {
         const requester = await User.findById(userId);
-        const requesterName = requester?.full_name || requester?.email || (isTutor ? 'Gia sư' : 'Học viên');
+        const requesterName =
+          requester?.full_name ||
+          requester?.email ||
+          (isTutor ? 'Gia sư' : 'Học viên');
         const subject = await Subject.findById(learningClass.subject);
         const className = subject?.name || learningClass.title || 'Lớp học';
-        const recipientId = isTutor ? learningClass.studentId.toString() : learningClass.tutorId.toString();
+        const recipientId = isTutor
+          ? learningClass.studentId.toString()
+          : learningClass.tutorId.toString();
 
         await notifyCancellationRequested(
           recipientId,
@@ -952,8 +1006,8 @@ class ClassService {
         data: {
           sessionNumber: session.sessionNumber,
           status: session.status,
-          cancellationRequest: session.cancellationRequest
-        }
+          cancellationRequest: session.cancellationRequest,
+        },
       };
     } catch (error: any) {
       logger.error('Request cancel session error:', error);
@@ -986,18 +1040,24 @@ class ClassService {
       }
 
       // Find session
-      const session = learningClass.sessions.find(s => s.sessionNumber === sessionNumber);
+      const session = learningClass.sessions.find(
+        (s) => s.sessionNumber === sessionNumber
+      );
       if (!session) {
         throw new Error('Không tìm thấy buổi học');
       }
 
-      if (session.status !== 'PENDING_CANCELLATION' || !session.cancellationRequest) {
+      if (
+        session.status !== 'PENDING_CANCELLATION' ||
+        !session.cancellationRequest
+      ) {
         throw new Error('Không có yêu cầu huỷ buổi học nào đang chờ phê duyệt');
       }
 
       // Check if user is the one who should respond
       const requestedByRole = session.cancellationRequest.requestedBy;
-      const shouldBeRespondedBy = requestedByRole === 'TUTOR' ? 'STUDENT' : 'TUTOR';
+      const shouldBeRespondedBy =
+        requestedByRole === 'TUTOR' ? 'STUDENT' : 'TUTOR';
       const currentUserRole = isTutor ? 'TUTOR' : 'STUDENT';
 
       if (currentUserRole !== shouldBeRespondedBy) {
@@ -1008,19 +1068,25 @@ class ClassService {
         // Approve cancellation
         session.status = 'CANCELLED';
         session.cancellationRequest.status = 'APPROVED';
-        session.notes = (session.notes || '') + `\nLý do huỷ: ${session.cancellationRequest.reason}`;
+        session.notes =
+          (session.notes || '') +
+          `\nLý do huỷ: ${session.cancellationRequest.reason}`;
 
         await learningClass.save();
 
         // Send notification to requester
         try {
           const responder = await User.findById(userId);
-          const responderName = responder?.full_name || responder?.email || (isTutor ? 'Gia sư' : 'Học viên');
+          const responderName =
+            responder?.full_name ||
+            responder?.email ||
+            (isTutor ? 'Gia sư' : 'Học viên');
           const subject = await Subject.findById(learningClass.subject);
           const className = subject?.name || learningClass.title || 'Lớp học';
-          const requesterId = session.cancellationRequest.requestedBy === 'TUTOR'
-            ? learningClass.tutorId.toString()
-            : learningClass.studentId.toString();
+          const requesterId =
+            session.cancellationRequest.requestedBy === 'TUTOR'
+              ? learningClass.tutorId.toString()
+              : learningClass.studentId.toString();
 
           await notifyCancellationResponded(
             requesterId,
@@ -1039,8 +1105,8 @@ class ClassService {
           message: 'Đã chấp nhận huỷ buổi học',
           data: {
             sessionNumber: session.sessionNumber,
-            status: session.status
-          }
+            status: session.status,
+          },
         };
       } else {
         // Reject cancellation
@@ -1052,12 +1118,16 @@ class ClassService {
         // Send notification to requester
         try {
           const responder = await User.findById(userId);
-          const responderName = responder?.full_name || responder?.email || (isTutor ? 'Gia sư' : 'Học viên');
+          const responderName =
+            responder?.full_name ||
+            responder?.email ||
+            (isTutor ? 'Gia sư' : 'Học viên');
           const subject = await Subject.findById(learningClass.subject);
           const className = subject?.name || learningClass.title || 'Lớp học';
-          const requesterId = session.cancellationRequest.requestedBy === 'TUTOR'
-            ? learningClass.tutorId.toString()
-            : learningClass.studentId.toString();
+          const requesterId =
+            session.cancellationRequest.requestedBy === 'TUTOR'
+              ? learningClass.tutorId.toString()
+              : learningClass.studentId.toString();
 
           await notifyCancellationResponded(
             requesterId,
@@ -1076,14 +1146,218 @@ class ClassService {
           message: 'Đã từ chối yêu cầu huỷ buổi học',
           data: {
             sessionNumber: session.sessionNumber,
-            status: session.status
-          }
+            status: session.status,
+          },
         };
       }
     } catch (error: any) {
       logger.error('Respond to cancellation request error:', error);
-      throw new Error(error.message || 'Không thể phản hồi yêu cầu huỷ buổi học');
+      throw new Error(
+        error.message || 'Không thể phản hồi yêu cầu huỷ buổi học'
+      );
     }
+  }
+
+  /**
+   * Cancel learning class (used by contract service)
+   */
+  async cancelLearningClass(classId: string, userId: string, reason?: string) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Verify user has permission (tutor or student)
+      const isTutor = learningClass.tutorId.toString() === userId;
+      const isStudent = learningClass.studentId.toString() === userId;
+
+      if (!isTutor && !isStudent) {
+        throw new Error('Bạn không có quyền hủy lớp học này');
+      }
+
+      // Can only cancel if not completed
+      if (learningClass.status === 'COMPLETED') {
+        throw new Error('Không thể hủy lớp học đã hoàn thành');
+      }
+
+      if (learningClass.status === 'CANCELLED') {
+        throw new Error('Lớp học đã được hủy');
+      }
+
+      // Update class status
+      learningClass.status = 'CANCELLED';
+
+      // Cancel all scheduled sessions
+      learningClass.sessions.forEach((session) => {
+        if (
+          session.status === 'SCHEDULED' ||
+          session.status === 'PENDING_CANCELLATION'
+        ) {
+          session.status = 'CANCELLED';
+          if (reason) {
+            session.notes =
+              (session.notes || '') + `\nHủy do hợp đồng: ${reason}`;
+          }
+        }
+      });
+
+      await learningClass.save();
+
+      logger.info(`Learning class ${classId} cancelled by user: ${userId}`);
+
+      return learningClass;
+    } catch (error: any) {
+      logger.error('Cancel learning class error:', error);
+      throw error;
+    }
+  }
+  /**
+   * Create learning class from approved contract
+   */
+  async createLearningClassFromContract(contractData: any) {
+    try {
+      // Generate sessions based on schedule
+      const sessions = this.generateSessions(
+        new Date(contractData.startDate),
+        contractData.totalSessions,
+        contractData.schedule,
+        contractData.sessionDuration
+      );
+
+      // Resolve subject from contract data or from tutorPost
+      let subjectId = contractData.subject;
+
+      if (!subjectId && contractData.tutorPostId) {
+        // Get subject directly from TutorPost without populate to avoid potential issues
+        const { TutorPost } = require('../../models/TutorPost');
+        const tutorPost = await TutorPost.findById(
+          contractData.tutorPostId
+        ).select('subject');
+        subjectId = tutorPost?.subject;
+      }
+
+      // If still no subject, try getting from ContactRequest
+      if (!subjectId && contractData.contactRequestId) {
+        const { ContactRequest } = require('../../models/ContactRequest');
+        const contactRequest = await ContactRequest.findById(
+          contractData.contactRequestId
+        ).select('subject');
+        subjectId = contactRequest?.subject;
+      }
+
+      if (!subjectId) {
+        logger.error('No subject found for learning class creation', {
+          contractId: contractData._id,
+          tutorPostId: contractData.tutorPostId,
+          contactRequestId: contractData.contactRequestId,
+        });
+        throw new Error('Subject is required for learning class creation');
+      }
+
+      // Truncate description if too long (max 1000 chars for LearningClass)
+      const maxDescriptionLength = 1000;
+      let classDescription = contractData.description || '';
+
+      if (classDescription.length > maxDescriptionLength) {
+        classDescription =
+          classDescription.substring(0, maxDescriptionLength - 3) + '...';
+        logger.warn(
+          `Contract description truncated from ${contractData.description.length} to ${maxDescriptionLength} characters for LearningClass`
+        );
+      }
+
+      // Create learning class
+      const learningClass = new LearningClass({
+        contactRequestId: contractData.contactRequestId,
+        contractId: contractData._id,
+        studentId: contractData.studentId,
+        tutorId: contractData.tutorId,
+        tutorPostId: contractData.tutorPostId,
+        subject: subjectId,
+
+        title: contractData.classTitle || contractData.title, // Use class title if available
+        description: contractData.classDescription
+          ? contractData.classDescription.length > maxDescriptionLength
+            ? contractData.classDescription.substring(
+                0,
+                maxDescriptionLength - 3
+              ) + '...'
+            : contractData.classDescription
+          : classDescription,
+        pricePerSession: contractData.pricePerSession,
+        sessionDuration: contractData.sessionDuration,
+        totalSessions: contractData.totalSessions,
+        learningMode: contractData.learningMode,
+
+        schedule: contractData.schedule,
+        startDate: contractData.startDate,
+        expectedEndDate: contractData.expectedEndDate,
+
+        location: contractData.location,
+        onlineInfo: contractData.onlineInfo,
+
+        sessions: sessions,
+        totalAmount: contractData.totalAmount,
+        status: 'ACTIVE',
+      });
+
+      await learningClass.save();
+
+      logger.info(`Learning class created from contract: ${contractData._id}`);
+
+      return learningClass;
+    } catch (error: any) {
+      logger.error('Error creating learning class from contract:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate sessions based on schedule
+   */
+  private generateSessions(
+    startDate: Date,
+    totalSessions: number,
+    schedule: any,
+    sessionDuration: number
+  ) {
+    const sessions = [];
+    const { dayOfWeek, startTime, endTime } = schedule;
+
+    let currentDate = new Date(startDate);
+    let sessionNumber = 1;
+
+    while (sessionNumber <= totalSessions) {
+      // Find next valid day
+      while (!dayOfWeek.includes(currentDate.getDay())) {
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Create session for this day
+      const [startHour, startMinute] = startTime.split(':').map(Number);
+      const sessionDate = new Date(currentDate);
+      sessionDate.setHours(startHour, startMinute, 0, 0);
+
+      sessions.push({
+        sessionNumber,
+        scheduledDate: new Date(sessionDate),
+        duration: sessionDuration,
+        status: 'SCHEDULED' as const,
+        attendance: {
+          tutorAttended: false,
+          studentAttended: false,
+        },
+      });
+
+      sessionNumber++;
+
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return sessions;
   }
 }
 
