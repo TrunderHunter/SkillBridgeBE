@@ -30,7 +30,7 @@ router.get(
 // ==================== STUDENT SMART RECOMMENDATIONS ====================
 
 /**
- * GET /api/v1/posts/:postId/smart-recommendations
+ * GET /api/v1/ai/posts/:postId/smart-recommendations
  * Get AI-powered smart tutor recommendations for a student post
  * Requires: Student authentication
  */
@@ -56,10 +56,39 @@ router.get(
   SmartRecommendationController.getSmartRecommendations
 );
 
+// ==================== TUTOR SMART STUDENT RECOMMENDATIONS ====================
+
+/**
+ * GET /api/v1/ai/tutors/:tutorId/smart-student-posts
+ * Get AI-powered smart student post recommendations for a tutor
+ * Requires: Tutor authentication
+ */
+router.get(
+  '/tutors/:tutorId/smart-student-posts',
+  authenticateToken,
+  requireRole(UserRole.TUTOR),
+  [
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 50 })
+      .withMessage('Limit must be between 1 and 50'),
+    query('minScore')
+      .optional()
+      .isFloat({ min: 0, max: 1 })
+      .withMessage('Min score must be between 0 and 1'),
+    query('includeExplanations')
+      .optional()
+      .isBoolean()
+      .withMessage('Include explanations must be boolean'),
+  ],
+  handleValidationErrors,
+  SmartRecommendationController.getSmartStudentRecommendations
+);
+
 // ==================== TUTOR PROFILE VECTORIZATION ====================
 
 /**
- * POST /api/v1/tutors/profile/vectorize
+ * POST /api/v1/ai/tutors/profile/vectorize
  * Trigger vectorization for current tutor's profile
  * Requires: Tutor authentication
  */
@@ -70,10 +99,23 @@ router.post(
   SmartRecommendationController.vectorizeProfile
 );
 
+// ==================== STUDENT POST VECTORIZATION ====================
+
+/**
+ * POST /api/v1/ai/posts/:postId/vectorize
+ * Trigger vectorization for a student post
+ * Requires: Post author or Admin authentication
+ */
+router.post(
+  '/posts/:postId/vectorize',
+  authenticateToken,
+  SmartRecommendationController.vectorizeStudentPost
+);
+
 // ==================== ADMIN BATCH OPERATIONS ====================
 
 /**
- * POST /api/v1/admin/tutors/vectorize-all
+ * POST /api/v1/ai/admin/tutors/vectorize-all
  * Batch vectorize all verified tutor profiles
  * Requires: Admin authentication
  */
@@ -82,6 +124,18 @@ router.post(
   authenticateToken,
   requireRole(UserRole.ADMIN),
   SmartRecommendationController.batchVectorizeProfiles
+);
+
+/**
+ * POST /api/v1/ai/admin/posts/vectorize-all
+ * Batch vectorize all approved student posts
+ * Requires: Admin authentication
+ */
+router.post(
+  '/admin/posts/vectorize-all',
+  authenticateToken,
+  requireRole(UserRole.ADMIN),
+  SmartRecommendationController.batchVectorizeStudentPosts
 );
 
 // ==================== AI ONBOARDING SURVEY ====================
@@ -122,6 +176,19 @@ router.get(
   authenticateToken,
   requireRole(UserRole.STUDENT),
   aiSurveyController.getSurveyStatus
+);
+
+// ==================== AI EXPLANATION GENERATION ====================
+
+/**
+ * POST /api/v1/ai/explain-match
+ * Generate AI explanation for why a student post matches a tutor post
+ * Requires: Authentication
+ */
+router.post(
+  '/explain-match',
+  authenticateToken,
+  SmartRecommendationController.generateMatchExplanation
 );
 
 export default router;

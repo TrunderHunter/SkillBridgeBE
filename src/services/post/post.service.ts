@@ -658,6 +658,16 @@ export class PostService {
       await post.save();
       await post.populate({ path: 'author_id', select: 'full_name avatar' });
 
+      // Auto-vectorize if post is approved (async, don't wait)
+      if (reviewData.status === PostStatus.APPROVED) {
+        const { studentPostVectorizationService } = await import('../ai/studentPostVectorization.service');
+        studentPostVectorizationService.vectorizeStudentPost(postId).catch((error) => {
+          // Log error but don't fail the review
+          const { logger } = require('../../utils/logger');
+          logger.error(`Failed to auto-vectorize post ${postId}:`, error);
+        });
+      }
+
       return {
         success: true,
         message: `Bài đăng đã được ${reviewData.status === PostStatus.APPROVED ? 'phê duyệt' : 'từ chối'}`,
