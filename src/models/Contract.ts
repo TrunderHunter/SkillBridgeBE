@@ -68,15 +68,6 @@ export interface IContract extends Document {
     requestedChanges?: string;
   };
 
-  // Payment terms
-  paymentTerms: {
-    paymentMethod: 'FULL_PAYMENT' | 'INSTALLMENTS';
-    installmentPlan?: {
-      numberOfInstallments: number;
-      firstPaymentPercentage: number; // e.g., 30 for 30%
-    };
-  };
-
   // Contract metadata
   contractVersion: number; // Version tracking for amendments
   previousContractId?: string; // If this is an amendment
@@ -277,29 +268,6 @@ const ContractSchema = new Schema<IContract>(
         type: String,
         trim: true,
         maxlength: 1000,
-      },
-    },
-
-    // Payment terms
-    paymentTerms: {
-      paymentMethod: {
-        type: String,
-        required: true,
-        enum: ['FULL_PAYMENT', 'INSTALLMENTS'],
-        default: 'FULL_PAYMENT',
-      },
-      installmentPlan: {
-        numberOfInstallments: {
-          type: Number,
-          min: 2,
-          max: 10,
-        },
-        firstPaymentPercentage: {
-          type: Number,
-          min: 10,
-          max: 100,
-          default: 30,
-        },
       },
     },
 

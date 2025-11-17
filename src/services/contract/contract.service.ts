@@ -131,21 +131,10 @@ export class ContractService {
         location: contractData.location,
         onlineInfo: contractData.onlineInfo,
 
-        paymentTerms: contractData.paymentTerms || {
-          paymentMethod: 'FULL_PAYMENT',
-        },
-
         status: 'PENDING_STUDENT_APPROVAL',
       });
 
       await contract.save();
-
-      // Create payment schedule
-      await this.paymentService.createPaymentSchedule({
-        contractId: contract._id,
-        paymentMethod: contract.paymentTerms.paymentMethod,
-        installmentPlan: contract.paymentTerms.installmentPlan,
-      });
 
       // Send notification to student
       await NotificationService.sendNotification({
@@ -277,9 +266,6 @@ export class ContractService {
         contract.status = 'APPROVED';
         contract.approvedAt = new Date();
 
-        // Activate payment schedule
-        await this.paymentService.activatePaymentSchedule(contractId);
-
         // DON'T create learning class yet - wait until both parties sign
         // await this.createLearningClassFromContract(contract);
 
@@ -299,9 +285,6 @@ export class ContractService {
       } else if (response.action === 'REJECT') {
         contract.status = 'REJECTED';
         contract.rejectedAt = new Date();
-
-        // Cancel payment schedule
-        await this.paymentService.cancelPaymentSchedule(contractId);
 
         // Notify tutor
         await NotificationService.sendNotification({
@@ -471,9 +454,6 @@ export class ContractService {
       contract.cancelledBy = userId;
       await contract.save();
 
-      // Cancel payment schedule
-      await this.paymentService.cancelPaymentSchedule(contractId);
-
       // If learning class exists, cancel it
       const learningClass = await LearningClass.findOne({ contractId });
       if (learningClass) {
@@ -604,12 +584,6 @@ export class ContractService {
 
       logger.info(`Learning class created successfully: ${learningClass._id}`);
 
-      // Update payment schedule with learning class ID
-      await this.paymentService.updatePaymentScheduleWithClass(
-        contract._id,
-        learningClass._id
-      );
-
       logger.info(`Learning class created from contract: ${contract._id}`);
 
       return learningClass;
@@ -646,7 +620,6 @@ export class ContractService {
       expectedEndDate: contract.expectedEndDate?.toISOString(),
       location: contract.location,
       onlineInfo: contract.onlineInfo,
-      paymentTerms: contract.paymentTerms,
     };
 
     const canonicalString = JSON.stringify(

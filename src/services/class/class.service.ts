@@ -1268,6 +1268,32 @@ class ClassService {
         );
       }
 
+      // Handle onlineInfo - provision meeting if needed
+      let onlineInfo = contractData.onlineInfo;
+      
+      if (contractData.learningMode === 'ONLINE') {
+        // If no meetingLink provided, auto-generate one
+        if (!onlineInfo?.meetingLink) {
+          const { provisionOnlineMeeting } = require('../meeting/meeting.service');
+          
+          const provisionedInfo = await provisionOnlineMeeting(
+            onlineInfo?.platform || 'OTHER',
+            {
+              title: contractData.classTitle || contractData.title,
+              startDate: contractData.startDate,
+              schedule: contractData.schedule,
+            }
+          );
+
+          if (provisionedInfo) {
+            onlineInfo = provisionedInfo;
+            logger.info(`Auto-provisioned meeting link for contract ${contractData._id}: ${provisionedInfo.meetingLink}`);
+          } else {
+            logger.warn(`Failed to provision meeting link for contract ${contractData._id}, keeping existing onlineInfo`);
+          }
+        }
+      }
+
       // Create learning class
       const learningClass = new LearningClass({
         contactRequestId: contractData.contactRequestId,
@@ -1296,7 +1322,7 @@ class ClassService {
         expectedEndDate: contractData.expectedEndDate,
 
         location: contractData.location,
-        onlineInfo: contractData.onlineInfo,
+        onlineInfo: onlineInfo,
 
         sessions: sessions,
         totalAmount: contractData.totalAmount,

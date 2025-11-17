@@ -27,13 +27,6 @@ export interface CreateContractInput {
     meetingId?: string;
     password?: string;
   };
-  paymentTerms?: {
-    paymentMethod: 'FULL_PAYMENT' | 'INSTALLMENTS';
-    installmentPlan?: {
-      numberOfInstallments: number;
-      firstPaymentPercentage: number;
-    };
-  };
 }
 
 export interface StudentContractResponse {
@@ -56,23 +49,6 @@ export interface ContractFilters {
   dateTo?: string;
   page?: number;
   limit?: number;
-}
-
-export interface CreatePaymentScheduleInput {
-  contractId: string;
-  paymentMethod: 'FULL_PAYMENT' | 'INSTALLMENTS';
-  installmentPlan?: {
-    numberOfInstallments: number;
-    firstPaymentPercentage: number;
-  };
-  paymentTerms?: {
-    lateFeePercentage?: number;
-    gracePeriodDays?: number;
-    cancellationPolicy?: {
-      refundPercentage: number;
-      minimumNoticeDays: number;
-    };
-  };
 }
 
 export interface ProcessPaymentInput {

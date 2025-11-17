@@ -111,22 +111,6 @@ export const validateContract = {
         }
         return true;
       }),
-
-    // Payment terms validation
-    body('paymentTerms.paymentMethod')
-      .optional()
-      .isIn(['FULL_PAYMENT', 'INSTALLMENTS'])
-      .withMessage('Phương thức thanh toán không hợp lệ'),
-
-    body('paymentTerms.installmentPlan.numberOfInstallments')
-      .if(body('paymentTerms.paymentMethod').equals('INSTALLMENTS'))
-      .isInt({ min: 2, max: 10 })
-      .withMessage('Số kỳ thanh toán phải từ 2 đến 10'),
-
-    body('paymentTerms.installmentPlan.firstPaymentPercentage')
-      .if(body('paymentTerms.paymentMethod').equals('INSTALLMENTS'))
-      .isInt({ min: 10, max: 90 })
-      .withMessage('Phần trăm thanh toán đầu phải từ 10% đến 90%'),
   ] as ValidationChain[],
 
   respondToContract: [
