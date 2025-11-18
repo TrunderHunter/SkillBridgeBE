@@ -173,17 +173,13 @@ class ClassService {
       }
 
       // Validate status
-      if (!['ACTIVE', 'COMPLETED', 'CANCELLED', 'PAUSED'].includes(status)) {
+      if (!['ACTIVE', 'CANCELLED', 'PAUSED'].includes(status)) {
         throw new Error('Trạng thái không hợp lệ');
       }
 
-      // Update status
-      learningClass.status = status as 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'PAUSED';
-
-      // If completed, set actual end date
-      if (status === 'COMPLETED') {
-        learningClass.actualEndDate = new Date();
-      }
+      // Tutor cannot manually mark class as COMPLETED.
+      // Class completion is handled automatically when all sessions are done.
+      learningClass.status = status as 'ACTIVE' | 'CANCELLED' | 'PAUSED';
 
       await learningClass.save();
 
@@ -372,7 +368,20 @@ class ClassService {
       if (status === 'COMPLETED') {
         session.actualStartTime = session.actualStartTime || session.scheduledDate;
         session.actualEndTime = new Date();
-        learningClass.completedSessions += 1;
+
+        // Recalculate completed sessions to avoid double-counting
+        learningClass.completedSessions = learningClass.sessions.filter(
+          s => s.status === 'COMPLETED'
+        ).length;
+
+        // Auto-complete class when all sessions have been completed
+        if (
+          learningClass.completedSessions === learningClass.totalSessions &&
+          learningClass.status !== 'COMPLETED'
+        ) {
+          learningClass.status = 'COMPLETED';
+          learningClass.actualEndDate = new Date();
+        }
       }
 
       await learningClass.save();
@@ -467,7 +476,20 @@ class ClassService {
         session.status = 'COMPLETED';
         session.actualStartTime = session.actualStartTime || now;
         session.actualEndTime = sessionEndTime;
-        learningClass.completedSessions += 1;
+
+        // Recalculate completed sessions to avoid double-counting
+        learningClass.completedSessions = learningClass.sessions.filter(
+          s => s.status === 'COMPLETED'
+        ).length;
+
+        // Auto-complete class when all sessions have been completed
+        if (
+          learningClass.completedSessions === learningClass.totalSessions &&
+          learningClass.status !== 'COMPLETED'
+        ) {
+          learningClass.status = 'COMPLETED';
+          learningClass.actualEndDate = new Date();
+        }
       }
 
       await learningClass.save();
@@ -672,6 +694,186 @@ class ClassService {
     } catch (error: any) {
       logger.error('Submit homework error:', error);
       throw new Error(error.message || 'Không thể nộp bài tập');
+    }
+  }
+
+  /**
+   * Get all student assignments
+   */
+  async getStudentAssignments(studentId: string) {
+    try {
+      const classes = await LearningClass.find({ studentId })
+        .populate('tutorId', 'full_name avatar_url email')
+        .populate('subject', 'name')
+        .lean();
+
+      const assignments: any[] = [];
+
+      classes.forEach((learningClass) => {
+        learningClass.sessions.forEach((session) => {
+          if (session.homework?.assignment) {
+            const assignment = session.homework.assignment;
+            const submission = session.homework.submission;
+            const grade = session.homework.grade;
+
+            // Determine status
+            let status: 'pending' | 'submitted' | 'completed' = 'pending';
+            if (grade) {
+              status = 'completed';
+            } else if (submission) {
+              status = 'submitted';
+            }
+
+            // Check if late
+            const now = new Date();
+            const deadline = new Date(assignment.deadline);
+            const isLate = submission && new Date(submission.submittedAt) > deadline;
+            const isOverdue = !submission && now > deadline;
+
+            assignments.push({
+              id: `${learningClass._id}-${session.sessionNumber}`,
+              classId: learningClass._id.toString(),
+              className: (learningClass as any).subject?.name || learningClass.title,
+              sessionNumber: session.sessionNumber,
+              scheduledDate: session.scheduledDate,
+              title: assignment.title,
+              description: assignment.description,
+              fileUrl: assignment.fileUrl,
+              deadline: assignment.deadline,
+              assignedAt: assignment.assignedAt,
+              tutor: {
+                id: (learningClass as any).tutorId?._id?.toString() || learningClass.tutorId.toString(),
+                name: (learningClass as any).tutorId?.full_name || 'Gia sư',
+                avatar: (learningClass as any).tutorId?.avatar_url,
+              },
+              submission: submission ? {
+                fileUrl: submission.fileUrl,
+                notes: submission.notes,
+                submittedAt: submission.submittedAt,
+              } : null,
+              grade: grade ? {
+                score: grade.score,
+                feedback: grade.feedback,
+                gradedAt: grade.gradedAt,
+              } : null,
+              status,
+              isLate,
+              isOverdue,
+            });
+          }
+        });
+      });
+
+      // Sort by deadline (upcoming first)
+      assignments.sort((a, b) => {
+        const dateA = new Date(a.deadline).getTime();
+        const dateB = new Date(b.deadline).getTime();
+        return dateA - dateB;
+      });
+
+      return {
+        success: true,
+        data: {
+          assignments,
+          total: assignments.length,
+          pending: assignments.filter(a => a.status === 'pending').length,
+          submitted: assignments.filter(a => a.status === 'submitted').length,
+          completed: assignments.filter(a => a.status === 'completed').length,
+        }
+      };
+    } catch (error: any) {
+      logger.error('Get student assignments error:', error);
+      throw new Error('Không thể lấy danh sách bài tập');
+    }
+  }
+
+  /**
+   * Get all tutor assignments (from all classes)
+   */
+  async getTutorAssignments(tutorId: string) {
+    try {
+      const classes = await LearningClass.find({ tutorId })
+        .populate('studentId', 'full_name avatar_url email')
+        .populate('subject', 'name')
+        .lean();
+
+      const assignments: any[] = [];
+
+      classes.forEach((learningClass) => {
+        learningClass.sessions.forEach((session) => {
+          if (session.homework?.assignment) {
+            const assignment = session.homework.assignment;
+            const submission = session.homework.submission;
+            const grade = session.homework.grade;
+
+            // Determine status for tutor view
+            let status: 'pending_submission' | 'pending_grade' | 'graded' = 'pending_submission';
+            if (grade) {
+              status = 'graded';
+            } else if (submission) {
+              status = 'pending_grade';
+            }
+
+            // Check if late
+            const now = new Date();
+            const deadline = new Date(assignment.deadline);
+            const isLate = submission && new Date(submission.submittedAt) > deadline;
+            const isOverdue = !submission && now > deadline;
+
+            assignments.push({
+              id: `${learningClass._id}-${session.sessionNumber}`,
+              classId: learningClass._id.toString(),
+              className: (learningClass as any).subject?.name || learningClass.title,
+              sessionNumber: session.sessionNumber,
+              scheduledDate: session.scheduledDate,
+              title: assignment.title,
+              description: assignment.description,
+              fileUrl: assignment.fileUrl,
+              deadline: assignment.deadline,
+              assignedAt: assignment.assignedAt,
+              student: {
+                id: (learningClass as any).studentId?._id?.toString() || learningClass.studentId.toString(),
+                name: (learningClass as any).studentId?.full_name || 'Học viên',
+                avatar: (learningClass as any).studentId?.avatar_url,
+              },
+              submission: submission ? {
+                fileUrl: submission.fileUrl,
+                notes: submission.notes,
+                submittedAt: submission.submittedAt,
+              } : null,
+              grade: grade ? {
+                score: grade.score,
+                feedback: grade.feedback,
+                gradedAt: grade.gradedAt,
+              } : null,
+              status,
+              isLate,
+              isOverdue,
+            });
+          }
+        });
+      });
+
+      // Sort by deadline (upcoming first)
+      assignments.sort((a, b) => {
+        const dateA = new Date(a.deadline).getTime();
+        const dateB = new Date(b.deadline).getTime();
+        return dateA - dateB;
+      });
+
+      return {
+        success: true,
+        data: {
+          assignments,
+          total: assignments.length,
+          pendingSubmission: assignments.filter(a => a.status === 'pending_submission').length,
+          pendingGrade: assignments.filter(a => a.status === 'pending_grade').length,
+          graded: assignments.filter(a => a.status === 'graded').length,
+        }
+      };
+    } catch (error: any) {
+      logger.error('Get tutor assignments error:', error);
+      throw new Error('Không thể lấy danh sách bài tập');
     }
   }
 

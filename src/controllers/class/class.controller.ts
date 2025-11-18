@@ -56,6 +56,48 @@ export class ClassController {
   }
 
   /**
+   * Get all student assignments
+   */
+  static async getStudentAssignments(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const studentId = req.user!.id;
+      const result = await classService.getStudentAssignments(studentId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get student assignments controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể lấy danh sách bài tập'
+      });
+    }
+  }
+
+  /**
+   * Get all tutor assignments
+   */
+  static async getTutorAssignments(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const tutorId = req.user!.id;
+      const result = await classService.getTutorAssignments(tutorId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get tutor assignments controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể lấy danh sách bài tập'
+      });
+    }
+  }
+
+  /**
    * Get class details by ID
    */
   static async getClassById(

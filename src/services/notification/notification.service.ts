@@ -8,7 +8,7 @@ export interface NotificationData {
   userId: string;
   notificationType: 'CONTACT_REQUEST' | 'CLASS_CREATED' | 'HOMEWORK_ASSIGNED' | 'HOMEWORK_SUBMITTED' |
   'HOMEWORK_GRADED' | 'ATTENDANCE_MARKED' | 'CANCELLATION_REQUESTED' |
-  'CANCELLATION_RESPONDED' | 'MESSAGE' | 'SYSTEM';
+  'CANCELLATION_RESPONDED' | 'MESSAGE' | 'SYSTEM' | 'ASSIGNMENT_DEADLINE_REMINDER';
   title: string;
   message: string;
   data?: any;

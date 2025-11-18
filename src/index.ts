@@ -3,6 +3,7 @@ import http from 'http';
 import app from './app';
 import { connectDB, initializeSocket, setSocketInstance } from './config/index';
 import { logger } from './utils/logger';
+import { CronScheduler } from './cron/scheduler';
 
 const PORT = process.env.PORT || 3000;
 
@@ -11,6 +12,8 @@ const gracefulShutdown = async (signal: string) => {
   logger.info(`📱 Received ${signal}. Starting graceful shutdown...`);
 
   try {
+    // Stop cron jobs
+    CronScheduler.stop();
     logger.info('✅ Graceful shutdown completed');
     process.exit(0);
   } catch (error) {
@@ -31,6 +34,9 @@ const startServer = async () => {
     const io = initializeSocket(server);
     setSocketInstance(io);
 
+    // Initialize Cron Scheduler
+    CronScheduler.initialize();
+
     // Start server
     server.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
@@ -38,6 +44,7 @@ const startServer = async () => {
       logger.info(`🌐 API URL: http://localhost:${PORT}/api/v1`);
       logger.info(`⚡ Socket.IO initialized`);
       logger.info(`🔔 Notification service ready`);
+      logger.info(`⏰ Cron scheduler started`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

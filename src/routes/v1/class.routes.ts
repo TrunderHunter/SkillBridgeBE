@@ -25,6 +25,11 @@ router.get('/tutor', requireTutorRole, ClassController.getTutorClasses);
 
 router.get('/student', requireStudentRole, ClassController.getStudentClasses);
 
+// Get assignments
+router.get('/assignments/student', requireStudentRole, ClassController.getStudentAssignments);
+
+router.get('/assignments/tutor', requireTutorRole, ClassController.getTutorAssignments);
+
 // Get class schedule with sessions
 router.get('/:classId/schedule', ClassController.getClassSchedule);
 
