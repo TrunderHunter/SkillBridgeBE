@@ -96,5 +96,154 @@ export const validateClass = {
       .trim()
       .isLength({ max: 1000 })
       .withMessage('Nhận xét không được vượt quá 1000 ký tự')
+  ] as ValidationChain[],
+
+  createMaterial: [
+    body('title')
+      .notEmpty()
+      .withMessage('Tiêu đề không được để trống')
+      .isString()
+      .trim()
+      .isLength({ max: 200 })
+      .withMessage('Tiêu đề không được vượt quá 200 ký tự'),
+    body('description')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 1000 })
+      .withMessage('Mô tả không được vượt quá 1000 ký tự'),
+    body('fileUrl')
+      .notEmpty()
+      .withMessage('Vui lòng cung cấp file tải lên')
+      .isURL()
+      .withMessage('URL file không hợp lệ'),
+    body('fileName')
+      .optional()
+      .isString()
+      .trim(),
+    body('fileSize')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Dung lượng file không hợp lệ'),
+    body('visibility')
+      .optional()
+      .isIn(['STUDENTS', 'PRIVATE'])
+      .withMessage('Kiểu hiển thị không hợp lệ')
+  ] as ValidationChain[],
+
+  updateMaterial: [
+    body('title')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 200 })
+      .withMessage('Tiêu đề không được vượt quá 200 ký tự'),
+    body('description')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 1000 })
+      .withMessage('Mô tả không được vượt quá 1000 ký tự'),
+    body('fileUrl')
+      .optional()
+      .isURL()
+      .withMessage('URL file không hợp lệ'),
+    body('fileName')
+      .optional()
+      .isString()
+      .trim(),
+    body('fileSize')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Dung lượng file không hợp lệ'),
+    body('visibility')
+      .optional()
+      .isIn(['STUDENTS', 'PRIVATE'])
+      .withMessage('Kiểu hiển thị không hợp lệ')
+  ] as ValidationChain[],
+
+  createAssignment: [
+    body('title')
+      .notEmpty()
+      .withMessage('Tiêu đề không được để trống')
+      .isString()
+      .trim()
+      .isLength({ max: 200 })
+      .withMessage('Tiêu đề không được vượt quá 200 ký tự'),
+    body('instructions')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 2000 })
+      .withMessage('Hướng dẫn không được vượt quá 2000 ký tự'),
+    body('dueDate')
+      .optional()
+      .isISO8601()
+      .withMessage('Hạn nộp phải là ngày hợp lệ'),
+    body('attachment.fileUrl')
+      .optional()
+      .isURL()
+      .withMessage('URL file đính kèm không hợp lệ'),
+    body('attachment.fileName')
+      .optional()
+      .isString()
+      .trim(),
+    body('attachment.fileSize')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Dung lượng file không hợp lệ')
+  ] as ValidationChain[],
+
+  updateAssignment: [
+    body('title')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 200 })
+      .withMessage('Tiêu đề không được vượt quá 200 ký tự'),
+    body('instructions')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 2000 })
+      .withMessage('Hướng dẫn không được vượt quá 2000 ký tự'),
+    body('dueDate')
+      .optional()
+      .isISO8601()
+      .withMessage('Hạn nộp phải là ngày hợp lệ'),
+    body('attachment.fileUrl')
+      .optional({ checkFalsy: true })
+      .isURL()
+      .withMessage('URL file đính kèm không hợp lệ'),
+    body('attachment.fileName')
+      .optional({ checkFalsy: true })
+      .isString()
+      .trim(),
+    body('attachment.fileSize')
+      .optional({ checkFalsy: true })
+      .isInt({ min: 1 })
+      .withMessage('Dung lượng file không hợp lệ')
+  ] as ValidationChain[],
+
+  submitAssignmentWork: [
+    body('fileUrl')
+      .notEmpty()
+      .withMessage('File bài nộp không được để trống')
+      .isURL()
+      .withMessage('URL file không hợp lệ'),
+    body('note')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 500 })
+      .withMessage('Ghi chú không được vượt quá 500 ký tự'),
+    body('fileName')
+      .optional()
+      .isString()
+      .trim(),
+    body('fileSize')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Dung lượng file không hợp lệ')
   ] as ValidationChain[]
 };

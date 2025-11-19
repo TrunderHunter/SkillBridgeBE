@@ -35,6 +35,60 @@ export interface ISessionHomework {
   };
 }
 
+export interface IClassMaterial {
+  _id: string;
+  title: string;
+  description?: string;
+  fileUrl: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  visibility: 'STUDENTS' | 'PRIVATE';
+  uploadedBy: {
+    userId: string;
+    role: 'TUTOR' | 'STUDENT';
+    fullName: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IClassAssignmentSubmission {
+  _id: string;
+  studentId: string;
+  studentName: string;
+  note?: string;
+  fileUrl: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  submittedAt: Date;
+  updatedAt: Date;
+}
+
+export interface IClassAssignment {
+  _id: string;
+  title: string;
+  instructions?: string;
+  attachment?: {
+    fileUrl: string;
+    fileName?: string;
+    fileSize?: number;
+    mimeType?: string;
+  };
+  dueDate?: Date;
+  createdBy: {
+    userId: string;
+    fullName: string;
+  };
+  submissions: IClassAssignmentSubmission[];
+  createdAt: Date;
+  updatedAt: Date;
+  source?: 'CLASS' | 'SESSION';
+  sessionNumber?: number;
+  readOnly?: boolean;
+}
+
 export interface ILearningSession {
   sessionNumber: number;
   scheduledDate: Date;
@@ -128,6 +182,8 @@ export interface ILearningClass extends Document {
   totalAmount: number;
   paidAmount: number;
   paymentStatus: 'PENDING' | 'PARTIAL' | 'COMPLETED';
+  materials: IClassMaterial[];
+  assignments: IClassAssignment[];
   
   createdAt: Date;
   updatedAt: Date;
@@ -222,6 +278,59 @@ const LearningSessionSchema = new Schema<ILearningSession>({
   },
 }, { _id: false });
 
+const ClassMaterialSchema = new Schema<IClassMaterial>({
+  _id: { type: String, default: uuidv4 },
+  title: { type: String, required: true, maxlength: 200 },
+  description: { type: String, maxlength: 1000 },
+  fileUrl: { type: String, required: true },
+  fileName: { type: String },
+  fileSize: { type: Number },
+  mimeType: { type: String },
+  visibility: {
+    type: String,
+    enum: ['STUDENTS', 'PRIVATE'],
+    default: 'STUDENTS'
+  },
+  uploadedBy: {
+    userId: { type: String, required: true },
+    role: {
+      type: String,
+      enum: ['TUTOR', 'STUDENT'],
+      required: true
+    },
+    fullName: { type: String, required: true },
+  },
+}, { timestamps: true });
+
+const AssignmentSubmissionSchema = new Schema<IClassAssignmentSubmission>({
+  _id: { type: String, default: uuidv4 },
+  studentId: { type: String, required: true },
+  studentName: { type: String, required: true },
+  note: { type: String, maxlength: 500 },
+  fileUrl: { type: String, required: true },
+  fileName: { type: String },
+  fileSize: { type: Number },
+  mimeType: { type: String },
+}, { timestamps: true });
+
+const ClassAssignmentSchema = new Schema<IClassAssignment>({
+  _id: { type: String, default: uuidv4 },
+  title: { type: String, required: true, maxlength: 200 },
+  instructions: { type: String, maxlength: 2000 },
+  attachment: {
+    fileUrl: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+  },
+  dueDate: { type: Date },
+  createdBy: {
+    userId: { type: String, required: true },
+    fullName: { type: String, required: true },
+  },
+  submissions: [AssignmentSubmissionSchema],
+}, { timestamps: true });
+
 const LearningClassSchema = new Schema<ILearningClass>(
   {
     _id: { type: String, default: uuidv4 },
@@ -279,6 +388,14 @@ const LearningClassSchema = new Schema<ILearningClass>(
       type: String, 
       enum: ['PENDING', 'PARTIAL', 'COMPLETED'],
       default: 'PENDING'
+    },
+    materials: {
+      type: [ClassMaterialSchema],
+      default: []
+    },
+    assignments: {
+      type: [ClassAssignmentSchema],
+      default: []
     },
     
     // Move these fields inside the schema object

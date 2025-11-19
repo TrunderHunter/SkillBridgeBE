@@ -45,6 +45,12 @@ export class SmartRecommendationController {
           avatar: rec.tutorPost.tutorId.avatar_url,
           headline: rec.tutorProfile.headline,
           introduction: rec.tutorProfile.introduction?.substring(0, 200), // Truncate
+          rating: {
+            average: rec.tutorProfile?.ratingAverage || 0,
+            count: rec.tutorProfile?.ratingCount || 0,
+            badges: rec.tutorProfile?.badges || [],
+            lastReviewAt: rec.tutorProfile?.lastReviewAt || null,
+          },
         },
         tutorPost: {
           id: rec.tutorPost._id,

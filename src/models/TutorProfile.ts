@@ -97,6 +97,31 @@ const tutorProfileSchema = new Schema<ITutorProfileDocument>(
       type: Date,
       default: null,
     },
+    // Rating summary
+    ratingAverage: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+    ratingCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    ratingSum: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    lastReviewAt: {
+      type: Date,
+      default: null,
+    },
+    badges: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
@@ -108,6 +133,7 @@ const tutorProfileSchema = new Schema<ITutorProfileDocument>(
 tutorProfileSchema.index({ user_id: 1 });
 tutorProfileSchema.index({ status: 1 });
 tutorProfileSchema.index({ verified_at: 1 });
+tutorProfileSchema.index({ ratingAverage: -1, ratingCount: -1 });
 
 // Transform output to match API response format
 tutorProfileSchema.set('toJSON', {
