@@ -17,6 +17,7 @@ import messageRoutes from './messageRoutes';
 import aiRoutes from './ai.routes';
 import uploadRoutes from './upload.routes';
 import notificationRoutes from './notification.routes';
+import { paymentRoutes } from './payment.routes';
 
 const router = express.Router();
 
@@ -68,5 +69,8 @@ router.use('/upload', uploadRoutes);
 
 // Notification routes
 router.use('/notifications', notificationRoutes);
+
+// Payment routes
+router.use('/payments', paymentRoutes);
 
 export default router;

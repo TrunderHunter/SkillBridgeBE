@@ -297,46 +297,32 @@ export class PaymentService {
       // Single payment due in 3 days
       installments.push({
         installmentNumber: 1,
+        sessionNumber: 1, // First session
         amount: totalAmount,
         dueDate: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
-        status: 'PENDING' as const,
+        status: 'UNPAID' as const,
       });
     } else {
-      // Multiple installments
+      // Multiple installments - one per session
       const numberOfInstallments = installmentPlan?.numberOfInstallments || 2;
-      const firstPaymentPercentage =
-        installmentPlan?.firstPaymentPercentage || 50;
+      const amountPerSession = Math.round(totalAmount / numberOfInstallments);
 
-      const firstPaymentAmount = Math.round(
-        (totalAmount * firstPaymentPercentage) / 100
-      );
-      const remainingAmount = totalAmount - firstPaymentAmount;
-      const subsequentPaymentAmount = Math.round(
-        remainingAmount / (numberOfInstallments - 1)
-      );
+      // Calculate remainder to add to last payment to ensure total is exact
+      const remainder = totalAmount - amountPerSession * numberOfInstallments;
 
-      // First payment - due in 3 days
-      installments.push({
-        installmentNumber: 1,
-        amount: firstPaymentAmount,
-        dueDate: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
-        status: 'PENDING' as const,
-      });
-
-      // Subsequent payments - monthly
-      for (let i = 2; i <= numberOfInstallments; i++) {
-        const dueDate = new Date(now.getTime() + i * 30 * 24 * 60 * 60 * 1000);
+      for (let i = 1; i <= numberOfInstallments; i++) {
+        const daysUntilDue = i === 1 ? 3 : 3 + (i - 1) * 7; // First payment in 3 days, then weekly
         const amount =
           i === numberOfInstallments
-            ? remainingAmount -
-              subsequentPaymentAmount * (numberOfInstallments - 2)
-            : subsequentPaymentAmount;
+            ? amountPerSession + remainder // Add remainder to last payment
+            : amountPerSession;
 
         installments.push({
           installmentNumber: i,
+          sessionNumber: i, // Session-based payment
           amount: amount,
-          dueDate: dueDate,
-          status: 'PENDING' as const,
+          dueDate: new Date(now.getTime() + daysUntilDue * 24 * 60 * 60 * 1000),
+          status: 'UNPAID' as const,
         });
       }
     }

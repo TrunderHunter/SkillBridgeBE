@@ -3,11 +3,18 @@ import { v4 as uuidv4 } from 'uuid';
 
 export interface IPaymentInstallment {
   installmentNumber: number;
+  sessionNumber: number; // Which session/week this payment is for
   amount: number;
   dueDate: Date;
-  status: 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+  status: 'UNPAID' | 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED';
   paidAt?: Date;
-  paymentMethod?: 'BANK_TRANSFER' | 'CREDIT_CARD' | 'E_WALLET' | 'CASH';
+  paymentMethod?:
+    | 'VNPAY'
+    | 'BANK_TRANSFER'
+    | 'CREDIT_CARD'
+    | 'E_WALLET'
+    | 'CASH';
+  paymentId?: string; // Reference to Payment document
   transactionId?: string;
   notes?: string;
 }
@@ -61,6 +68,11 @@ const PaymentInstallmentSchema = new Schema<IPaymentInstallment>(
       required: true,
       min: 1,
     },
+    sessionNumber: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
     amount: {
       type: Number,
       required: true,
@@ -73,13 +85,17 @@ const PaymentInstallmentSchema = new Schema<IPaymentInstallment>(
     status: {
       type: String,
       required: true,
-      enum: ['PENDING', 'PAID', 'OVERDUE', 'CANCELLED'],
-      default: 'PENDING',
+      enum: ['UNPAID', 'PENDING', 'PAID', 'OVERDUE', 'CANCELLED'],
+      default: 'UNPAID',
     },
     paidAt: Date,
     paymentMethod: {
       type: String,
-      enum: ['BANK_TRANSFER', 'CREDIT_CARD', 'E_WALLET', 'CASH'],
+      enum: ['VNPAY'],
+    },
+    paymentId: {
+      type: String,
+      ref: 'Payment',
     },
     transactionId: {
       type: String,
@@ -252,7 +268,7 @@ PaymentScheduleSchema.methods.checkOverduePayments = function () {
   let hasOverdue = false;
 
   this.installments.forEach((installment: IPaymentInstallment) => {
-    if (installment.status === 'PENDING' && installment.dueDate < now) {
+    if (installment.status === 'UNPAID' && installment.dueDate < now) {
       installment.status = 'OVERDUE';
       hasOverdue = true;
     }

@@ -63,6 +63,7 @@
     "nodemailer": "^7.0.6",
     "socket.io": "^4.8.1",
     "uuid": "^8.3.2",
+    "vnpay": "^2.4.4",
     "winston": "^3.17.0"
   },
   "devDependencies": {

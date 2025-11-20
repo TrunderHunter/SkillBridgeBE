@@ -107,7 +107,7 @@ class ClassService {
   async getModeratorJoinLink(
     classId: string,
     tutorId: string,
-    opts?: { displayName?: string; email?: string }
+    opts?: { displayName?: string; email?: string; sessionNumber?: number }
   ) {
     try {
       const learningClass = await LearningClass.findById(classId);
@@ -122,6 +122,24 @@ class ClassService {
 
       if (learningClass.learningMode !== 'ONLINE') {
         throw new Error('Lớp học này không phải học online');
+      }
+
+      // Check payment status if sessionNumber is provided
+      if (opts?.sessionNumber) {
+        const session = learningClass.sessions.find(
+          (s) => s.sessionNumber === opts.sessionNumber
+        );
+
+        if (!session) {
+          throw new Error('Không tìm thấy buổi học');
+        }
+
+        // Check if payment is required and if session is paid
+        if (session.paymentRequired && session.paymentStatus !== 'PAID') {
+          throw new Error(
+            'Buổi học này chưa được thanh toán. Vui lòng thanh toán trước khi tham gia.'
+          );
+        }
       }
 
       const onlineInfo: any = learningClass.onlineInfo || {};
@@ -1270,12 +1288,14 @@ class ClassService {
 
       // Handle onlineInfo - provision meeting if needed
       let onlineInfo = contractData.onlineInfo;
-      
+
       if (contractData.learningMode === 'ONLINE') {
         // If no meetingLink provided, auto-generate one
         if (!onlineInfo?.meetingLink) {
-          const { provisionOnlineMeeting } = require('../meeting/meeting.service');
-          
+          const {
+            provisionOnlineMeeting,
+          } = require('../meeting/meeting.service');
+
           const provisionedInfo = await provisionOnlineMeeting(
             onlineInfo?.platform || 'OTHER',
             {
@@ -1287,9 +1307,13 @@ class ClassService {
 
           if (provisionedInfo) {
             onlineInfo = provisionedInfo;
-            logger.info(`Auto-provisioned meeting link for contract ${contractData._id}: ${provisionedInfo.meetingLink}`);
+            logger.info(
+              `Auto-provisioned meeting link for contract ${contractData._id}: ${provisionedInfo.meetingLink}`
+            );
           } else {
-            logger.warn(`Failed to provision meeting link for contract ${contractData._id}, keeping existing onlineInfo`);
+            logger.warn(
+              `Failed to provision meeting link for contract ${contractData._id}, keeping existing onlineInfo`
+            );
           }
         }
       }
@@ -1371,6 +1395,8 @@ class ClassService {
         scheduledDate: new Date(sessionDate),
         duration: sessionDuration,
         status: 'SCHEDULED' as const,
+        paymentStatus: 'UNPAID' as const,
+        paymentRequired: true,
         attendance: {
           tutorAttended: false,
           studentAttended: false,

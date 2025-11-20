@@ -584,6 +584,50 @@ export class ContractService {
 
       logger.info(`Learning class created successfully: ${learningClass._id}`);
 
+      // Create payment schedule for the learning class
+      logger.info(
+        `Creating payment schedule for learning class: ${learningClass._id}`
+      );
+
+      try {
+        await this.paymentService.createPaymentSchedule({
+          contractId: contract._id,
+          paymentMethod: 'INSTALLMENTS',
+          installmentPlan: {
+            numberOfInstallments: contract.totalSessions,
+            firstPaymentPercentage: 100 / contract.totalSessions, // Equal payment per session
+          },
+          paymentTerms: {
+            lateFeePercentage: 5,
+            gracePeriodDays: 3,
+            cancellationPolicy: {
+              refundPercentage: 80,
+              minimumNoticeDays: 7,
+            },
+          },
+        });
+
+        // Update payment schedule with learning class ID
+        await this.paymentService.updatePaymentScheduleWithClass(
+          contract._id,
+          learningClass._id
+        );
+
+        // Activate payment schedule
+        await this.paymentService.activatePaymentSchedule(contract._id);
+
+        logger.info(
+          `Payment schedule created and activated for contract: ${contract._id}`
+        );
+      } catch (paymentError: any) {
+        logger.error(
+          `Error creating payment schedule for contract ${contract._id}:`,
+          paymentError
+        );
+        // Don't fail the entire operation if payment schedule creation fails
+        // The payment schedule can be created manually later if needed
+      }
+
       logger.info(`Learning class created from contract: ${contract._id}`);
 
       return learningClass;

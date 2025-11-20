@@ -19,5 +19,6 @@ export { LearningClass } from './LearningClass';
 export { Contract } from './Contract';
 export { ContractSignature } from './ContractSignature';
 export { PaymentSchedule } from './PaymentSchedule';
+export { Payment } from './Payment';
 export { Conversation } from './Conversation';
 export { Message } from './Message';
