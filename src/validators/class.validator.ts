@@ -69,6 +69,10 @@ export const validateClass = {
   ] as ValidationChain[],
 
   submitHomework: [
+    body('assignmentId')
+      .optional()
+      .isString()
+      .withMessage('assignmentId không hợp lệ'),
     body('fileUrl')
       .notEmpty()
       .withMessage('File bài làm không được để trống')
@@ -84,6 +88,10 @@ export const validateClass = {
   ] as ValidationChain[],
 
   gradeHomework: [
+    body('assignmentId')
+      .optional()
+      .isString()
+      .withMessage('assignmentId không hợp lệ'),
     body('score')
       .notEmpty()
       .withMessage('Điểm không được để trống')

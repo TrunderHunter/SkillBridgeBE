@@ -1,4 +1,4 @@
-import { LearningClass } from '../../models/LearningClass';
+import { LearningClass, ISessionHomeworkAssignment } from '../../models/LearningClass';
 import { User } from '../../models/User';
 import { Subject } from '../../models/Subject';
 import { TutorProfile } from '../../models/TutorProfile';
@@ -11,6 +11,176 @@ import {
   notifyCancellationRequested,
   notifyCancellationResponded,
 } from '../notification/notification.helpers';
+import { v4 as uuidv4 } from 'uuid';
+
+const LEGACY_ASSIGNMENT_PREFIX = 'legacy-session';
+
+type AssignmentStatus = 'pending' | 'submitted' | 'graded';
+
+interface SessionAssignmentView {
+  id: string;
+  title: string;
+  description?: string;
+  fileUrl?: string;
+  deadline?: Date;
+  assignedAt?: Date;
+  submission?: {
+    fileUrl: string;
+    notes?: string;
+    submittedAt: Date;
+  };
+  grade?: {
+    score: number;
+    feedback?: string;
+    gradedAt: Date;
+  };
+  status: AssignmentStatus;
+  isLate: boolean;
+  isLegacy?: boolean;
+}
+
+interface SessionHomeworkSummary {
+  hasAssignment: boolean;
+  hasSubmission: boolean;
+  hasGrade: boolean;
+  totalAssignments: number;
+  totalSubmitted: number;
+  totalGraded: number;
+  isLate: boolean;
+  assignments: SessionAssignmentView[];
+}
+
+type AssignmentResolveResult =
+  | { mode: 'array'; assignment: any }
+  | { mode: 'legacy'; assignment: any }
+  | null;
+
+const toPlainObject = (value: any) => {
+  if (!value) return value;
+  return typeof value.toObject === 'function'
+    ? value.toObject()
+    : JSON.parse(JSON.stringify(value));
+};
+
+const buildSessionAssignmentList = (session: any): SessionAssignmentView[] => {
+  if (!session?.homework) return [];
+
+  const assignments = Array.isArray(session.homework.assignments)
+    ? session.homework.assignments
+    : [];
+
+  const normalized = assignments.map((assignment: any) => {
+    const plain = toPlainObject(assignment);
+    const submission = plain.submission ? toPlainObject(plain.submission) : undefined;
+    const grade = plain.grade ? toPlainObject(plain.grade) : undefined;
+    const deadline = plain.deadline ? new Date(plain.deadline) : undefined;
+    const submissionDate = submission?.submittedAt ? new Date(submission.submittedAt) : undefined;
+    const isLate = submissionDate && deadline ? submissionDate > deadline : false;
+
+    return {
+      id: plain._id || plain.id,
+      title: plain.title,
+      description: plain.description,
+      fileUrl: plain.fileUrl,
+      deadline: plain.deadline,
+      assignedAt: plain.assignedAt,
+      submission,
+      grade,
+      status: grade ? 'graded' : submission ? 'submitted' : 'pending',
+      isLate: Boolean(isLate),
+      isLegacy: !!plain.isLegacy,
+    };
+  });
+
+  if (!normalized.length && session.homework.assignment) {
+    const legacyAssignment = toPlainObject(session.homework.assignment);
+    const legacySubmission = session.homework.submission
+      ? toPlainObject(session.homework.submission)
+      : undefined;
+    const legacyGrade = session.homework.grade
+      ? toPlainObject(session.homework.grade)
+      : undefined;
+    const deadline = legacyAssignment.deadline ? new Date(legacyAssignment.deadline) : undefined;
+    const submissionDate = legacySubmission?.submittedAt
+      ? new Date(legacySubmission.submittedAt)
+      : undefined;
+    const isLate = submissionDate && deadline ? submissionDate > deadline : false;
+
+    normalized.push({
+      id: `${LEGACY_ASSIGNMENT_PREFIX}-${session.sessionNumber}`,
+      title: legacyAssignment.title,
+      description: legacyAssignment.description,
+      fileUrl: legacyAssignment.fileUrl,
+      deadline: legacyAssignment.deadline,
+      assignedAt: legacyAssignment.assignedAt,
+      submission: legacySubmission,
+      grade: legacyGrade,
+      status: legacyGrade ? 'graded' : legacySubmission ? 'submitted' : 'pending',
+      isLate: Boolean(isLate),
+      isLegacy: true,
+    });
+  }
+
+  return normalized;
+};
+
+const summarizeSessionHomework = (session: any): SessionHomeworkSummary => {
+  const assignments = buildSessionAssignmentList(session);
+  const totalAssignments = assignments.length;
+  const totalSubmitted = assignments.filter(a => !!a.submission).length;
+  const totalGraded = assignments.filter(a => !!a.grade).length;
+  const hasAssignment = totalAssignments > 0;
+  const hasSubmission = totalSubmitted > 0;
+  const hasGrade = totalGraded > 0;
+  const isLate = assignments.some(a => a.isLate);
+
+  return {
+    hasAssignment,
+    hasSubmission,
+    hasGrade,
+    totalAssignments,
+    totalSubmitted,
+    totalGraded,
+    isLate,
+    assignments,
+  };
+};
+
+const resolveSessionAssignment = (
+  session: any,
+  assignmentId?: string
+): AssignmentResolveResult => {
+  if (!session?.homework) return null;
+
+  const assignments = Array.isArray(session.homework.assignments)
+    ? session.homework.assignments
+    : [];
+
+  if (assignmentId) {
+    const directMatch = assignments.find(
+      (assignment: any) => assignment._id?.toString() === assignmentId
+    );
+    if (directMatch) {
+      return { mode: 'array', assignment: directMatch };
+    }
+
+    if (assignmentId.startsWith(LEGACY_ASSIGNMENT_PREFIX) && session.homework.assignment) {
+      return { mode: 'legacy', assignment: session.homework };
+    }
+
+    return null;
+  }
+
+  if (assignments.length === 1) {
+    return { mode: 'array', assignment: assignments[0] };
+  }
+
+  if (!assignments.length && session.homework.assignment) {
+    return { mode: 'legacy', assignment: session.homework };
+  }
+
+  return null;
+};
 
 class ClassService {
   /**
@@ -310,12 +480,16 @@ class ClassService {
       }
 
       // Format sessions with additional info
-      const formattedSessions = learningClass.sessions.map(session => ({
-        ...(session as any).toObject ? (session as any).toObject() : JSON.parse(JSON.stringify(session)),
-        isUpcoming: new Date(session.scheduledDate) > new Date(),
-        isPast: new Date(session.scheduledDate) < new Date(),
-        canEdit: tutorId === userId, // Only tutor can edit
-      }));
+      const formattedSessions = learningClass.sessions.map(session => {
+        const plainSession = toPlainObject(session);
+        return {
+          ...plainSession,
+          homework: summarizeSessionHomework(plainSession),
+          isUpcoming: new Date(plainSession.scheduledDate) > new Date(),
+          isPast: new Date(plainSession.scheduledDate) < new Date(),
+          canEdit: tutorId === userId,
+        };
+      });
 
       const tutorName =
         typeof learningClass.tutorId === 'object'
@@ -337,16 +511,19 @@ class ClassService {
         };
       });
 
-      const sessionAssignments = formattedSessions
-        .filter(session => session.homework?.assignment)
-        .map(session => {
-          const assignment = session.homework.assignment!;
-          const submission = session.homework.submission;
-          const grade = session.homework.grade;
+      const sessionAssignments = formattedSessions.flatMap(session => {
+        const assignments =
+          (session.homework?.assignments as ISessionHomeworkAssignment[] | undefined) || [];
+        if (!assignments.length) return [];
 
+        return assignments.map(assignment => {
+          const assignmentEntityId =
+            assignment._id || (assignment as { id?: string }).id || null;
+          const submission = assignment.submission;
+          const grade = assignment.grade;
           const derivedSubmission = submission
             ? [{
-              _id: `SESSION-${session.sessionNumber}-${studentId}`,
+              _id: `SESSION-${session.sessionNumber}-${assignmentEntityId || uuidv4()}`,
               studentId,
               studentName,
               note: submission.notes,
@@ -360,7 +537,7 @@ class ClassService {
             : [];
 
           return {
-            _id: `SESSION-${session.sessionNumber}`,
+            _id: assignmentEntityId || `SESSION-${session.sessionNumber}`,
             title: assignment.title,
             instructions: assignment.description,
             attachment: assignment.fileUrl
@@ -381,6 +558,7 @@ class ClassService {
             readOnly: true,
           };
         });
+      });
 
       const combinedAssignments = [...sessionAssignments, ...persistentAssignments].sort((a, b) => {
         const aDate = new Date(a.updatedAt || a.createdAt || new Date(0)).getTime();
@@ -641,19 +819,27 @@ class ClassService {
         throw new Error('Hạn nộp bài phải sau thời điểm hiện tại');
       }
 
-      // Initialize homework if not exists
       if (!session.homework) {
-        session.homework = {};
+        session.homework = { assignments: [] } as any;
+      }
+      const sessionHomework = session.homework!;
+      if (!sessionHomework.assignments) {
+        sessionHomework.assignments = [];
       }
 
-      // Assign homework
-      session.homework.assignment = {
+      const newAssignment = {
+        _id: uuidv4(),
         title: homeworkData.title,
         description: homeworkData.description,
         fileUrl: homeworkData.fileUrl,
         deadline: new Date(homeworkData.deadline),
         assignedAt: new Date()
       };
+
+      sessionHomework.assignments.push(newAssignment);
+      if (typeof (session as any).markModified === 'function') {
+        (session as any).markModified('homework.assignments');
+      }
 
       await learningClass.save();
 
@@ -683,7 +869,7 @@ class ClassService {
         message: 'Giao bài tập thành công',
         data: {
           sessionNumber,
-          homework: session.homework
+          homework: summarizeSessionHomework(toPlainObject(session))
         }
       };
     } catch (error: any) {
@@ -700,6 +886,7 @@ class ClassService {
     sessionNumber: number,
     userId: string,
     submissionData: {
+      assignmentId?: string;
       fileUrl: string;
       notes?: string;
     }
@@ -727,22 +914,58 @@ class ClassService {
 
       const session = learningClass.sessions[sessionIndex];
 
-      // Check if homework assignment exists
-      if (!session.homework || !session.homework.assignment) {
+      const assignmentList = Array.isArray(session.homework?.assignments)
+        ? session.homework!.assignments!
+        : [];
+      const legacyAssignment = session.homework?.assignment;
+
+      if (!assignmentList.length && !legacyAssignment) {
         throw new Error('Chưa có bài tập được giao cho buổi học này');
       }
 
-      // Check deadline
-      const now = new Date();
-      const deadline = new Date(session.homework.assignment.deadline);
-      const isLate = now > deadline;
+      if (!submissionData.assignmentId && assignmentList.length > 1) {
+        throw new Error('Vui lòng chọn bài tập cụ thể để nộp');
+      }
 
-      // Submit homework
-      session.homework.submission = {
-        fileUrl: submissionData.fileUrl,
-        notes: submissionData.notes,
-        submittedAt: now
-      };
+      const assignmentTarget = resolveSessionAssignment(session, submissionData.assignmentId);
+      if (!assignmentTarget) {
+        throw new Error('Không tìm thấy bài tập cần nộp');
+      }
+
+      const now = new Date();
+      let deadline: Date | undefined;
+      let assignmentTitle = '';
+      let resolvedAssignmentId = submissionData.assignmentId;
+
+      if (assignmentTarget.mode === 'array') {
+        const assignment = assignmentTarget.assignment;
+        assignment.submission = {
+          _id: uuidv4(),
+          fileUrl: submissionData.fileUrl,
+          notes: submissionData.notes,
+          submittedAt: now
+        };
+        deadline = assignment.deadline ? new Date(assignment.deadline) : undefined;
+        assignmentTitle = assignment.title;
+        resolvedAssignmentId = assignment._id?.toString() || assignment.id || resolvedAssignmentId;
+      } else {
+        if (!session.homework?.assignment) {
+          throw new Error('Không tìm thấy thông tin bài tập legacy');
+        }
+        session.homework.submission = {
+          fileUrl: submissionData.fileUrl,
+          notes: submissionData.notes,
+          submittedAt: now
+        };
+        deadline = session.homework.assignment.deadline
+          ? new Date(session.homework.assignment.deadline)
+          : undefined;
+        assignmentTitle = session.homework.assignment.title;
+        resolvedAssignmentId = submissionData.assignmentId
+          || `${LEGACY_ASSIGNMENT_PREFIX}-${session.sessionNumber}`;
+      }
+
+      const isLate = deadline ? now > deadline : false;
 
       await learningClass.save();
 
@@ -757,6 +980,7 @@ class ClassService {
           learningClass.tutorId.toString(),
           studentName,
           className,
+          assignmentTitle,
           learningClass._id.toString(),
           sessionNumber
         );
@@ -770,9 +994,13 @@ class ClassService {
         message: isLate ? 'Nộp bài thành công (Trễ hạn)' : 'Nộp bài thành công',
         data: {
           sessionNumber,
-          submission: session.homework.submission,
+          assignmentId: resolvedAssignmentId,
+          submission: assignmentTarget.mode === 'array'
+            ? assignmentTarget.assignment.submission
+            : session.homework!.submission,
           isLate,
-          deadline: session.homework.assignment.deadline
+          deadline,
+          homework: summarizeSessionHomework(toPlainObject(session))
         }
       };
     } catch (error: any) {
@@ -795,27 +1023,26 @@ class ClassService {
 
       classes.forEach((learningClass) => {
         learningClass.sessions.forEach((session) => {
-          if (session.homework?.assignment) {
-            const assignment = session.homework.assignment;
-            const submission = session.homework.submission;
-            const grade = session.homework.grade;
-
-            // Determine status
+          const sessionAssignments = buildSessionAssignmentList(session);
+          sessionAssignments.forEach((assignment) => {
+            const now = new Date();
+            const deadline = assignment.deadline ? new Date(assignment.deadline) : undefined;
+            const submission = assignment.submission;
+            const grade = assignment.grade;
             let status: 'pending' | 'submitted' | 'completed' = 'pending';
             if (grade) {
               status = 'completed';
             } else if (submission) {
               status = 'submitted';
             }
-
-            // Check if late
-            const now = new Date();
-            const deadline = new Date(assignment.deadline);
-            const isLate = submission && new Date(submission.submittedAt) > deadline;
-            const isOverdue = !submission && now > deadline;
+            const isLate = submission && deadline
+              ? new Date(submission.submittedAt) > deadline
+              : false;
+            const isOverdue = !submission && deadline ? now > deadline : false;
 
             assignments.push({
-              id: `${learningClass._id}-${session.sessionNumber}`,
+              id: assignment.id || `${learningClass._id}-${session.sessionNumber}`,
+              assignmentId: assignment.id,
               classId: learningClass._id.toString(),
               className: (learningClass as any).subject?.name || learningClass.title,
               sessionNumber: session.sessionNumber,
@@ -830,28 +1057,21 @@ class ClassService {
                 name: (learningClass as any).tutorId?.full_name || 'Gia sư',
                 avatar: (learningClass as any).tutorId?.avatar_url,
               },
-              submission: submission ? {
-                fileUrl: submission.fileUrl,
-                notes: submission.notes,
-                submittedAt: submission.submittedAt,
-              } : null,
-              grade: grade ? {
-                score: grade.score,
-                feedback: grade.feedback,
-                gradedAt: grade.gradedAt,
-              } : null,
+              submission: submission || null,
+              grade: grade || null,
               status,
               isLate,
               isOverdue,
+              isLegacy: assignment.isLegacy || false,
             });
-          }
+          });
         });
       });
 
       // Sort by deadline (upcoming first)
       assignments.sort((a, b) => {
-        const dateA = new Date(a.deadline).getTime();
-        const dateB = new Date(b.deadline).getTime();
+        const dateA = a.deadline ? new Date(a.deadline).getTime() : Number.MAX_SAFE_INTEGER;
+        const dateB = b.deadline ? new Date(b.deadline).getTime() : Number.MAX_SAFE_INTEGER;
         return dateA - dateB;
       });
 
@@ -885,12 +1105,10 @@ class ClassService {
 
       classes.forEach((learningClass) => {
         learningClass.sessions.forEach((session) => {
-          if (session.homework?.assignment) {
-            const assignment = session.homework.assignment;
-            const submission = session.homework.submission;
-            const grade = session.homework.grade;
-
-            // Determine status for tutor view
+          const sessionAssignments = buildSessionAssignmentList(session);
+          sessionAssignments.forEach((assignment) => {
+            const submission = assignment.submission;
+            const grade = assignment.grade;
             let status: 'pending_submission' | 'pending_grade' | 'graded' = 'pending_submission';
             if (grade) {
               status = 'graded';
@@ -898,14 +1116,16 @@ class ClassService {
               status = 'pending_grade';
             }
 
-            // Check if late
             const now = new Date();
-            const deadline = new Date(assignment.deadline);
-            const isLate = submission && new Date(submission.submittedAt) > deadline;
-            const isOverdue = !submission && now > deadline;
+            const deadline = assignment.deadline ? new Date(assignment.deadline) : undefined;
+            const isLate = submission && deadline
+              ? new Date(submission.submittedAt) > deadline
+              : false;
+            const isOverdue = !submission && deadline ? now > deadline : false;
 
             assignments.push({
-              id: `${learningClass._id}-${session.sessionNumber}`,
+              id: assignment.id || `${learningClass._id}-${session.sessionNumber}`,
+              assignmentId: assignment.id,
               classId: learningClass._id.toString(),
               className: (learningClass as any).subject?.name || learningClass.title,
               sessionNumber: session.sessionNumber,
@@ -920,28 +1140,21 @@ class ClassService {
                 name: (learningClass as any).studentId?.full_name || 'Học viên',
                 avatar: (learningClass as any).studentId?.avatar_url,
               },
-              submission: submission ? {
-                fileUrl: submission.fileUrl,
-                notes: submission.notes,
-                submittedAt: submission.submittedAt,
-              } : null,
-              grade: grade ? {
-                score: grade.score,
-                feedback: grade.feedback,
-                gradedAt: grade.gradedAt,
-              } : null,
+              submission: submission || null,
+              grade: grade || null,
               status,
               isLate,
               isOverdue,
+              isLegacy: assignment.isLegacy || false,
             });
-          }
+          });
         });
       });
 
       // Sort by deadline (upcoming first)
       assignments.sort((a, b) => {
-        const dateA = new Date(a.deadline).getTime();
-        const dateB = new Date(b.deadline).getTime();
+        const dateA = a.deadline ? new Date(a.deadline).getTime() : Number.MAX_SAFE_INTEGER;
+        const dateB = b.deadline ? new Date(b.deadline).getTime() : Number.MAX_SAFE_INTEGER;
         return dateA - dateB;
       });
 
@@ -969,6 +1182,7 @@ class ClassService {
     sessionNumber: number,
     userId: string,
     gradeData: {
+      assignmentId?: string;
       score: number;
       feedback?: string;
     }
@@ -996,9 +1210,22 @@ class ClassService {
 
       const session = learningClass.sessions[sessionIndex];
 
-      // Check if homework submission exists
-      if (!session.homework || !session.homework.submission) {
-        throw new Error('Học viên chưa nộp bài tập');
+      const assignmentList = Array.isArray(session.homework?.assignments)
+        ? session.homework!.assignments!
+        : [];
+      const legacyAssignment = session.homework?.assignment;
+
+      if (!assignmentList.length && !legacyAssignment) {
+        throw new Error('Chưa có bài tập để chấm điểm');
+      }
+
+      if (!gradeData.assignmentId && assignmentList.length > 1) {
+        throw new Error('Vui lòng chọn bài tập cụ thể để chấm điểm');
+      }
+
+      const assignmentTarget = resolveSessionAssignment(session, gradeData.assignmentId);
+      if (!assignmentTarget) {
+        throw new Error('Không tìm thấy bài tập cần chấm');
       }
 
       // Validate score
@@ -1006,12 +1233,35 @@ class ClassService {
         throw new Error('Điểm phải từ 0 đến 10');
       }
 
-      // Grade homework
-      session.homework.grade = {
-        score: gradeData.score,
-        feedback: gradeData.feedback,
-        gradedAt: new Date()
-      };
+      const now = new Date();
+      let resolvedAssignmentId = gradeData.assignmentId;
+      let assignmentTitle = '';
+
+      if (assignmentTarget.mode === 'array') {
+        const assignment = assignmentTarget.assignment;
+        if (!assignment.submission) {
+          throw new Error('Học viên chưa nộp bài tập này');
+        }
+        assignment.grade = {
+          score: gradeData.score,
+          feedback: gradeData.feedback,
+          gradedAt: now
+        };
+        assignmentTitle = assignment.title;
+        resolvedAssignmentId = assignment._id?.toString() || assignment.id || resolvedAssignmentId;
+      } else {
+        if (!session.homework?.submission) {
+          throw new Error('Học viên chưa nộp bài tập');
+        }
+        session.homework.grade = {
+          score: gradeData.score,
+          feedback: gradeData.feedback,
+          gradedAt: now
+        };
+        assignmentTitle = session.homework.assignment?.title || 'Bài tập';
+        resolvedAssignmentId = gradeData.assignmentId
+          || `${LEGACY_ASSIGNMENT_PREFIX}-${session.sessionNumber}`;
+      }
 
       await learningClass.save();
 
@@ -1027,6 +1277,7 @@ class ClassService {
           tutorName,
           className,
           gradeData.score,
+          assignmentTitle,
           learningClass._id.toString(),
           sessionNumber
         );
@@ -1040,7 +1291,11 @@ class ClassService {
         message: 'Chấm điểm thành công',
         data: {
           sessionNumber,
-          grade: session.homework.grade
+          assignmentId: resolvedAssignmentId,
+          grade: assignmentTarget.mode === 'array'
+            ? assignmentTarget.assignment.grade
+            : session.homework!.grade,
+          homework: summarizeSessionHomework(toPlainObject(session))
         }
       };
     } catch (error: any) {
@@ -1090,6 +1345,8 @@ class ClassService {
 
             const canAttend = now >= canAttendTime && now <= sessionEndTime;
             const bothAttended = session.attendance?.tutorAttended && session.attendance?.studentAttended;
+            const sessionPlain = toPlainObject(session);
+            const homeworkSummary = summarizeSessionHomework(sessionPlain);
 
             weekSessions.push({
               classId: learningClass._id,
@@ -1111,18 +1368,7 @@ class ClassService {
                 tutorAttended: false,
                 studentAttended: false
               },
-              homework: {
-                hasAssignment: !!session.homework?.assignment,
-                hasSubmission: !!session.homework?.submission,
-                hasGrade: !!session.homework?.grade,
-                isLate: session.homework?.submission && session.homework?.assignment
-                  ? new Date(session.homework.submission.submittedAt) > new Date(session.homework.assignment.deadline)
-                  : false,
-                // Include full homework details
-                assignment: session.homework?.assignment || null,
-                submission: session.homework?.submission || null,
-                grade: session.homework?.grade || null
-              },
+              homework: homeworkSummary,
               cancellationRequest: session.cancellationRequest || null,
               canAttend,
               canJoin: bothAttended,

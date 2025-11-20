@@ -32,12 +32,8 @@ export class AssignmentReminderService {
       const now = new Date();
       const reminderTime = new Date(now.getTime() + hoursBeforeDeadline * 60 * 60 * 1000);
 
-      // Find all classes with assignments that have deadlines within the reminder window
+      // Find all active classes (filter assignments in memory to support new structure)
       const classes = await LearningClass.find({
-        'sessions.homework.assignment.deadline': {
-          $gte: now,
-          $lte: reminderTime,
-        },
         status: 'ACTIVE',
       })
         .populate('studentId', 'full_name email')
@@ -49,47 +45,65 @@ export class AssignmentReminderService {
 
       classes.forEach((learningClass: any) => {
         learningClass.sessions.forEach((session: any) => {
-          const assignment = session.homework?.assignment;
-          const submission = session.homework?.submission;
+          const assignments = Array.isArray(session.homework?.assignments)
+            ? session.homework.assignments
+            : [];
 
-          // Only send reminder if assignment exists, has deadline, and hasn't been submitted yet
-          if (assignment && assignment.deadline && !submission) {
+          const legacyAssignments = !assignments.length && session.homework?.assignment
+            ? [{
+              title: session.homework.assignment.title,
+              deadline: session.homework.assignment.deadline,
+              submission: session.homework.submission,
+            }]
+            : [];
+
+          [...assignments, ...legacyAssignments].forEach((assignment: any) => {
+            if (!assignment?.deadline) {
+              return;
+            }
+
+            const submission = assignment.submission;
+            if (submission) {
+              return;
+            }
+
             const deadline = new Date(assignment.deadline);
+            if (deadline < now || deadline > reminderTime) {
+              return;
+            }
+
             const hoursUntilDeadline = Math.floor(
               (deadline.getTime() - now.getTime()) / (1000 * 60 * 60)
             );
 
-            // Only include if deadline is within the reminder window and not passed
-            if (deadline >= now && deadline <= reminderTime) {
-              reminders.push({
-                classId: learningClass._id.toString(),
-                sessionNumber: session.sessionNumber,
-                assignmentTitle: assignment.title,
-                deadline,
-                studentId:
-                  typeof learningClass.studentId === 'object'
-                    ? learningClass.studentId._id.toString()
-                    : learningClass.studentId.toString(),
-                tutorId:
-                  typeof learningClass.tutorId === 'object'
-                    ? learningClass.tutorId._id.toString()
-                    : learningClass.tutorId.toString(),
-                studentName:
-                  typeof learningClass.studentId === 'object'
-                    ? learningClass.studentId.full_name || 'Học viên'
-                    : 'Học viên',
-                tutorName:
-                  typeof learningClass.tutorId === 'object'
-                    ? learningClass.tutorId.full_name || 'Giáo viên'
-                    : 'Giáo viên',
-                className:
-                  typeof learningClass.subject === 'object'
-                    ? learningClass.subject.name || learningClass.title
-                    : learningClass.title,
-                hoursUntilDeadline,
-              });
-            }
-          }
+            reminders.push({
+              classId: learningClass._id.toString(),
+              sessionNumber: session.sessionNumber,
+              assignmentTitle: assignment.title,
+              deadline,
+              studentId:
+                typeof learningClass.studentId === 'object'
+                  ? learningClass.studentId._id.toString()
+                  : learningClass.studentId.toString(),
+              tutorId:
+                typeof learningClass.tutorId === 'object'
+                  ? learningClass.tutorId._id.toString()
+                  : learningClass.tutorId.toString(),
+              studentName:
+                typeof learningClass.studentId === 'object'
+                  ? learningClass.studentId.full_name || 'Học viên'
+                  : 'Học viên',
+              tutorName:
+                typeof learningClass.tutorId === 'object'
+                  ? learningClass.tutorId.full_name || 'Giáo viên'
+                  : 'Giáo viên',
+              className:
+                typeof learningClass.subject === 'object'
+                  ? learningClass.subject.name || learningClass.title
+                  : learningClass.title,
+              hoursUntilDeadline,
+            });
+          });
         });
       });
 

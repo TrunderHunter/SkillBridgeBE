@@ -137,6 +137,7 @@ export const notifyHomeworkSubmitted = async (
   tutorId: string,
   studentName: string,
   className: string,
+  assignmentTitle: string,
   classId: string,
   sessionNumber: number
 ) => {
@@ -145,10 +146,10 @@ export const notifyHomeworkSubmitted = async (
     userId: tutorId,
     notificationType: 'HOMEWORK_SUBMITTED',
     title: 'Bài tập mới được nộp',
-    message: `${studentName} đã nộp bài tập buổi ${sessionNumber} - ${className}`,
+    message: `${studentName} đã nộp "${assignmentTitle}" của buổi ${sessionNumber} - ${className}`,
     priority: 'normal',
     actionUrl: `/schedule/calendar`,
-    data: { classId, sessionNumber, className, studentName },
+    data: { classId, sessionNumber, className, studentName, assignmentTitle },
   });
 };
 
@@ -157,6 +158,7 @@ export const notifyHomeworkGraded = async (
   tutorName: string,
   className: string,
   score: number,
+  assignmentTitle: string,
   classId: string,
   sessionNumber: number
 ) => {
@@ -165,10 +167,10 @@ export const notifyHomeworkGraded = async (
     userId: studentId,
     notificationType: 'HOMEWORK_GRADED',
     title: 'Bài tập đã được chấm',
-    message: `${tutorName} đã chấm bài tập buổi ${sessionNumber} - ${className}. Điểm: ${score}/10`,
+    message: `${tutorName} đã chấm "${assignmentTitle}" buổi ${sessionNumber} - ${className}. Điểm: ${score}/10`,
     priority: 'high',
     actionUrl: `/schedule/calendar`,
-    data: { classId, sessionNumber, className, score },
+    data: { classId, sessionNumber, className, assignmentTitle, score },
   });
 };
 

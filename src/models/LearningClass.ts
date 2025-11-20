@@ -10,26 +10,57 @@ export interface ISessionAttendance {
 }
 
 // Homework for each session
+export interface ISessionHomeworkSubmission {
+  _id: string;
+  fileUrl: string;
+  notes?: string;
+  submittedAt: Date;
+}
+
+export interface ISessionHomeworkGrade {
+  score: number;
+  feedback?: string;
+  gradedAt: Date;
+}
+
+export interface ISessionHomeworkAssignment {
+  _id: string;
+  id?: string;
+  title: string;
+  description: string;
+  fileUrl?: string;
+  deadline: Date;
+  assignedAt: Date;
+  submission?: ISessionHomeworkSubmission;
+  grade?: ISessionHomeworkGrade;
+  isLegacy?: boolean;
+}
+
 export interface ISessionHomework {
-  // Homework assigned by tutor
+  assignments?: ISessionHomeworkAssignment[];
+  /**
+   * @deprecated Legacy single-assignment structure (kept for backward compatibility)
+   */
   assignment?: {
     title: string;
     description: string;
-    fileUrl?: string; // Link to file uploaded by tutor
+    fileUrl?: string;
     deadline: Date;
     assignedAt: Date;
   };
-  
-  // Homework submission by student
+  /**
+   * @deprecated Legacy submission field (use assignments[].submission instead)
+   */
   submission?: {
-    fileUrl: string; // Link to file uploaded by student
+    fileUrl: string;
     notes?: string;
     submittedAt: Date;
   };
-  
-  // Grading by tutor
+  /**
+   * @deprecated Legacy grade field (use assignments[].grade instead)
+   */
   grade?: {
-    score: number; // 0-10
+    score: number;
     feedback?: string;
     gradedAt: Date;
   };
@@ -201,6 +232,31 @@ export interface ILearningClass extends Document {
   };
 }
 
+const SessionHomeworkSubmissionSchema = new Schema<ISessionHomeworkSubmission>({
+  _id: { type: String, default: uuidv4 },
+  fileUrl: { type: String, required: true },
+  notes: { type: String, maxlength: 500 },
+  submittedAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+const SessionHomeworkGradeSchema = new Schema<ISessionHomeworkGrade>({
+  score: { type: Number, min: 0, max: 10, required: true },
+  feedback: { type: String, maxlength: 500 },
+  gradedAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+const SessionHomeworkAssignmentSchema = new Schema<ISessionHomeworkAssignment>({
+  _id: { type: String, default: uuidv4 },
+  title: { type: String, required: true, maxlength: 200 },
+  description: { type: String, required: true, maxlength: 2000 },
+  fileUrl: { type: String },
+  deadline: { type: Date, required: true },
+  assignedAt: { type: Date, default: Date.now },
+  submission: { type: SessionHomeworkSubmissionSchema },
+  grade: { type: SessionHomeworkGradeSchema },
+  isLegacy: { type: Boolean, default: false },
+}, { _id: false });
+
 const LearningSessionSchema = new Schema<ILearningSession>({
   sessionNumber: { type: Number, required: true },
   scheduledDate: { type: Date, required: true },
@@ -224,6 +280,11 @@ const LearningSessionSchema = new Schema<ILearningSession>({
   
   // NEW: Homework management
   homework: {
+    assignments: {
+      type: [SessionHomeworkAssignmentSchema],
+      default: []
+    },
+    // Legacy fields kept for backward compatibility
     assignment: {
       title: { type: String, maxlength: 200 },
       description: { type: String, maxlength: 1000 },

@@ -396,13 +396,13 @@ export class ClassController {
 
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
-      const { fileUrl, notes } = req.body;
+      const { assignmentId, fileUrl, notes } = req.body;
 
       const result = await classService.submitHomework(
         classId,
         parseInt(sessionNumber),
         userId,
-        { fileUrl, notes }
+        { assignmentId, fileUrl, notes }
       );
       res.json(result);
     } catch (error: any) {
@@ -434,13 +434,13 @@ export class ClassController {
 
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
-      const { score, feedback } = req.body;
+      const { assignmentId, score, feedback } = req.body;
 
       const result = await classService.gradeHomework(
         classId,
         parseInt(sessionNumber),
         userId,
-        { score, feedback }
+        { assignmentId, score, feedback }
       );
       res.json(result);
     } catch (error: any) {
