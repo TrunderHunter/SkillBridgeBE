@@ -14,7 +14,8 @@
     "lint:fix": "eslint src/**/*.ts --fix",
     "format": "prettier --write src/**/*.ts",
     "import:address": "ts-node -r tsconfig-paths/register src/scripts/importAddressData.ts",
-    "seed:subjects": "ts-node -r tsconfig-paths/register src/scripts/seedSubjects.ts"
+    "seed:subjects": "ts-node -r tsconfig-paths/register src/scripts/seedSubjects.ts",
+    "cleanup:contract-indexes": "ts-node -r tsconfig-paths/register src/scripts/cleanupContractIndexes.ts"
   },
   "keywords": [
     "nodejs",

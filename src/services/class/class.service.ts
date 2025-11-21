@@ -2345,6 +2345,205 @@ class ClassService {
 
     return Array.from(badges);
   }
+
+  /**
+   * Create learning class from contract after both parties sign
+   */
+  async createLearningClassFromContract(contract: any) {
+    try {
+      logger.info(`Creating learning class from contract: ${contract._id}`);
+
+      // Populate contract data if not already populated
+      if (typeof contract.studentId === 'string') {
+        await contract.populate(
+          'studentId tutorId tutorPostId subject contactRequestId'
+        );
+      }
+
+      // Get subject from contract, tutorPost, or contactRequest
+      let subject = contract.subject;
+
+      if (!subject) {
+        // Try to get from contactRequest
+        const contactRequest = await import('../../models').then(
+          (m) => m.ContactRequest
+        );
+        const request = await contactRequest.findById(
+          contract.contactRequestId
+        );
+        if (request?.subject) {
+          subject = request.subject;
+        }
+      }
+
+      if (!subject) {
+        // Try to get from tutorPost
+        const tutorPost = await import('../../models').then((m) => m.TutorPost);
+        const post = await tutorPost.findById(contract.tutorPostId);
+        if (post?.subjects && post.subjects.length > 0) {
+          subject = post.subjects[0]; // Take first subject
+        }
+      }
+
+      if (!subject) {
+        throw new Error(
+          'Cannot create learning class: Subject is required but not found in contract, contact request, or tutor post'
+        );
+      }
+
+      // Extract _id if subject is an object (populated)
+      const subjectId =
+        typeof subject === 'object' && subject !== null
+          ? (subject as any)._id?.toString() || (subject as any).id?.toString()
+          : subject.toString();
+
+      // Create learning class
+      const learningClass = new LearningClass({
+        contactRequestId: contract.contactRequestId,
+        studentId: contract.studentId,
+        tutorId: contract.tutorId,
+        tutorPostId: contract.tutorPostId,
+        subject: subjectId, // Use extracted ID
+
+        title: contract.classTitle || contract.title,
+        description: contract.classDescription || contract.description,
+        pricePerSession: contract.pricePerSession,
+        sessionDuration: contract.sessionDuration,
+        totalSessions: contract.totalSessions,
+        learningMode: contract.learningMode,
+
+        schedule: contract.schedule,
+        startDate: contract.startDate,
+        expectedEndDate: contract.expectedEndDate,
+        location: contract.location,
+        onlineInfo: contract.onlineInfo,
+
+        sessions: [], // Will be generated
+        totalAmount: contract.totalAmount,
+      });
+
+      await learningClass.save();
+
+      // Generate sessions based on schedule
+      await this.generateLearningSessions(learningClass._id);
+
+      logger.info(`Learning class created successfully: ${learningClass._id}`);
+
+      // Send notification to student
+      try {
+        const tutor = await User.findById(contract.tutorId);
+        const tutorName = tutor?.full_name || tutor?.email || 'Gia sư';
+        const { notifyClassCreated } = await import(
+          '../notification/notification.helpers'
+        );
+        await notifyClassCreated(
+          contract.studentId.toString(),
+          tutorName,
+          learningClass.title,
+          learningClass._id.toString()
+        );
+      } catch (notifError) {
+        logger.error('Failed to send notification:', notifError);
+      }
+
+      return learningClass;
+    } catch (error: any) {
+      logger.error('Error creating learning class from contract:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate learning sessions based on schedule
+   */
+  private async generateLearningSessions(classId: string) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+      if (!learningClass) return;
+
+      const sessions = [];
+      let sessionNumber = 1;
+      let currentDate = new Date(learningClass.startDate);
+
+      // Parse startTime from schedule (format: "HH:mm")
+      const [startHour, startMinute] = learningClass.schedule.startTime
+        .split(':')
+        .map(Number);
+
+      while (sessionNumber <= learningClass.totalSessions) {
+        const dayOfWeek = currentDate.getDay();
+
+        if (learningClass.schedule.dayOfWeek.includes(dayOfWeek)) {
+          // Create scheduledDate with correct time
+          const scheduledDateTime = new Date(currentDate);
+          scheduledDateTime.setHours(startHour, startMinute, 0, 0);
+
+          sessions.push({
+            sessionNumber,
+            scheduledDate: scheduledDateTime,
+            duration: learningClass.sessionDuration,
+            status: 'SCHEDULED' as const,
+            paymentStatus: 'UNPAID' as const,
+            paymentRequired: true,
+            attendance: {
+              tutorAttended: false,
+              studentAttended: false,
+            },
+          });
+          sessionNumber++;
+        }
+
+        // Move to next day
+        currentDate.setDate(currentDate.getDate() + 1);
+
+        // Safety check to prevent infinite loop
+        if (currentDate.getTime() > Date.now() + 365 * 24 * 60 * 60 * 1000) {
+          break;
+        }
+      }
+
+      learningClass.sessions = sessions;
+      await learningClass.save();
+    } catch (error) {
+      logger.error('Generate learning sessions error:', error);
+    }
+  }
+
+  /**
+   * Cancel learning class (used when contract is cancelled)
+   */
+  async cancelLearningClass(classId: string, userId: string, reason?: string) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Verify user has permission
+      if (
+        learningClass.tutorId.toString() !== userId &&
+        learningClass.studentId.toString() !== userId
+      ) {
+        throw new Error('Bạn không có quyền hủy lớp học này');
+      }
+
+      learningClass.status = 'CANCELLED';
+      if (reason) {
+        // Add cancellation reason to class notes if needed
+        learningClass.actualEndDate = new Date();
+      }
+
+      await learningClass.save();
+
+      logger.info(`Learning class ${classId} cancelled by user: ${userId}`);
+
+      return learningClass;
+    } catch (error: any) {
+      logger.error('Cancel learning class error:', error);
+      throw new Error(error.message || 'Không thể hủy lớp học');
+    }
+  }
 }
 
 export const classService = new ClassService();

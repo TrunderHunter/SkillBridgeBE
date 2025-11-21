@@ -87,8 +87,30 @@ export class ContractService {
       let subject = contractData.subject;
       if (!subject && contactRequest.tutorPostId) {
         const populatedTutorPost = await contactRequest.populate('tutorPostId');
-        subject = (populatedTutorPost.tutorPostId as any)?.subject;
+        const tutorPost = populatedTutorPost.tutorPostId as any;
+        // TutorPost has subjects array, take first one
+        if (tutorPost?.subjects && tutorPost.subjects.length > 0) {
+          subject = tutorPost.subjects[0];
+        }
       }
+
+      // Fallback to contactRequest.subject if still not found
+      if (!subject && contactRequest.subject) {
+        subject = contactRequest.subject;
+      }
+
+      if (!subject) {
+        logger.warn(
+          `No subject found for contract from contact request: ${contractData.contactRequestId}`
+        );
+      }
+
+      // Extract subject ID if it's an object (populated)
+      const subjectId = subject
+        ? typeof subject === 'object' && subject !== null
+          ? (subject as any)._id?.toString() || (subject as any).id?.toString()
+          : subject.toString()
+        : undefined;
 
       // Generate contract code and terms
       const contractCode = `HĐ-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
@@ -112,7 +134,7 @@ export class ContractService {
         // Store class info separately for learning class creation
         classTitle: contractData.title, // Class title from frontend
         classDescription: contractData.description, // Class description from frontend
-        subject: subject, // Add subject field to contract
+        subject: subjectId, // Add subject ID (not object) to contract
         totalSessions: Number(contractData.totalSessions),
         pricePerSession: Number(pricePerSession),
         totalAmount:

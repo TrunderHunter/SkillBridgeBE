@@ -139,8 +139,7 @@ userSchema.post('save', async function (doc) {
 });
 
 // Indexes for better performance
-userSchema.index({ email: 1 });
-userSchema.index({ phone_number: 1 });
+// Note: email and phone_number already have unique indexes from schema definition
 userSchema.index({ status: 1 });
 userSchema.index({ role: 1 });
 

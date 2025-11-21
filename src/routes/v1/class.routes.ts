@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ClassController } from '../../controllers/class/class.controller';
+import { checkScheduleConflict } from '../../controllers/class/scheduleConflict.controller';
 import { authenticateToken } from '../../middlewares/auth.middleware';
 import { requireStudentRole } from '../../middlewares/student.middleware';
 import {
@@ -14,11 +15,11 @@ const router = Router();
 // All routes require authentication
 router.use(authenticateToken);
 
+// Check schedule conflict - MUST be before /:classId routes
+router.post('/check-schedule-conflict', checkScheduleConflict);
+
 // Weekly schedule - MUST be before /:classId routes
-router.get(
-  '/schedule/week',
-  ClassController.getWeeklySchedule
-);
+router.get('/schedule/week', ClassController.getWeeklySchedule);
 
 // Get classes
 router.get('/tutor', requireTutorRole, ClassController.getTutorClasses);
@@ -26,15 +27,20 @@ router.get('/tutor', requireTutorRole, ClassController.getTutorClasses);
 router.get('/student', requireStudentRole, ClassController.getStudentClasses);
 
 // Get assignments
-router.get('/assignments/student', requireStudentRole, ClassController.getStudentAssignments);
+router.get(
+  '/assignments/student',
+  requireStudentRole,
+  ClassController.getStudentAssignments
+);
 
-router.get('/assignments/tutor', requireTutorRole, ClassController.getTutorAssignments);
+router.get(
+  '/assignments/tutor',
+  requireTutorRole,
+  ClassController.getTutorAssignments
+);
 
 // Public tutor reviews (needs auth for now)
-router.get(
-  '/tutors/:tutorId/reviews',
-  ClassController.getTutorReviews
-);
+router.get('/tutors/:tutorId/reviews', ClassController.getTutorReviews);
 
 // Get class schedule with sessions
 router.get('/:classId/schedule', ClassController.getClassSchedule);
