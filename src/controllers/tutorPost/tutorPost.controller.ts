@@ -200,6 +200,8 @@ export class TutorPostController {
 
         sortBy: (req.query.sortBy as any) || 'createdAt',
         sortOrder: (req.query.sortOrder as any) || 'desc',
+        minRating: this.parseNumberParam(req.query.minRating),
+        minReviews: this.parseNumberParam(req.query.minReviews),
       };
 
       // Log parsed query for debugging

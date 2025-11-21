@@ -35,6 +35,8 @@ export interface IPost {
   reviewed_at?: Date;
   reviewed_by?: string;
   expiry_date?: Date;
+  postVector?: number[]; // AI embedding vector for semantic search
+  vectorUpdatedAt?: Date; // When vector was last updated
   created_at?: Date;
   updated_at?: Date;
 }
@@ -75,7 +77,7 @@ const postSchema = new Schema<IPostDocument>(
       type: [String],
       required: [true, 'Môn học là bắt buộc'],
       validate: {
-        validator: function(v: string[]) {
+        validator: function (v: string[]) {
           return v.length > 0 && v.length <= 10;
         },
         message: 'Phải có ít nhất 1 và không quá 10 môn học',
@@ -85,7 +87,7 @@ const postSchema = new Schema<IPostDocument>(
       type: [String],
       required: [true, 'Cấp độ lớp là bắt buộc'],
       validate: {
-        validator: function(v: string[]) {
+        validator: function (v: string[]) {
           return v.length > 0 && v.length <= 10;
         },
         message: 'Phải có ít nhất 1 và không quá 10 cấp độ lớp',
@@ -138,6 +140,13 @@ const postSchema = new Schema<IPostDocument>(
       ref: 'User',
     },
     expiry_date: {
+      type: Date,
+    },
+    postVector: {
+      type: [Number],
+      default: undefined,
+    },
+    vectorUpdatedAt: {
       type: Date,
     },
   },

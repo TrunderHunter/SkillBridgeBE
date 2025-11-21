@@ -149,6 +149,12 @@ export interface ITutorProfile {
   // AI Vector fields
   profileVector?: number[];
   vectorUpdatedAt?: Date;
+  // Rating fields
+  ratingAverage?: number;
+  ratingCount?: number;
+  ratingSum?: number;
+  lastReviewAt?: Date | null;
+  badges?: string[];
   created_at?: Date;
   updated_at?: Date;
 }
@@ -175,6 +181,10 @@ export interface ITutorProfileResponse {
   rejection_reason?: string;
   verified_at?: Date;
   verified_by?: string;
+  ratingAverage?: number;
+  ratingCount?: number;
+  lastReviewAt?: Date | null;
+  badges?: string[];
   created_at: Date;
   updated_at: Date;
 }

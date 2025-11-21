@@ -151,6 +151,80 @@ Giải thích (tối đa 150 ký tự):`;
   }
 
   /**
+   * Generate explanation for why a student post matches a tutor
+   * Uses Gemini to create human-readable match reasons
+   * @param tutorSummary - Tutor's profile summary
+   * @param studentPost - Student's post data
+   * @param matchScore - Similarity score (0-1)
+   * @returns Explanation text
+   */
+  async generateStudentMatchExplanation(
+    tutorSummary: any,
+    studentPost: any,
+    matchScore: number
+  ): Promise<string> {
+    if (!this.isAvailable() || !this.genAI) {
+      return 'Bài đăng này phù hợp với hồ sơ và khả năng dạy của bạn.';
+    }
+
+    try {
+      const model = this.genAI.getGenerativeModel({ model: this.textModel });
+
+      const subjectNames = studentPost.subjects?.map((s: any) =>
+        typeof s === 'object' ? s.name : s
+      ).join(', ') || 'N/A';
+
+      const prompt = `
+Bạn là trợ lý AI giúp giải thích lý do tại sao một bài đăng tìm gia sư phù hợp với một gia sư.
+
+THÔNG TIN GIA SƯ:
+- Tiêu đề: ${tutorSummary.headline || 'Chưa cập nhật'}
+- Môn dạy: ${tutorSummary.subjects?.map((s: any) => typeof s === 'object' ? s.name : s).join(', ') || 'N/A'}
+- Kinh nghiệm: ${tutorSummary.teaching_experience || 'Chưa cập nhật'}
+- Giới thiệu: ${tutorSummary.introduction || ''}
+
+THÔNG TIN BÀI ĐĂNG TÌM GIA SƯ:
+- Tiêu đề: ${studentPost.title}
+- Môn học cần: ${subjectNames}
+- Lớp: ${studentPost.grade_levels?.join(', ') || 'N/A'}
+- Yêu cầu: ${studentPost.requirements || 'Không có yêu cầu đặc biệt'}
+- Chi tiết: ${studentPost.content || ''}
+
+ĐỘ PHÙ HỢP: ${(matchScore * 100).toFixed(0)}%
+
+Hãy viết một đoạn giải thích CHI TIẾT (tối đa 250 ký tự) về TẠI SAO bài đăng này phù hợp với bạn.
+YÊU CẦU:
+1. Nêu CỤ THỂ các điểm khớp: môn học nào, cấp độ nào, yêu cầu gì
+2. Nhấn mạnh điểm MẠNH của bạn phù hợp với yêu cầu (kinh nghiệm, chuyên môn, phương pháp)
+3. Nếu có thông tin về giá cả, hình thức học (online/offline), hãy đề cập nếu phù hợp
+4. Viết tự nhiên, dễ hiểu, không dùng từ ngữ chung chung như "phù hợp", "khớp" mà nêu CỤ THỂ
+
+VÍ DỤ TỐT:
+- "Học viên cần gia sư Toán lớp 12 luyện thi đại học. Bạn có 5 năm kinh nghiệm dạy Toán THPT, chuyên luyện thi với phương pháp dễ hiểu, phù hợp với yêu cầu này."
+- "Bài đăng tìm gia sư Hóa học hữu cơ lớp 11, học online. Bạn đang dạy Hóa học và có kinh nghiệm dạy online, đúng với nhu cầu của học viên."
+
+VÍ DỤ KHÔNG TỐT (quá chung chung):
+- "Bài đăng này phù hợp với hồ sơ của bạn"
+- "Môn học và cấp độ khớp với khả năng dạy của bạn"
+
+Giải thích chi tiết (tối đa 250 ký tự):`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const explanation = response.text().trim();
+
+      // Limit to 250 characters
+      return explanation.length > 250
+        ? explanation.substring(0, 247) + '...'
+        : explanation;
+
+    } catch (error: any) {
+      logger.error('❌ Gemini student match explanation error:', error);
+      return 'Bài đăng này phù hợp với hồ sơ và khả năng dạy của bạn.';
+    }
+  }
+
+  /**
    * Calculate cosine similarity between two vectors
    * @param vecA - First vector
    * @param vecB - Second vector

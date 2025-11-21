@@ -17,6 +17,7 @@ export interface NotificationData {
     | 'CANCELLATION_RESPONDED'
     | 'MESSAGE'
     | 'SYSTEM'
+    | 'ASSIGNMENT_DEADLINE_REMINDER'
     | 'CONTRACT_CREATED'
     | 'CONTRACT_APPROVED'
     | 'CONTRACT_REJECTED'

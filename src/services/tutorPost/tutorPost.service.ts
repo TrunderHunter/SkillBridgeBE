@@ -63,8 +63,10 @@ export interface ITutorPostQuery {
   search?: string;
   page?: number;
   limit?: number;
-  sortBy?: 'createdAt' | 'pricePerSession' | 'viewCount';
+  sortBy?: 'createdAt' | 'pricePerSession' | 'viewCount' | 'rating';
   sortOrder?: 'asc' | 'desc';
+  minRating?: number;
+  minReviews?: number;
 }
 
 export class TutorPostService {
@@ -206,6 +208,8 @@ export class TutorPostService {
         limit = 12,
         sortBy = 'createdAt',
         sortOrder = 'desc',
+        minRating,
+        minReviews,
       } = query;
 
       console.log('🔍 Searching tutor posts with query:', query);
@@ -217,7 +221,38 @@ export class TutorPostService {
 
       // Chỉ tìm các bài đăng từ gia sư đã được xác minh
       const verifiedTutorIds = await this.getVerifiedTutorIds();
-      filter.tutorId = { $in: verifiedTutorIds };
+      let tutorIdFilter = [...verifiedTutorIds];
+
+      if (minRating !== undefined || minReviews !== undefined) {
+        const ratingQuery: any = { user_id: { $in: verifiedTutorIds } };
+        if (minRating !== undefined) {
+          ratingQuery.ratingAverage = { $gte: minRating };
+        }
+        if (minReviews !== undefined) {
+          ratingQuery.ratingCount = { $gte: minReviews };
+        }
+
+        const qualifiedTutors = await TutorProfile.find(ratingQuery)
+          .select('user_id')
+          .lean();
+
+        tutorIdFilter = qualifiedTutors.map((doc) => doc.user_id);
+      }
+
+      if (!tutorIdFilter.length) {
+        return {
+          posts: [],
+          pagination: {
+            currentPage: page,
+            totalPages: 0,
+            totalItems: 0,
+            hasNext: false,
+            hasPrev: page > 1,
+          },
+        };
+      }
+
+      filter.tutorId = { $in: tutorIdFilter };
 
       // Áp dụng các điều kiện lọc từ query
       if (subjects && subjects.length > 0) {
@@ -267,6 +302,108 @@ export class TutorPostService {
       console.log('📋 Built filter:', JSON.stringify(filter, null, 2));
 
       const skip = (page - 1) * limit;
+      const wantsRatingSort = sortBy === 'rating';
+
+      if (wantsRatingSort) {
+        const ratingPipeline: any[] = [
+          { $match: filter },
+          {
+            $lookup: {
+              from: 'tutorprofiles',
+              localField: 'tutorId',
+              foreignField: 'user_id',
+              as: 'ratingProfile',
+              pipeline: [
+                {
+                  $project: {
+                    ratingAverage: 1,
+                    ratingCount: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              ratingAverage: {
+                $ifNull: [{ $arrayElemAt: ['$ratingProfile.ratingAverage', 0] }, 0],
+              },
+              ratingCount: {
+                $ifNull: [{ $arrayElemAt: ['$ratingProfile.ratingCount', 0] }, 0],
+              },
+            },
+          },
+          {
+            $addFields: {
+              ratingScore: {
+                $add: [
+                  { $multiply: ['$ratingAverage', 100] },
+                  { $min: ['$ratingCount', 50] },
+                ],
+              },
+            },
+          },
+        ];
+
+        const sortStage = {
+          $sort: {
+            ratingScore: sortOrder === 'asc' ? 1 : -1,
+            createdAt: -1,
+          },
+        };
+
+        const [idDocs, totalResult] = await Promise.all([
+          TutorPost.aggregate([
+            ...ratingPipeline,
+            sortStage,
+            { $skip: skip },
+            { $limit: limit },
+            { $project: { _id: 1 } },
+          ]),
+          TutorPost.aggregate([
+            ...ratingPipeline,
+            { $count: 'total' },
+          ]),
+        ]);
+
+        const orderedIds = idDocs.map((doc) => doc._id.toString());
+
+        const posts = await TutorPost.find({ _id: { $in: orderedIds } })
+          .populate('subjects', 'name category')
+          .populate({
+            path: 'tutorId',
+            select:
+              'full_name avatar_url date_of_birth gender profile structured_address',
+          })
+          .lean();
+
+        const postMap = new Map(
+          posts.map((post) => [post._id.toString(), post])
+        );
+
+        const orderedPosts = orderedIds
+          .map((id) => postMap.get(id))
+          .filter((post): post is any => Boolean(post));
+
+        const enhancedPosts = await Promise.all(
+          orderedPosts.map((post) => this.enhanceTutorInfo(post))
+        );
+
+        const totalItems = totalResult[0]?.total || 0;
+        const totalPages = Math.ceil(totalItems / limit);
+
+        return {
+          posts: enhancedPosts,
+          pagination: {
+            currentPage: page,
+            totalPages,
+            totalItems,
+            hasNext: page < totalPages,
+            hasPrev: page > 1,
+          },
+        };
+      }
+
       const sort: any = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
 
       // Thực hiện 2 query song song để lấy dữ liệu và tổng số lượng
@@ -602,7 +739,7 @@ export class TutorPostService {
 
         throw new Error(
           statusMessages[tutorProfile.status as keyof typeof statusMessages] ||
-            'Tutor profile must be verified to create posts'
+          'Tutor profile must be verified to create posts'
         );
       }
 
@@ -895,7 +1032,7 @@ export class TutorPostService {
       const tutorProfile = await TutorProfile.findOne({
         user_id: tutorId,
       }).select(
-        'headline introduction teaching_experience student_levels video_intro_link status'
+        'headline introduction teaching_experience student_levels video_intro_link status ratingAverage ratingCount badges lastReviewAt'
       );
 
       // Get Province, District, Ward information
@@ -938,14 +1075,20 @@ export class TutorPostService {
         },
         profile: tutorProfile
           ? {
-              headline: tutorProfile.headline,
-              introduction: tutorProfile.introduction,
-              teaching_experience: tutorProfile.teaching_experience,
-              student_levels: tutorProfile.student_levels,
-              video_intro_link: tutorProfile.video_intro_link,
-              status: tutorProfile.status,
-            }
+            headline: tutorProfile.headline,
+            introduction: tutorProfile.introduction,
+            teaching_experience: tutorProfile.teaching_experience,
+            student_levels: tutorProfile.student_levels,
+            video_intro_link: tutorProfile.video_intro_link,
+            status: tutorProfile.status,
+          }
           : null,
+        rating: {
+          average: tutorProfile?.ratingAverage || 0,
+          count: tutorProfile?.ratingCount || 0,
+          badges: tutorProfile?.badges || [],
+          lastReviewAt: tutorProfile?.lastReviewAt || null,
+        },
         education: education,
         certificates: certificates,
         achievements: achievements,
@@ -987,21 +1130,21 @@ export class TutorPostService {
         enhancedAddress = {
           province: addressProvince
             ? {
-                _id: addressProvince._id,
-                name: addressProvince.name,
-              }
+              _id: addressProvince._id,
+              name: addressProvince.name,
+            }
             : null,
           district: addressDistrict
             ? {
-                _id: addressDistrict._id,
-                name: addressDistrict.name,
-              }
+              _id: addressDistrict._id,
+              name: addressDistrict.name,
+            }
             : null,
           ward: addressWard
             ? {
-                _id: addressWard._id,
-                name: addressWard.name,
-              }
+              _id: addressWard._id,
+              name: addressWard.name,
+            }
             : null,
           specificAddress: post.address.specificAddress || null,
         };

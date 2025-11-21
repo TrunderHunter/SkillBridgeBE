@@ -10,29 +10,114 @@ export interface ISessionAttendance {
 }
 
 // Homework for each session
+export interface ISessionHomeworkSubmission {
+  _id: string;
+  fileUrl: string;
+  notes?: string;
+  submittedAt: Date;
+}
+
+export interface ISessionHomeworkGrade {
+  score: number;
+  feedback?: string;
+  gradedAt: Date;
+}
+
+export interface ISessionHomeworkAssignment {
+  _id: string;
+  id?: string;
+  title: string;
+  description: string;
+  fileUrl?: string;
+  deadline: Date;
+  assignedAt: Date;
+  submission?: ISessionHomeworkSubmission;
+  grade?: ISessionHomeworkGrade;
+  isLegacy?: boolean;
+}
+
 export interface ISessionHomework {
-  // Homework assigned by tutor
+  assignments?: ISessionHomeworkAssignment[];
+  /**
+   * @deprecated Legacy single-assignment structure (kept for backward compatibility)
+   */
   assignment?: {
     title: string;
     description: string;
-    fileUrl?: string; // Link to file uploaded by tutor
+    fileUrl?: string;
     deadline: Date;
     assignedAt: Date;
   };
-
-  // Homework submission by student
+  /**
+   * @deprecated Legacy submission field (use assignments[].submission instead)
+   */
   submission?: {
-    fileUrl: string; // Link to file uploaded by student
+    fileUrl: string;
     notes?: string;
     submittedAt: Date;
   };
-
-  // Grading by tutor
+  /**
+   * @deprecated Legacy grade field (use assignments[].grade instead)
+   */
   grade?: {
-    score: number; // 0-10
+    score: number;
     feedback?: string;
     gradedAt: Date;
   };
+}
+
+export interface IClassMaterial {
+  _id: string;
+  title: string;
+  description?: string;
+  fileUrl: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  visibility: 'STUDENTS' | 'PRIVATE';
+  uploadedBy: {
+    userId: string;
+    role: 'TUTOR' | 'STUDENT';
+    fullName: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IClassAssignmentSubmission {
+  _id: string;
+  studentId: string;
+  studentName: string;
+  note?: string;
+  fileUrl: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  submittedAt: Date;
+  updatedAt: Date;
+}
+
+export interface IClassAssignment {
+  _id: string;
+  title: string;
+  instructions?: string;
+  attachment?: {
+    fileUrl: string;
+    fileName?: string;
+    fileSize?: number;
+    mimeType?: string;
+  };
+  dueDate?: Date;
+  createdBy: {
+    userId: string;
+    fullName: string;
+  };
+  submissions: IClassAssignmentSubmission[];
+  createdAt: Date;
+  updatedAt: Date;
+  source?: 'CLASS' | 'SESSION';
+  sessionNumber?: number;
+  readOnly?: boolean;
 }
 
 export interface ILearningSession {
@@ -137,7 +222,9 @@ export interface ILearningClass extends Document {
   totalAmount: number;
   paidAmount: number;
   paymentStatus: 'PENDING' | 'PARTIAL' | 'COMPLETED';
-
+  materials: IClassMaterial[];
+  assignments: IClassAssignment[];
+  
   createdAt: Date;
   updatedAt: Date;
 
@@ -154,11 +241,86 @@ export interface ILearningClass extends Document {
   };
 }
 
-const LearningSessionSchema = new Schema<ILearningSession>(
-  {
-    sessionNumber: { type: Number, required: true },
-    scheduledDate: { type: Date, required: true },
-    duration: { type: Number, required: true },
+const SessionHomeworkSubmissionSchema = new Schema<ISessionHomeworkSubmission>({
+  _id: { type: String, default: uuidv4 },
+  fileUrl: { type: String, required: true },
+  notes: { type: String, maxlength: 500 },
+  submittedAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+const SessionHomeworkGradeSchema = new Schema<ISessionHomeworkGrade>({
+  score: { type: Number, min: 0, max: 10, required: true },
+  feedback: { type: String, maxlength: 500 },
+  gradedAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+const SessionHomeworkAssignmentSchema = new Schema<ISessionHomeworkAssignment>({
+  _id: { type: String, default: uuidv4 },
+  title: { type: String, required: true, maxlength: 200 },
+  description: { type: String, required: true, maxlength: 2000 },
+  fileUrl: { type: String },
+  deadline: { type: Date, required: true },
+  assignedAt: { type: Date, default: Date.now },
+  submission: { type: SessionHomeworkSubmissionSchema },
+  grade: { type: SessionHomeworkGradeSchema },
+  isLegacy: { type: Boolean, default: false },
+}, { _id: false });
+
+const LearningSessionSchema = new Schema<ILearningSession>({
+  sessionNumber: { type: Number, required: true },
+  scheduledDate: { type: Date, required: true },
+  duration: { type: Number, required: true },
+  status: { 
+    type: String, 
+    enum: ['SCHEDULED', 'COMPLETED', 'CANCELLED', 'MISSED', 'PENDING_CANCELLATION'],
+    default: 'SCHEDULED'
+  },
+  actualStartTime: Date,
+  actualEndTime: Date,
+  notes: { type: String, maxlength: 1000 },
+  
+  // NEW: Attendance tracking
+  attendance: {
+    tutorAttended: { type: Boolean, default: false },
+    tutorAttendedAt: Date,
+    studentAttended: { type: Boolean, default: false },
+    studentAttendedAt: Date,
+  },
+  
+  // NEW: Homework management
+  homework: {
+    assignments: {
+      type: [SessionHomeworkAssignmentSchema],
+      default: []
+    },
+    // Legacy fields kept for backward compatibility
+    assignment: {
+      title: { type: String, maxlength: 200 },
+      description: { type: String, maxlength: 1000 },
+      fileUrl: String,
+      deadline: Date,
+      assignedAt: Date,
+    },
+    submission: {
+      fileUrl: String,
+      notes: { type: String, maxlength: 500 },
+      submittedAt: Date,
+    },
+    grade: {
+      score: { type: Number, min: 0, max: 10 },
+      feedback: { type: String, maxlength: 500 },
+      gradedAt: Date,
+    },
+  },
+  
+  // NEW: Cancellation request tracking
+  cancellationRequest: {
+    requestedBy: {
+      type: String,
+      enum: ['TUTOR', 'STUDENT']
+    },
+    reason: { type: String, maxlength: 500 },
+    requestedAt: Date,
     status: {
       type: String,
       enum: [
@@ -253,6 +415,59 @@ const LearningSessionSchema = new Schema<ILearningSession>(
   { _id: false }
 );
 
+const ClassMaterialSchema = new Schema<IClassMaterial>({
+  _id: { type: String, default: uuidv4 },
+  title: { type: String, required: true, maxlength: 200 },
+  description: { type: String, maxlength: 1000 },
+  fileUrl: { type: String, required: true },
+  fileName: { type: String },
+  fileSize: { type: Number },
+  mimeType: { type: String },
+  visibility: {
+    type: String,
+    enum: ['STUDENTS', 'PRIVATE'],
+    default: 'STUDENTS'
+  },
+  uploadedBy: {
+    userId: { type: String, required: true },
+    role: {
+      type: String,
+      enum: ['TUTOR', 'STUDENT'],
+      required: true
+    },
+    fullName: { type: String, required: true },
+  },
+}, { timestamps: true });
+
+const AssignmentSubmissionSchema = new Schema<IClassAssignmentSubmission>({
+  _id: { type: String, default: uuidv4 },
+  studentId: { type: String, required: true },
+  studentName: { type: String, required: true },
+  note: { type: String, maxlength: 500 },
+  fileUrl: { type: String, required: true },
+  fileName: { type: String },
+  fileSize: { type: Number },
+  mimeType: { type: String },
+}, { timestamps: true });
+
+const ClassAssignmentSchema = new Schema<IClassAssignment>({
+  _id: { type: String, default: uuidv4 },
+  title: { type: String, required: true, maxlength: 200 },
+  instructions: { type: String, maxlength: 2000 },
+  attachment: {
+    fileUrl: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+  },
+  dueDate: { type: Date },
+  createdBy: {
+    userId: { type: String, required: true },
+    fullName: { type: String, required: true },
+  },
+  submissions: [AssignmentSubmissionSchema],
+}, { timestamps: true });
+
 const LearningClassSchema = new Schema<ILearningClass>(
   {
     _id: { type: String, default: uuidv4 },
@@ -318,7 +533,15 @@ const LearningClassSchema = new Schema<ILearningClass>(
       enum: ['PENDING', 'PARTIAL', 'COMPLETED'],
       default: 'PENDING',
     },
-
+    materials: {
+      type: [ClassMaterialSchema],
+      default: []
+    },
+    assignments: {
+      type: [ClassAssignmentSchema],
+      default: []
+    },
+    
     // Move these fields inside the schema object
     studentReview: {
       rating: {

@@ -13,6 +13,7 @@ export interface INotification extends Document {
     | 'CANCELLATION_RESPONDED'
     | 'MESSAGE'
     | 'SYSTEM'
+    | 'ASSIGNMENT_DEADLINE_REMINDER'
     | 'CONTRACT_CREATED'
     | 'CONTRACT_APPROVED'
     | 'CONTRACT_REJECTED'
@@ -53,6 +54,7 @@ const NotificationSchema = new Schema<INotification>(
         'CONTRACT_REJECTED',
         'CONTRACT_EXPIRED',
         'CONTRACT_CANCELLED',
+        'ASSIGNMENT_DEADLINE_REMINDER',
       ],
       required: true,
     },

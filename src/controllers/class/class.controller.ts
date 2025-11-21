@@ -56,6 +56,48 @@ export class ClassController {
   }
 
   /**
+   * Get all student assignments
+   */
+  static async getStudentAssignments(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const studentId = req.user!.id;
+      const result = await classService.getStudentAssignments(studentId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get student assignments controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể lấy danh sách bài tập',
+      });
+    }
+  }
+
+  /**
+   * Get all tutor assignments
+   */
+  static async getTutorAssignments(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const tutorId = req.user!.id;
+      const result = await classService.getTutorAssignments(tutorId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get tutor assignments controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể lấy danh sách bài tập',
+      });
+    }
+  }
+
+  /**
    * Get class details by ID
    */
   static async getClassById(
@@ -215,6 +257,32 @@ export class ClassController {
   }
 
   /**
+   * Get public tutor reviews for search pages
+   */
+  static async getTutorReviews(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { tutorId } = req.params;
+      const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+      const limit = req.query.limit
+        ? parseInt(req.query.limit as string, 10)
+        : 10;
+
+      const result = await classService.getTutorReviews(
+        tutorId,
+        Number.isNaN(page) ? 1 : page,
+        Number.isNaN(limit) ? 10 : limit
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get tutor reviews controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể lấy danh sách đánh giá',
+      });
+    }
+  }
+
+  /**
    * Update session status
    */
   static async updateSessionStatus(
@@ -340,13 +408,13 @@ export class ClassController {
 
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
-      const { fileUrl, notes } = req.body;
+      const { assignmentId, fileUrl, notes } = req.body;
 
       const result = await classService.submitHomework(
         classId,
         parseInt(sessionNumber),
         userId,
-        { fileUrl, notes }
+        { assignmentId, fileUrl, notes }
       );
       res.json(result);
     } catch (error: any) {
@@ -378,13 +446,13 @@ export class ClassController {
 
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
-      const { score, feedback } = req.body;
+      const { assignmentId, score, feedback } = req.body;
 
       const result = await classService.gradeHomework(
         classId,
         parseInt(sessionNumber),
         userId,
-        { score, feedback }
+        { assignmentId, score, feedback }
       );
       res.json(result);
     } catch (error: any) {
@@ -524,6 +592,229 @@ export class ClassController {
       res.status(400).json({
         success: false,
         message: error.message || 'Không thể phản hồi yêu cầu huỷ buổi học',
+      });
+    }
+  }
+
+  /**
+   * Class materials & assignments
+   */
+  static async getClassMaterials(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { classId } = req.params;
+      const userId = req.user!.id;
+
+      const result = await classService.getClassMaterials(classId, userId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get class materials controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể tải tài liệu lớp học',
+      });
+    }
+  }
+
+  static async createClassMaterial(req: AuthenticatedRequest, res: Response) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array(),
+        });
+      }
+
+      const { classId } = req.params;
+      const tutorId = req.user!.id;
+
+      const result = await classService.addClassMaterial(
+        classId,
+        tutorId,
+        req.body
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Create class material controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể thêm tài liệu',
+      });
+    }
+  }
+
+  static async updateClassMaterial(req: AuthenticatedRequest, res: Response) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array(),
+        });
+      }
+
+      const { classId, materialId } = req.params;
+      const tutorId = req.user!.id;
+
+      const result = await classService.updateClassMaterial(
+        classId,
+        materialId,
+        tutorId,
+        req.body
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Update class material controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể cập nhật tài liệu',
+      });
+    }
+  }
+
+  static async deleteClassMaterial(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { classId, materialId } = req.params;
+      const tutorId = req.user!.id;
+
+      const result = await classService.deleteClassMaterial(
+        classId,
+        materialId,
+        tutorId
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Delete class material controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể xoá tài liệu',
+      });
+    }
+  }
+
+  static async getClassAssignments(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { classId } = req.params;
+      const userId = req.user!.id;
+
+      const result = await classService.getClassAssignments(classId, userId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Get class assignments controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể tải danh sách bài tập',
+      });
+    }
+  }
+
+  static async createClassAssignment(req: AuthenticatedRequest, res: Response) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array(),
+        });
+      }
+
+      const { classId } = req.params;
+      const tutorId = req.user!.id;
+
+      const result = await classService.createClassAssignment(
+        classId,
+        tutorId,
+        req.body
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Create class assignment controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể tạo bài tập',
+      });
+    }
+  }
+
+  static async updateClassAssignment(req: AuthenticatedRequest, res: Response) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array(),
+        });
+      }
+
+      const { classId, assignmentId } = req.params;
+      const tutorId = req.user!.id;
+
+      const result = await classService.updateClassAssignment(
+        classId,
+        assignmentId,
+        tutorId,
+        req.body
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Update class assignment controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể cập nhật bài tập',
+      });
+    }
+  }
+
+  static async deleteClassAssignment(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { classId, assignmentId } = req.params;
+      const tutorId = req.user!.id;
+
+      const result = await classService.deleteClassAssignment(
+        classId,
+        assignmentId,
+        tutorId
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Delete class assignment controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể xoá bài tập',
+      });
+    }
+  }
+
+  static async submitAssignmentWork(req: AuthenticatedRequest, res: Response) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dữ liệu không hợp lệ',
+          errors: errors.array(),
+        });
+      }
+
+      const { classId, assignmentId } = req.params;
+      const studentId = req.user!.id;
+
+      const result = await classService.submitAssignmentWork(
+        classId,
+        assignmentId,
+        studentId,
+        req.body
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Submit assignment work controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể nộp bài',
       });
     }
   }

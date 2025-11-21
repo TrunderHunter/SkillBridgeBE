@@ -254,13 +254,23 @@ export const searchTutorPostsValidator = [
 
   query('sortBy')
     .optional()
-    .isIn(['createdAt', 'pricePerSession', 'viewCount'])
+    .isIn(['createdAt', 'pricePerSession', 'viewCount', 'rating'])
     .withMessage('Invalid sort field'),
 
   query('sortOrder')
     .optional()
     .isIn(['asc', 'desc'])
     .withMessage('Sort order must be asc or desc'),
+
+  query('minRating')
+    .optional()
+    .isFloat({ min: 0, max: 5 })
+    .withMessage('minRating must be between 0 and 5'),
+
+  query('minReviews')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('minReviews must be a non-negative integer'),
 ];
 
 export const paginationValidator = [

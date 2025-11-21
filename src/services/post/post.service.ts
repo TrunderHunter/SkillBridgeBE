@@ -658,6 +658,16 @@ export class PostService {
       await post.save();
       await post.populate({ path: 'author_id', select: 'full_name avatar' });
 
+      // Auto-vectorize if post is approved (async, don't wait)
+      if (reviewData.status === PostStatus.APPROVED) {
+        const { studentPostVectorizationService } = await import('../ai/studentPostVectorization.service');
+        studentPostVectorizationService.vectorizeStudentPost(postId).catch((error) => {
+          // Log error but don't fail the review
+          const { logger } = require('../../utils/logger');
+          logger.error(`Failed to auto-vectorize post ${postId}:`, error);
+        });
+      }
+
       return {
         success: true,
         message: `Bài đăng đã được ${reviewData.status === PostStatus.APPROVED ? 'phê duyệt' : 'từ chối'}`,
@@ -780,8 +790,61 @@ export class PostService {
         })
         .lean();
 
+      const tutorIds = potentialTutors
+        .map(tutorPost => {
+          if (tutorPost.tutorId && typeof tutorPost.tutorId === 'object') {
+            return (tutorPost.tutorId as any)._id?.toString();
+          }
+          return tutorPost.tutorId ? tutorPost.tutorId.toString() : null;
+        })
+        .filter((id): id is string => Boolean(id));
+
+      const ratingProfiles = tutorIds.length
+        ? await TutorProfile.find({ user_id: { $in: tutorIds } })
+          .select('user_id ratingAverage ratingCount badges lastReviewAt')
+          .lean()
+        : [];
+
+      const profileMap = new Map(
+        ratingProfiles.map(profile => [profile.user_id.toString(), profile])
+      );
+
+      const tutorsWithRating = potentialTutors.map(tutorPost => {
+        const tutorIdValue =
+          tutorPost.tutorId && typeof tutorPost.tutorId === 'object'
+            ? (tutorPost.tutorId as any)._id?.toString()
+            : tutorPost.tutorId?.toString();
+
+        if (!tutorIdValue) {
+          return tutorPost;
+        }
+
+        const profile = profileMap.get(tutorIdValue);
+        if (!profile) {
+          return tutorPost;
+        }
+
+        const tutorInfo =
+          tutorPost.tutorId && typeof tutorPost.tutorId === 'object'
+            ? tutorPost.tutorId
+            : { _id: tutorIdValue };
+
+        return {
+          ...tutorPost,
+          tutorId: {
+            ...tutorInfo,
+            rating: {
+              average: profile.ratingAverage || 0,
+              count: profile.ratingCount || 0,
+              badges: profile.badges || [],
+              lastReviewAt: profile.lastReviewAt || null
+            }
+          }
+        };
+      });
+
       // ✅ LOẠI BỎ: Bước lọc `validTutors` thừa và gây lỗi trong code. Việc lọc đã được DB thực hiện.
-      if (potentialTutors.length === 0) {
+      if (tutorsWithRating.length === 0) {
         return {
           success: true,
           message: '🤖 Không tìm thấy gia sư nào phù hợp với tiêu chí cơ bản.',
@@ -794,7 +857,7 @@ export class PostService {
       }
 
       // 4. Tính toán điểm tương thích cho danh sách đã được lọc
-      const scoredTutors = potentialTutors.map((tutorPost) => {
+      const scoredTutors = tutorsWithRating.map((tutorPost) => {
         const compatibility = this.calculateCompatibility(
           studentPost,
           tutorPost
