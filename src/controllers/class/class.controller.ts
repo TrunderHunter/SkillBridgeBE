@@ -29,7 +29,7 @@ export class ClassController {
       logger.error('Get tutor classes controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể lấy danh sách lớp học'
+        message: error.message || 'Không thể lấy danh sách lớp học',
       });
     }
   }
@@ -50,7 +50,7 @@ export class ClassController {
       logger.error('Get student classes controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể lấy danh sách lớp học'
+        message: error.message || 'Không thể lấy danh sách lớp học',
       });
     }
   }
@@ -66,7 +66,6 @@ export class ClassController {
     try {
       const { classId } = req.params;
       const userId = req.user!.id;
-      console.log(`>>> check user id`, userId);
       const result = await classService.getClassById(classId, userId);
       console.log(result);
       res.json(result);
@@ -74,7 +73,7 @@ export class ClassController {
       logger.error('Get class details controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể lấy thông tin lớp học'
+        message: error.message || 'Không thể lấy thông tin lớp học',
       });
     }
   }
@@ -93,7 +92,7 @@ export class ClassController {
         return res.status(400).json({
           success: false,
           message: 'Dữ liệu không hợp lệ',
-          errors: errors.array()
+          errors: errors.array(),
         });
       }
 
@@ -101,13 +100,17 @@ export class ClassController {
       const { status } = req.body;
       const userId = req.user!.id;
 
-      const result = await classService.updateClassStatus(classId, status, userId);
+      const result = await classService.updateClassStatus(
+        classId,
+        status,
+        userId
+      );
       res.json(result);
     } catch (error: any) {
       logger.error('Update class status controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể cập nhật trạng thái lớp học'
+        message: error.message || 'Không thể cập nhật trạng thái lớp học',
       });
     }
   }
@@ -126,7 +129,7 @@ export class ClassController {
         return res.status(400).json({
           success: false,
           message: 'Dữ liệu không hợp lệ',
-          errors: errors.array()
+          errors: errors.array(),
         });
       }
 
@@ -134,13 +137,18 @@ export class ClassController {
       const studentId = req.user!.id;
       const { rating, review } = req.body;
 
-      const result = await classService.addStudentReview(classId, studentId, rating, review);
+      const result = await classService.addStudentReview(
+        classId,
+        studentId,
+        rating,
+        review
+      );
       res.json(result);
     } catch (error: any) {
       logger.error('Add student review controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể thêm đánh giá'
+        message: error.message || 'Không thể thêm đánh giá',
       });
     }
   }
@@ -159,7 +167,7 @@ export class ClassController {
         return res.status(400).json({
           success: false,
           message: 'Dữ liệu không hợp lệ',
-          errors: errors.array()
+          errors: errors.array(),
         });
       }
 
@@ -167,13 +175,18 @@ export class ClassController {
       const tutorId = req.user!.id;
       const { rating, feedback } = req.body;
 
-      const result = await classService.addTutorFeedback(classId, tutorId, rating, feedback);
+      const result = await classService.addTutorFeedback(
+        classId,
+        tutorId,
+        rating,
+        feedback
+      );
       res.json(result);
     } catch (error: any) {
       logger.error('Add tutor feedback controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể thêm đánh giá'
+        message: error.message || 'Không thể thêm đánh giá',
       });
     }
   }
@@ -196,7 +209,7 @@ export class ClassController {
       logger.error('Get class schedule controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể lấy lịch học'
+        message: error.message || 'Không thể lấy lịch học',
       });
     }
   }
@@ -215,7 +228,7 @@ export class ClassController {
         return res.status(400).json({
           success: false,
           message: 'Dữ liệu không hợp lệ',
-          errors: errors.array()
+          errors: errors.array(),
         });
       }
 
@@ -235,7 +248,7 @@ export class ClassController {
       logger.error('Update session status controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể cập nhật trạng thái buổi học'
+        message: error.message || 'Không thể cập nhật trạng thái buổi học',
       });
     }
   }
@@ -264,7 +277,7 @@ export class ClassController {
       logger.error('Mark attendance controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể điểm danh'
+        message: error.message || 'Không thể điểm danh',
       });
     }
   }
@@ -283,7 +296,7 @@ export class ClassController {
         return res.status(400).json({
           success: false,
           message: 'Dữ liệu không hợp lệ',
-          errors: errors.array()
+          errors: errors.array(),
         });
       }
 
@@ -302,7 +315,7 @@ export class ClassController {
       logger.error('Assign homework controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể giao bài tập'
+        message: error.message || 'Không thể giao bài tập',
       });
     }
   }
@@ -321,7 +334,7 @@ export class ClassController {
         return res.status(400).json({
           success: false,
           message: 'Dữ liệu không hợp lệ',
-          errors: errors.array()
+          errors: errors.array(),
         });
       }
 
@@ -340,7 +353,7 @@ export class ClassController {
       logger.error('Submit homework controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể nộp bài tập'
+        message: error.message || 'Không thể nộp bài tập',
       });
     }
   }
@@ -359,7 +372,7 @@ export class ClassController {
         return res.status(400).json({
           success: false,
           message: 'Dữ liệu không hợp lệ',
-          errors: errors.array()
+          errors: errors.array(),
         });
       }
 
@@ -378,7 +391,7 @@ export class ClassController {
       logger.error('Grade homework controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể chấm điểm'
+        message: error.message || 'Không thể chấm điểm',
       });
     }
   }
@@ -406,7 +419,7 @@ export class ClassController {
       logger.error('Get weekly schedule controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể lấy lịch học tuần'
+        message: error.message || 'Không thể lấy lịch học tuần',
       });
     }
   }
@@ -456,7 +469,7 @@ export class ClassController {
       if (!reason || typeof reason !== 'string') {
         return res.status(400).json({
           success: false,
-          message: 'Vui lòng cung cấp lý do huỷ buổi học'
+          message: 'Vui lòng cung cấp lý do huỷ buổi học',
         });
       }
 
@@ -472,7 +485,7 @@ export class ClassController {
       logger.error('Request cancel session controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể gửi yêu cầu huỷ buổi học'
+        message: error.message || 'Không thể gửi yêu cầu huỷ buổi học',
       });
     }
   }
@@ -494,7 +507,7 @@ export class ClassController {
       if (!action || !['APPROVE', 'REJECT'].includes(action)) {
         return res.status(400).json({
           success: false,
-          message: 'Action phải là APPROVE hoặc REJECT'
+          message: 'Action phải là APPROVE hoặc REJECT',
         });
       }
 
@@ -510,7 +523,7 @@ export class ClassController {
       logger.error('Respond to cancellation request controller error:', error);
       res.status(400).json({
         success: false,
-        message: error.message || 'Không thể phản hồi yêu cầu huỷ buổi học'
+        message: error.message || 'Không thể phản hồi yêu cầu huỷ buổi học',
       });
     }
   }

@@ -147,6 +147,7 @@ export class ContractService {
           contractId: contract._id,
           tutorName: (contactRequest.tutorId as any).full_name,
         },
+        actionUrl: `/student/contracts/${contract._id}`,
         priority: 'high',
       });
 
@@ -238,6 +239,7 @@ export class ContractService {
             title: 'Hợp đồng đã hết hạn',
             message: `Hợp đồng "${contract.title}" đã hết hạn do không được phê duyệt trong thời gian quy định.`,
             data: { contractId: contract._id },
+            actionUrl: `/tutor/contracts/${contract._id}`,
             priority: 'normal',
           }),
           NotificationService.sendNotification({
@@ -247,6 +249,7 @@ export class ContractService {
             title: 'Hợp đồng đã hết hạn',
             message: `Hợp đồng "${contract.title}" đã hết hạn do không được phê duyệt trong thời gian quy định.`,
             data: { contractId: contract._id },
+            actionUrl: `/student/contracts/${contract._id}`,
             priority: 'normal',
           }),
         ]);
@@ -280,6 +283,7 @@ export class ContractService {
             contractId: contract._id,
             studentName: (contract.studentId as any).full_name,
           },
+          actionUrl: `/tutor/contracts/${contract._id}`,
           priority: 'high',
         });
       } else if (response.action === 'REJECT') {
@@ -298,6 +302,7 @@ export class ContractService {
             studentName: (contract.studentId as any).full_name,
             reason: response.message,
           },
+          actionUrl: `/tutor/contracts/${contract._id}`,
           priority: 'normal',
         });
       } else if (response.action === 'REQUEST_CHANGES') {
@@ -479,6 +484,9 @@ export class ContractService {
           contractId: contract._id,
           reason: reason,
         },
+        actionUrl: isTutor
+          ? `/student/contracts/${contract._id}`
+          : `/tutor/contracts/${contract._id}`,
         priority: 'high',
       });
 

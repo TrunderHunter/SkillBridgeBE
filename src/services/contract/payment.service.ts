@@ -207,6 +207,14 @@ export class PaymentService {
         .populate([
           { path: 'tutorId', select: 'full_name email' },
           { path: 'contractId', select: 'title' },
+          {
+            path: 'learningClassId',
+            select: 'title subject tutorId',
+            populate: [
+              { path: 'subject', select: 'name' },
+              { path: 'tutorId', select: 'full_name' },
+            ],
+          },
         ])
         .sort({ createdAt: -1 })
         .skip(skip)

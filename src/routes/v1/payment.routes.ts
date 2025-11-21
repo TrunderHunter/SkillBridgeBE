@@ -34,28 +34,18 @@ router.post(
 router.get('/vnpay/return', paymentController.vnpayReturn);
 
 /**
- * @route GET /api/v1/payments/:orderId
- * @desc Get payment details by order ID
- * @access Student or Tutor (must be related to the payment)
+ * @route GET /api/v1/payments/history
+ * @desc Get student's payment history
+ * @access Student only
+ * NOTE: Must be BEFORE /:orderId to avoid matching "history" as orderId
  */
 router.get(
-  '/:orderId',
-  authenticateToken,
-  ...validatePayment.getPaymentByOrderId,
-  validationMiddleware,
-  paymentController.getPaymentByOrderId
-);
-
-/**
- * @route POST /api/v1/payments/:orderId/reprocess
- * @desc Force reprocess a payment (fix stuck payments)
- * @access Student only (owner)
- */
-router.post(
-  '/:orderId/reprocess',
+  '/history',
   authenticateToken,
   studentMiddleware,
-  paymentController.reprocessPayment
+  ...validatePayment.getPaymentHistory,
+  validationMiddleware,
+  paymentController.getPaymentHistory
 );
 
 /**
@@ -85,17 +75,29 @@ router.get(
 );
 
 /**
- * @route GET /api/v1/payments/history
- * @desc Get student's payment history
- * @access Student only
+ * @route GET /api/v1/payments/:orderId
+ * @desc Get payment details by order ID
+ * @access Student or Tutor (must be related to the payment)
+ * NOTE: Must be AFTER specific routes to avoid catching them
  */
 router.get(
-  '/history',
+  '/:orderId',
+  authenticateToken,
+  ...validatePayment.getPaymentByOrderId,
+  validationMiddleware,
+  paymentController.getPaymentByOrderId
+);
+
+/**
+ * @route POST /api/v1/payments/:orderId/reprocess
+ * @desc Force reprocess a payment (fix stuck payments)
+ * @access Student only (owner)
+ */
+router.post(
+  '/:orderId/reprocess',
   authenticateToken,
   studentMiddleware,
-  ...validatePayment.getPaymentHistory,
-  validationMiddleware,
-  paymentController.getPaymentHistory
+  paymentController.reprocessPayment
 );
 
 /**
