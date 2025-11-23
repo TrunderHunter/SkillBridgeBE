@@ -59,6 +59,9 @@ export interface IPaymentSchedule extends Document {
   // Completion tracking
   completedAt?: Date;
   cancelledAt?: Date;
+
+  // Methods
+  checkOverduePayments(): boolean;
 }
 
 const PaymentInstallmentSchema = new Schema<IPaymentInstallment>(

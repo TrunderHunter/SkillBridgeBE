@@ -247,7 +247,14 @@ class ClassService {
    */
   async getClassById(classId: string, userId: string) {
     try {
-      console.log('classId:', classId);
+      // First, get the raw document to check if IDs exist
+      const rawClass = await LearningClass.findById(classId).lean();
+
+      if (!rawClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Get populated version
       const learningClass = await LearningClass.findById(classId)
         .populate('tutorId', 'full_name avatar_url email phone_number')
         .populate('studentId', 'full_name avatar_url email phone_number')
@@ -259,22 +266,51 @@ class ClassService {
       }
 
       // Check if user is authorized to view this class
-      // Fix: Extract IDs properly from populated objects
-      const tutorId =
-        typeof learningClass.tutorId === 'object'
-          ? (learningClass.tutorId as any)._id.toString()
-          : learningClass.tutorId.toString();
+      // Use raw IDs from database if populate failed
+      const rawTutorId = rawClass.tutorId?.toString() || null;
+      const rawStudentId = rawClass.studentId?.toString() || null;
 
-      const studentId =
-        typeof learningClass.studentId === 'object'
-          ? (learningClass.studentId as any)._id.toString()
-          : learningClass.studentId.toString();
+      // Extract tutorId - prefer populated, fallback to raw
+      let tutorId: string | null = null;
+      if (learningClass.tutorId) {
+        if (typeof learningClass.tutorId === 'object' && learningClass.tutorId !== null) {
+          tutorId = (learningClass.tutorId as any)._id?.toString() ||
+            (learningClass.tutorId as any).id?.toString() ||
+            null;
+        } else {
+          tutorId = String(learningClass.tutorId);
+        }
+      }
 
-      console.log('Comparing IDs:', {
-        userId,
-        tutorId,
-        studentId,
-      });
+      // If populate failed, use raw ID
+      if (!tutorId && rawTutorId) {
+        tutorId = rawTutorId;
+      }
+
+      // Extract studentId - prefer populated, fallback to raw
+      let studentId: string | null = null;
+      if (learningClass.studentId) {
+        if (typeof learningClass.studentId === 'object' && learningClass.studentId !== null) {
+          studentId = (learningClass.studentId as any)._id?.toString() ||
+            (learningClass.studentId as any).id?.toString() ||
+            null;
+        } else {
+          studentId = String(learningClass.studentId);
+        }
+      }
+
+      // If populate failed, use raw ID
+      if (!studentId && rawStudentId) {
+        studentId = rawStudentId;
+      }
+
+      // Check if IDs are valid
+      if (!tutorId) {
+        throw new Error('Lớp học không có thông tin gia sư');
+      }
+      if (!studentId) {
+        throw new Error('Lớp học không có thông tin học viên');
+      }
 
       if (tutorId !== userId && studentId !== userId) {
         throw new Error('Bạn không có quyền xem thông tin lớp học này');
@@ -447,9 +483,9 @@ class ClassService {
 
       // Update tutor rating summary for search ranking
       const tutorId =
-        typeof learningClass.tutorId === 'object'
-          ? (learningClass.tutorId as any)._id?.toString()
-          : learningClass.tutorId.toString();
+        typeof learningClass.tutorId === 'object' && learningClass.tutorId !== null
+          ? (learningClass.tutorId as any)._id?.toString() || String(learningClass.tutorId)
+          : String(learningClass.tutorId);
 
       await this.updateTutorRatingSummary(tutorId, rating, previousRating);
 
@@ -510,6 +546,14 @@ class ClassService {
    */
   async getClassSchedule(classId: string, userId: string) {
     try {
+      // First, get the raw document to check if IDs exist
+      const rawClass = await LearningClass.findById(classId).lean();
+
+      if (!rawClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Get populated version
       const learningClass = await LearningClass.findById(classId)
         .populate('tutorId', 'full_name avatar_url email phone_number')
         .populate('studentId', 'full_name avatar_url email phone_number')
@@ -520,15 +564,51 @@ class ClassService {
       }
 
       // Check authorization
-      const tutorId =
-        typeof learningClass.tutorId === 'object'
-          ? (learningClass.tutorId as any)._id.toString()
-          : learningClass.tutorId.toString();
+      // Use raw IDs from database if populate failed
+      const rawTutorId = rawClass.tutorId?.toString() || null;
+      const rawStudentId = rawClass.studentId?.toString() || null;
 
-      const studentId =
-        typeof learningClass.studentId === 'object'
-          ? (learningClass.studentId as any)._id.toString()
-          : learningClass.studentId.toString();
+      // Extract tutorId - prefer populated, fallback to raw
+      let tutorId: string | null = null;
+      if (learningClass.tutorId) {
+        if (typeof learningClass.tutorId === 'object' && learningClass.tutorId !== null) {
+          tutorId = (learningClass.tutorId as any)._id?.toString() ||
+            (learningClass.tutorId as any).id?.toString() ||
+            null;
+        } else {
+          tutorId = String(learningClass.tutorId);
+        }
+      }
+
+      // If populate failed, use raw ID
+      if (!tutorId && rawTutorId) {
+        tutorId = rawTutorId;
+      }
+
+      // Extract studentId - prefer populated, fallback to raw
+      let studentId: string | null = null;
+      if (learningClass.studentId) {
+        if (typeof learningClass.studentId === 'object' && learningClass.studentId !== null) {
+          studentId = (learningClass.studentId as any)._id?.toString() ||
+            (learningClass.studentId as any).id?.toString() ||
+            null;
+        } else {
+          studentId = String(learningClass.studentId);
+        }
+      }
+
+      // If populate failed, use raw ID
+      if (!studentId && rawStudentId) {
+        studentId = rawStudentId;
+      }
+
+      // Check if IDs are valid
+      if (!tutorId) {
+        throw new Error('Lớp học không có thông tin gia sư');
+      }
+      if (!studentId) {
+        throw new Error('Lớp học không có thông tin học viên');
+      }
 
       if (tutorId !== userId && studentId !== userId) {
         throw new Error('Bạn không có quyền xem lịch học này');
@@ -547,16 +627,16 @@ class ClassService {
       });
 
       const tutorName =
-        typeof learningClass.tutorId === 'object'
+        typeof learningClass.tutorId === 'object' && learningClass.tutorId !== null
           ? (learningClass.tutorId as any).full_name ||
-            (learningClass.tutorId as any).email ||
-            'Gia sư'
+          (learningClass.tutorId as any).email ||
+          'Gia sư'
           : 'Gia sư';
       const studentName =
-        typeof learningClass.studentId === 'object'
+        typeof learningClass.studentId === 'object' && learningClass.studentId !== null
           ? (learningClass.studentId as any).full_name ||
-            (learningClass.studentId as any).email ||
-            'Học viên'
+          (learningClass.studentId as any).email ||
+          'Học viên'
           : 'Học viên';
 
       const persistentAssignments = (learningClass.assignments || []).map(
@@ -586,19 +666,19 @@ class ClassService {
           const grade = assignment.grade;
           const derivedSubmission = submission
             ? [
-                {
-                  _id: `SESSION-${session.sessionNumber}-${assignmentEntityId || uuidv4()}`,
-                  studentId,
-                  studentName,
-                  note: submission.notes,
-                  fileUrl: submission.fileUrl,
-                  fileName: undefined,
-                  fileSize: undefined,
-                  mimeType: undefined,
-                  submittedAt: submission.submittedAt,
-                  updatedAt: submission.submittedAt,
-                },
-              ]
+              {
+                _id: `SESSION-${session.sessionNumber}-${assignmentEntityId || uuidv4()}`,
+                studentId,
+                studentName,
+                note: submission.notes,
+                fileUrl: submission.fileUrl,
+                fileName: undefined,
+                fileSize: undefined,
+                mimeType: undefined,
+                submittedAt: submission.submittedAt,
+                updatedAt: submission.submittedAt,
+              },
+            ]
             : [];
 
           return {
@@ -607,8 +687,8 @@ class ClassService {
             instructions: assignment.description,
             attachment: assignment.fileUrl
               ? {
-                  fileUrl: assignment.fileUrl,
-                }
+                fileUrl: assignment.fileUrl,
+              }
               : undefined,
             dueDate: assignment.deadline,
             createdBy: {
@@ -1496,8 +1576,8 @@ class ClassService {
               meetingLink: learningClass.onlineInfo?.meetingLink,
               location: learningClass.location
                 ? {
-                    details: (learningClass.location as any).address,
-                  }
+                  details: (learningClass.location as any).address,
+                }
                 : undefined,
               attendance: session.attendance || {
                 tutorAttended: false,

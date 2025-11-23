@@ -37,18 +37,35 @@ export interface StudentContractResponse {
 
 export interface ContractFilters {
   status?:
-    | 'DRAFT'
-    | 'PENDING_STUDENT_APPROVAL'
-    | 'APPROVED'
-    | 'REJECTED'
-    | 'EXPIRED'
-    | 'CANCELLED';
+  | 'DRAFT'
+  | 'PENDING_STUDENT_APPROVAL'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'EXPIRED'
+  | 'CANCELLED';
   studentId?: string;
   tutorId?: string;
   dateFrom?: string;
   dateTo?: string;
   page?: number;
   limit?: number;
+}
+
+export interface CreatePaymentScheduleInput {
+  contractId: string;
+  paymentMethod: 'FULL_PAYMENT' | 'INSTALLMENTS';
+  installmentPlan?: {
+    numberOfInstallments?: number;
+    firstPaymentPercentage?: number;
+  };
+  paymentTerms?: {
+    lateFeePercentage?: number;
+    gracePeriodDays?: number;
+    cancellationPolicy?: {
+      refundPercentage?: number;
+      minimumNoticeDays?: number;
+    };
+  };
 }
 
 export interface ProcessPaymentInput {

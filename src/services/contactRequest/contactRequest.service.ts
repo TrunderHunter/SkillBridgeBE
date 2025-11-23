@@ -680,6 +680,8 @@ class ContactRequestService {
             scheduledDate: scheduledDateTime,
             duration: learningClass.sessionDuration,
             status: 'SCHEDULED' as const,
+            paymentStatus: 'UNPAID' as const,
+            paymentRequired: true,
             attendance: {
               checkedIn: false,
               tutorAttended: false,

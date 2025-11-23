@@ -185,7 +185,7 @@ export class PaymentService {
       }
 
       // Check for overdue payments
-      paymentSchedule.checkOverduePayments();
+      (paymentSchedule as any).checkOverduePayments();
       await paymentSchedule.save();
 
       return paymentSchedule;
@@ -224,7 +224,7 @@ export class PaymentService {
 
       // Check for overdue payments
       for (const schedule of schedules) {
-        schedule.checkOverduePayments();
+        (schedule as any).checkOverduePayments();
         await schedule.save();
       }
 

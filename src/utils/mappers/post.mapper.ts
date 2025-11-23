@@ -2,16 +2,26 @@ import { IPostResponse, IAuthorResponse } from '../../types/post.types';
 import { PostType, PostStatus } from '../../models/Post';
 
 export const mapPostToResponse = (post: any): IPostResponse => {
+  // Safely handle author_id - can be null/undefined or populated object
+  let authorId: string = '';
+  if (post.author_id) {
+    if (typeof post.author_id === 'object' && post.author_id._id) {
+      authorId = post.author_id._id.toString();
+    } else if (typeof post.author_id === 'string' || post.author_id.toString) {
+      authorId = post.author_id.toString();
+    }
+  }
+
   const author: IAuthorResponse = {
-    _id: post.author_id?._id?.toString() || post.author_id.toString(),
+    _id: authorId || 'unknown',
     full_name: post.author_id?.full_name || 'N/A',
     avatar: post.author_id?.avatar || ''
   };
 
   return {
-    id: post._id.toString(),
-    title: post.title,
-    content: post.content,
+    id: post._id?.toString() || post._id || '',
+    title: post.title || '',
+    content: post.content || '',
     type: post.type as PostType,
     author_id: author,
     subjects: post.subjects || [],
