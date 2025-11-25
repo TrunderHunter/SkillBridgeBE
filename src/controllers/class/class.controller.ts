@@ -89,7 +89,7 @@ export class ClassController {
       const result = await classService.getTutorAssignments(tutorId);
       res.json(result);
     } catch (error: any) {
-      logger.error('Get tutor assignments controller error:', error);
+      logger.error('Error getting tutor assignments:', error.message);
       res.status(400).json({
         success: false,
         message: error.message || 'Không thể lấy danh sách bài tập',

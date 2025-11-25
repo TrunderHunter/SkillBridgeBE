@@ -1292,9 +1292,16 @@ class ClassService {
       const assignments: any[] = [];
 
       classes.forEach((learningClass) => {
+        if (!learningClass.sessions || !Array.isArray(learningClass.sessions)) {
+          return;
+        }
+
         learningClass.sessions.forEach((session) => {
-          const sessionAssignments = buildSessionAssignmentList(session);
-          sessionAssignments.forEach((assignment) => {
+          try {
+            const sessionAssignments = buildSessionAssignmentList(session);
+
+            sessionAssignments.forEach((assignment) => {
+              try {
             const submission = assignment.submission;
             const grade = assignment.grade;
             let status: 'pending_submission' | 'pending_grade' | 'graded' =
@@ -1315,36 +1322,42 @@ class ClassService {
                 : false;
             const isOverdue = !submission && deadline ? now > deadline : false;
 
-            assignments.push({
-              id:
-                assignment.id ||
-                `${learningClass._id}-${session.sessionNumber}`,
-              assignmentId: assignment.id,
-              classId: learningClass._id.toString(),
-              className:
-                (learningClass as any).subject?.name || learningClass.title,
-              sessionNumber: session.sessionNumber,
-              scheduledDate: session.scheduledDate,
-              title: assignment.title,
-              description: assignment.description,
-              fileUrl: assignment.fileUrl,
-              deadline: assignment.deadline,
-              assignedAt: assignment.assignedAt,
-              student: {
-                id:
-                  (learningClass as any).studentId?._id?.toString() ||
-                  learningClass.studentId.toString(),
-                name: (learningClass as any).studentId?.full_name || 'Học viên',
-                avatar: (learningClass as any).studentId?.avatar_url,
-              },
-              submission: submission || null,
-              grade: grade || null,
-              status,
-              isLate,
-              isOverdue,
-              isLegacy: assignment.isLegacy || false,
+                assignments.push({
+                  id:
+                    assignment.id ||
+                    `${learningClass._id}-${session.sessionNumber}`,
+                  assignmentId: assignment.id,
+                  classId: learningClass._id.toString(),
+                  className:
+                    (learningClass as any).subject?.name || learningClass.title,
+                  sessionNumber: session.sessionNumber,
+                  scheduledDate: session.scheduledDate,
+                  title: assignment.title,
+                  description: assignment.description,
+                  fileUrl: assignment.fileUrl,
+                  deadline: assignment.deadline,
+                  assignedAt: assignment.assignedAt,
+                  student: {
+                    id:
+                      (learningClass as any).studentId?._id?.toString() ||
+                      learningClass.studentId.toString(),
+                    name: (learningClass as any).studentId?.full_name || 'Học viên',
+                    avatar: (learningClass as any).studentId?.avatar_url,
+                  },
+                  submission: submission || null,
+                  grade: grade || null,
+                  status,
+                  isLate,
+                  isOverdue,
+                  isLegacy: assignment.isLegacy || false,
+                });
+              } catch (assignmentError: any) {
+                logger.error('Error processing assignment:', assignmentError.message);
+              }
             });
-          });
+          } catch (sessionError: any) {
+            logger.error('Error processing session:', sessionError.message);
+          }
         });
       });
 
@@ -1373,7 +1386,7 @@ class ClassService {
         },
       };
     } catch (error: any) {
-      logger.error('Get tutor assignments error:', error);
+      logger.error('Error getting tutor assignments:', error.message);
       throw new Error('Không thể lấy danh sách bài tập');
     }
   }
