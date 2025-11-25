@@ -42,9 +42,9 @@ class AISurveyController {
     try {
       const studentId = req.user!.id;
 
-      const survey = await aiSurveyService.getStudentSurvey(studentId);
+      const surveyResult = await aiSurveyService.getStudentSurveyResult(studentId);
 
-      if (!survey) {
+      if (!surveyResult) {
         return res.status(404).json({
           success: false,
           message: 'Chưa có khảo sát nào',
@@ -53,7 +53,7 @@ class AISurveyController {
 
       res.status(200).json({
         success: true,
-        data: survey,
+        data: surveyResult,
       });
 
     } catch (error: any) {
@@ -73,7 +73,7 @@ class AISurveyController {
     try {
       const studentId = req.user!.id;
 
-      const survey = await aiSurveyService.getStudentSurvey(studentId);
+      const survey = await aiSurveyService.getActiveSurvey(studentId);
 
       res.status(200).json({
         success: true,
