@@ -7,11 +7,11 @@ export interface IConversation extends Document {
   studentId: string; // Reference to User (Student)
   tutorId: string; // Reference to User (Tutor)
   tutorPostId: string; // Reference to TutorPost
-  
+
   // Conversation metadata
   subject: string; // Subject they're discussing about
   status: 'ACTIVE' | 'CLOSED' | 'ARCHIVED';
-  
+
   // Last message info for quick access
   lastMessage?: {
     content: string;
@@ -19,13 +19,13 @@ export interface IConversation extends Document {
     sentAt: Date;
     messageType: 'TEXT' | 'IMAGE' | 'FILE';
   };
-  
+
   // Unread counts
   unreadCount: {
     student: number;
     tutor: number;
   };
-  
+
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -107,11 +107,14 @@ ConversationSchema.index({ contactRequestId: 1 }, { unique: true });
 
 // Ensure unique conversation between student and tutor (prevent duplicates)
 ConversationSchema.index(
-  { studentId: 1, tutorId: 1 }, 
-  { 
+  { studentId: 1, tutorId: 1 },
+  {
     unique: true,
-    partialFilterExpression: { status: 'ACTIVE' }
+    partialFilterExpression: { status: 'ACTIVE' },
   }
 );
 
-export const Conversation = model<IConversation>('Conversation', ConversationSchema);
+export const Conversation = model<IConversation>(
+  'Conversation',
+  ConversationSchema
+);

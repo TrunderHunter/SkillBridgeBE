@@ -4,7 +4,10 @@ import { ContactRequest } from '../../models/ContactRequest';
 import { User } from '../../models/User';
 import { getSocketInstance } from '../../config/socket';
 import { notifyNewMessage } from '../notification/notification.helpers';
-import { filterSensitiveContent, getFilterErrorMessage } from '../../utils/contentFilter';
+import {
+  filterSensitiveContent,
+  getFilterErrorMessage,
+} from '../../utils/contentFilter';
 
 export interface ICreateMessageInput {
   conversationId: string;
@@ -34,7 +37,9 @@ export class MessageService {
   static async createConversation(contactRequestId: string): Promise<any> {
     try {
       // Check if conversation already exists
-      const existingConversation = await Conversation.findOne({ contactRequestId });
+      const existingConversation = await Conversation.findOne({
+        contactRequestId,
+      });
       if (existingConversation) {
         return {
           success: true,
@@ -69,7 +74,9 @@ export class MessageService {
       await conversation.save();
 
       // Populate conversation data
-      const populatedConversation = await Conversation.findById(conversation._id)
+      const populatedConversation = await Conversation.findById(
+        conversation._id
+      )
         .populate('studentId', 'full_name avatar_url')
         .populate('tutorId', 'full_name avatar_url')
         .populate('tutorPostId', 'title subjects')
@@ -93,7 +100,7 @@ export class MessageService {
   static async createConversationFromClass(classId: string): Promise<any> {
     try {
       const { LearningClass } = await import('../../models/LearningClass');
-      
+
       // Get class details - NO POPULATE to keep IDs as strings
       const learningClass = await LearningClass.findById(classId);
 
@@ -113,8 +120,8 @@ export class MessageService {
       let existingConversation = await Conversation.findOne({
         $or: [
           { studentId: studentIdStr, tutorId: tutorIdStr },
-          { studentId: tutorIdStr, tutorId: studentIdStr } // Check both directions just in case
-        ]
+          { studentId: tutorIdStr, tutorId: studentIdStr }, // Check both directions just in case
+        ],
       });
 
       if (existingConversation) {
@@ -123,14 +130,16 @@ export class MessageService {
           existingConversation.status = 'ACTIVE';
           await existingConversation.save();
         }
-        
+
         // Populate and return
-        existingConversation = await Conversation.findById(existingConversation._id)
+        existingConversation = await Conversation.findById(
+          existingConversation._id
+        )
           .populate('studentId', 'full_name avatar_url')
           .populate('tutorId', 'full_name avatar_url')
           .populate('tutorPostId', 'title')
           .populate('subject', 'name');
-        
+
         return {
           success: true,
           message: 'Cuộc trò chuyện đã tồn tại',
@@ -175,7 +184,9 @@ export class MessageService {
       } else {
         // No contact request - use class ID as reference and tutor post if available
         conversationData.contactRequestId = `from-class-${classId}`;
-        conversationData.tutorPostId = tutorPost ? tutorPost._id.toString() : `virtual-post-${tutorIdStr}`;
+        conversationData.tutorPostId = tutorPost
+          ? tutorPost._id.toString()
+          : `virtual-post-${tutorIdStr}`;
       }
 
       // Try to create, handle duplicate key error gracefully
@@ -186,18 +197,20 @@ export class MessageService {
       } catch (error: any) {
         // If duplicate key error (code 11000), fetch the existing conversation
         if (error.code === 11000) {
-          console.log('⚠️ Duplicate conversation detected, fetching existing one');
+          console.log(
+            '⚠️ Duplicate conversation detected, fetching existing one'
+          );
           existingConversation = await Conversation.findOne({
             $or: [
               { studentId: studentIdStr, tutorId: tutorIdStr },
-              { studentId: tutorIdStr, tutorId: studentIdStr }
-            ]
+              { studentId: tutorIdStr, tutorId: studentIdStr },
+            ],
           })
             .populate('studentId', 'full_name avatar_url')
             .populate('tutorId', 'full_name avatar_url')
             .populate('tutorPostId', 'title')
             .populate('subject', 'name');
-          
+
           return {
             success: true,
             message: 'Cuộc trò chuyện đã tồn tại',
@@ -208,7 +221,9 @@ export class MessageService {
       }
 
       // Populate conversation data
-      const populatedConversation = await Conversation.findById(conversation._id)
+      const populatedConversation = await Conversation.findById(
+        conversation._id
+      )
         .populate('studentId', 'full_name avatar_url')
         .populate('tutorId', 'full_name avatar_url')
         .populate('tutorPostId', 'title')
@@ -232,7 +247,9 @@ export class MessageService {
   static async sendMessage(messageData: ICreateMessageInput): Promise<any> {
     try {
       // Verify conversation exists and user has access
-      const conversation = await Conversation.findById(messageData.conversationId);
+      const conversation = await Conversation.findById(
+        messageData.conversationId
+      );
       if (!conversation) {
         return {
           success: false,
@@ -241,7 +258,10 @@ export class MessageService {
       }
 
       // Check if sender is part of the conversation
-      if (conversation.studentId !== messageData.senderId && conversation.tutorId !== messageData.senderId) {
+      if (
+        conversation.studentId !== messageData.senderId &&
+        conversation.tutorId !== messageData.senderId
+      ) {
         return {
           success: false,
           message: 'Bạn không có quyền gửi tin nhắn trong cuộc trò chuyện này',
@@ -249,9 +269,10 @@ export class MessageService {
       }
 
       // Determine receiver
-      const receiverId = conversation.studentId === messageData.senderId
-        ? conversation.tutorId
-        : conversation.studentId;
+      const receiverId =
+        conversation.studentId === messageData.senderId
+          ? conversation.tutorId
+          : conversation.studentId;
 
       // Kiểm tra và lọc nội dung nhạy cảm (chỉ áp dụng cho tin nhắn TEXT)
       if (messageData.messageType === 'TEXT' || !messageData.messageType) {
@@ -271,7 +292,10 @@ export class MessageService {
         senderId: messageData.senderId,
         receiverId,
         content: messageData.content,
-        messageType: (messageData.messageType || 'TEXT').toUpperCase() as 'TEXT' | 'IMAGE' | 'FILE',
+        messageType: (messageData.messageType || 'TEXT').toUpperCase() as
+          | 'TEXT'
+          | 'IMAGE'
+          | 'FILE',
         fileMetadata: messageData.fileMetadata,
         replyTo: messageData.replyTo,
         status: 'SENT',
@@ -286,17 +310,24 @@ export class MessageService {
           content: messageData.content,
           senderId: messageData.senderId,
           sentAt: message.sentAt,
-          messageType: (messageData.messageType || 'TEXT').toUpperCase() as 'TEXT' | 'IMAGE' | 'FILE',
+          messageType: (messageData.messageType || 'TEXT').toUpperCase() as
+            | 'TEXT'
+            | 'IMAGE'
+            | 'FILE',
         },
       };
 
       if (isStudentSender) {
         updateData['unreadCount.tutor'] = conversation.unreadCount.tutor + 1;
       } else {
-        updateData['unreadCount.student'] = conversation.unreadCount.student + 1;
+        updateData['unreadCount.student'] =
+          conversation.unreadCount.student + 1;
       }
 
-      await Conversation.findByIdAndUpdate(messageData.conversationId, updateData);
+      await Conversation.findByIdAndUpdate(
+        messageData.conversationId,
+        updateData
+      );
 
       // Populate message data
       const populatedMessage = await Message.findById(message._id)
@@ -313,16 +344,20 @@ export class MessageService {
         });
 
         // Send to conversation room if both users are online
-        io.to(`conversation-${messageData.conversationId}`).emit('message-received', populatedMessage);
+        io.to(`conversation-${messageData.conversationId}`).emit(
+          'message-received',
+          populatedMessage
+        );
       }
 
       // Send notification to receiver
       try {
         const sender = await User.findById(messageData.senderId);
         const senderName = sender?.full_name || sender?.email || 'Người dùng';
-        const messagePreview = messageData.content.length > 50
-          ? messageData.content.substring(0, 50) + '...'
-          : messageData.content;
+        const messagePreview =
+          messageData.content.length > 50
+            ? messageData.content.substring(0, 50) + '...'
+            : messageData.content;
 
         await notifyNewMessage(
           receiverId.toString(),
@@ -367,7 +402,10 @@ export class MessageService {
         };
       }
 
-      if (conversation.studentId !== userId && conversation.tutorId !== userId) {
+      if (
+        conversation.studentId !== userId &&
+        conversation.tutorId !== userId
+      ) {
         return {
           success: false,
           message: 'Bạn không có quyền xem cuộc trò chuyện này',
@@ -428,15 +466,16 @@ export class MessageService {
 
       // Filter out conversations with invalid subject (stringified object)
       const validConversationIds = rawConversations
-        .filter(conv => {
+        .filter((conv) => {
           // Check if subject is a valid ObjectId string (24 hex chars)
           const subjectStr = conv.subject?.toString() || '';
           return /^[0-9a-fA-F]{24}$/.test(subjectStr);
         })
-        .map(conv => conv._id);
+        .map((conv) => conv._id);
 
       // Delete invalid conversations
-      const invalidCount = rawConversations.length - validConversationIds.length;
+      const invalidCount =
+        rawConversations.length - validConversationIds.length;
       if (invalidCount > 0) {
         await Conversation.deleteMany({
           _id: { $nin: validConversationIds },
@@ -471,7 +510,10 @@ export class MessageService {
   }
 
   // Mark messages as read
-  static async markMessagesAsRead(conversationId: string, userId: string): Promise<any> {
+  static async markMessagesAsRead(
+    conversationId: string,
+    userId: string
+  ): Promise<any> {
     try {
       // Verify user has access to conversation
       const conversation = await Conversation.findById(conversationId);
@@ -482,7 +524,10 @@ export class MessageService {
         };
       }
 
-      if (conversation.studentId !== userId && conversation.tutorId !== userId) {
+      if (
+        conversation.studentId !== userId &&
+        conversation.tutorId !== userId
+      ) {
         return {
           success: false,
           message: 'Bạn không có quyền truy cập cuộc trò chuyện này',
@@ -513,7 +558,9 @@ export class MessageService {
       // Notify sender via socket that messages were read
       const io = getSocketInstance();
       if (io) {
-        const senderId = isStudent ? conversation.tutorId : conversation.studentId;
+        const senderId = isStudent
+          ? conversation.tutorId
+          : conversation.studentId;
         io.to(`notifications-${senderId}`).emit('messages-read', {
           conversationId,
           readBy: userId,
@@ -534,7 +581,10 @@ export class MessageService {
   }
 
   // Close conversation
-  static async closeConversation(conversationId: string, userId: string): Promise<any> {
+  static async closeConversation(
+    conversationId: string,
+    userId: string
+  ): Promise<any> {
     try {
       const conversation = await Conversation.findById(conversationId);
       if (!conversation) {
@@ -544,7 +594,10 @@ export class MessageService {
         };
       }
 
-      if (conversation.studentId !== userId && conversation.tutorId !== userId) {
+      if (
+        conversation.studentId !== userId &&
+        conversation.tutorId !== userId
+      ) {
         return {
           success: false,
           message: 'Bạn không có quyền đóng cuộc trò chuyện này',

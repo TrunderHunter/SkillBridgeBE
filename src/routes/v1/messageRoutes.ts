@@ -24,9 +24,7 @@ const createConversationFromClassValidation = [
 ];
 
 const sendMessageValidation = [
-  param('conversationId')
-    .isUUID(4)
-    .withMessage('Conversation ID không hợp lệ'),
+  param('conversationId').isUUID(4).withMessage('Conversation ID không hợp lệ'),
   body('content')
     .notEmpty()
     .withMessage('Nội dung tin nhắn là bắt buộc')
@@ -47,9 +45,7 @@ const sendMessageValidation = [
 ];
 
 const conversationIdValidation = [
-  param('conversationId')
-    .isUUID(4)
-    .withMessage('Conversation ID không hợp lệ'),
+  param('conversationId').isUUID(4).withMessage('Conversation ID không hợp lệ'),
 ];
 
 const contactRequestIdValidation = [

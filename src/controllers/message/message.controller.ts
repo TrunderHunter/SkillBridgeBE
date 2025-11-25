@@ -24,7 +24,12 @@ export class MessageController {
       }
     } catch (error: any) {
       console.error('❌ Create conversation controller error:', error);
-      sendError(res, error.message || 'Lỗi khi tạo cuộc trò chuyện', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi tạo cuộc trò chuyện',
+        undefined,
+        500
+      );
     }
   }
 
@@ -44,7 +49,8 @@ export class MessageController {
         return sendError(res, 'Không xác định được người gửi', undefined, 401);
       }
 
-      const normalizedType = typeof messageType === 'string' ? messageType.toUpperCase() : undefined;
+      const normalizedType =
+        typeof messageType === 'string' ? messageType.toUpperCase() : undefined;
 
       const messageData = {
         conversationId,
@@ -57,7 +63,7 @@ export class MessageController {
 
       const result = await MessageService.sendMessage({
         ...messageData,
-        messageType: normalizedType as "TEXT" | "IMAGE" | "FILE" | undefined,
+        messageType: normalizedType as 'TEXT' | 'IMAGE' | 'FILE' | undefined,
       });
 
       if (result.success) {
@@ -87,12 +93,21 @@ export class MessageController {
         limit: limit ? parseInt(limit as string, 10) : 50,
       };
 
-      const result = await MessageService.getMessages(conversationId, userId, options);
+      const result = await MessageService.getMessages(
+        conversationId,
+        userId,
+        options
+      );
 
       if (result.success) {
         sendSuccess(res, result.message, result.data);
       } else {
-        sendError(res, result.message, undefined, result.message.includes('Không tìm thấy') ? 404 : 400);
+        sendError(
+          res,
+          result.message,
+          undefined,
+          result.message.includes('Không tìm thấy') ? 404 : 400
+        );
       }
     } catch (error: any) {
       console.error('❌ Get messages controller error:', error);
@@ -101,7 +116,10 @@ export class MessageController {
   }
 
   // Get user's conversations
-  static async getUserConversations(req: Request, res: Response): Promise<void> {
+  static async getUserConversations(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const userId = req.user?.id;
 
@@ -118,7 +136,12 @@ export class MessageController {
       }
     } catch (error: any) {
       console.error('❌ Get user conversations controller error:', error);
-      sendError(res, error.message || 'Lỗi khi lấy danh sách cuộc trò chuyện', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy danh sách cuộc trò chuyện',
+        undefined,
+        500
+      );
     }
   }
 
@@ -132,16 +155,29 @@ export class MessageController {
         return sendError(res, 'Không xác định được người dùng', undefined, 401);
       }
 
-      const result = await MessageService.markMessagesAsRead(conversationId, userId);
+      const result = await MessageService.markMessagesAsRead(
+        conversationId,
+        userId
+      );
 
       if (result.success) {
         sendSuccess(res, result.message);
       } else {
-        sendError(res, result.message, undefined, result.message.includes('Không tìm thấy') ? 404 : 400);
+        sendError(
+          res,
+          result.message,
+          undefined,
+          result.message.includes('Không tìm thấy') ? 404 : 400
+        );
       }
     } catch (error: any) {
       console.error('❌ Mark messages as read controller error:', error);
-      sendError(res, error.message || 'Lỗi khi đánh dấu tin nhắn đã đọc', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi đánh dấu tin nhắn đã đọc',
+        undefined,
+        500
+      );
     }
   }
 
@@ -155,21 +191,37 @@ export class MessageController {
         return sendError(res, 'Không xác định được người dùng', undefined, 401);
       }
 
-      const result = await MessageService.closeConversation(conversationId, userId);
+      const result = await MessageService.closeConversation(
+        conversationId,
+        userId
+      );
 
       if (result.success) {
         sendSuccess(res, result.message);
       } else {
-        sendError(res, result.message, undefined, result.message.includes('Không tìm thấy') ? 404 : 400);
+        sendError(
+          res,
+          result.message,
+          undefined,
+          result.message.includes('Không tìm thấy') ? 404 : 400
+        );
       }
     } catch (error: any) {
       console.error('❌ Close conversation controller error:', error);
-      sendError(res, error.message || 'Lỗi khi đóng cuộc trò chuyện', undefined, 500);
+      sendError(
+        res,
+        error.message || 'Lỗi khi đóng cuộc trò chuyện',
+        undefined,
+        500
+      );
     }
   }
 
   // Get conversation by contact request ID
-  static async getConversationByContactRequest(req: Request, res: Response): Promise<void> {
+  static async getConversationByContactRequest(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const { contactRequestId } = req.params;
       const userId = req.user?.id;
@@ -191,26 +243,44 @@ export class MessageController {
       }
 
       // Check if user has access
-      const studentIdStr = typeof conversation.studentId === 'string' 
-        ? conversation.studentId 
-        : (conversation.studentId as any)._id;
-      const tutorIdStr = typeof conversation.tutorId === 'string' 
-        ? conversation.tutorId 
-        : (conversation.tutorId as any)._id;
+      const studentIdStr =
+        typeof conversation.studentId === 'string'
+          ? conversation.studentId
+          : (conversation.studentId as any)._id;
+      const tutorIdStr =
+        typeof conversation.tutorId === 'string'
+          ? conversation.tutorId
+          : (conversation.tutorId as any)._id;
 
       if (studentIdStr !== userId && tutorIdStr !== userId) {
-        return sendError(res, 'Bạn không có quyền truy cập cuộc trò chuyện này', undefined, 403);
+        return sendError(
+          res,
+          'Bạn không có quyền truy cập cuộc trò chuyện này',
+          undefined,
+          403
+        );
       }
 
       sendSuccess(res, 'Lấy cuộc trò chuyện thành công', conversation);
     } catch (error: any) {
-      console.error('❌ Get conversation by contact request controller error:', error);
-      sendError(res, error.message || 'Lỗi khi lấy cuộc trò chuyện', undefined, 500);
+      console.error(
+        '❌ Get conversation by contact request controller error:',
+        error
+      );
+      sendError(
+        res,
+        error.message || 'Lỗi khi lấy cuộc trò chuyện',
+        undefined,
+        500
+      );
     }
   }
 
   // Create conversation from class
-  static async createConversationFromClass(req: Request, res: Response): Promise<void> {
+  static async createConversationFromClass(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -227,8 +297,16 @@ export class MessageController {
         sendError(res, result.message, undefined, 400);
       }
     } catch (error: any) {
-      console.error('❌ Create conversation from class controller error:', error);
-      sendError(res, error.message || 'Lỗi khi tạo cuộc trò chuyện từ lớp học', undefined, 500);
+      console.error(
+        '❌ Create conversation from class controller error:',
+        error
+      );
+      sendError(
+        res,
+        error.message || 'Lỗi khi tạo cuộc trò chuyện từ lớp học',
+        undefined,
+        500
+      );
     }
   }
 
@@ -258,10 +336,14 @@ export class MessageController {
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/\s+/g, '_')
         .replace(/[^\w.-]/g, '_');
-      
+
       const safeName = `${Date.now()}-${sanitizedName}`;
 
-      const url = await uploadToCloudinaryGeneric(file.buffer, folder, safeName);
+      const url = await uploadToCloudinaryGeneric(
+        file.buffer,
+        folder,
+        safeName
+      );
 
       return sendSuccess(res, 'Upload tệp thành công', {
         url,
@@ -271,7 +353,12 @@ export class MessageController {
       });
     } catch (error: any) {
       console.error('❌ Upload attachment controller error:', error);
-      return sendError(res, error.message || 'Lỗi khi upload tệp', undefined, 500);
+      return sendError(
+        res,
+        error.message || 'Lỗi khi upload tệp',
+        undefined,
+        500
+      );
     }
   }
 }
