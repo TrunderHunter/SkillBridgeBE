@@ -209,6 +209,29 @@ export class MessageController {
     }
   }
 
+  // Create conversation from class
+  static async createConversationFromClass(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return sendError(res, 'Dữ liệu không hợp lệ', errors.array(), 400);
+      }
+
+      const { classId } = req.body;
+
+      const result = await MessageService.createConversationFromClass(classId);
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data, result.data ? 200 : 201);
+      } else {
+        sendError(res, result.message, undefined, 400);
+      }
+    } catch (error: any) {
+      console.error('❌ Create conversation from class controller error:', error);
+      sendError(res, error.message || 'Lỗi khi tạo cuộc trò chuyện từ lớp học', undefined, 500);
+    }
+  }
+
   // Upload chat attachment (via Cloudinary)
   static async uploadAttachment(req: Request, res: Response): Promise<void> {
     try {

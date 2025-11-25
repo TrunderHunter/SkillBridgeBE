@@ -105,4 +105,13 @@ ConversationSchema.index({ createdAt: -1 });
 // Ensure unique conversation per contact request
 ConversationSchema.index({ contactRequestId: 1 }, { unique: true });
 
+// Ensure unique conversation between student and tutor (prevent duplicates)
+ConversationSchema.index(
+  { studentId: 1, tutorId: 1 }, 
+  { 
+    unique: true,
+    partialFilterExpression: { status: 'ACTIVE' }
+  }
+);
+
 export const Conversation = model<IConversation>('Conversation', ConversationSchema);

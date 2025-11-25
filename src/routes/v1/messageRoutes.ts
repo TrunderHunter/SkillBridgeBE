@@ -15,6 +15,14 @@ const createConversationValidation = [
     .withMessage('Contact request ID không hợp lệ'),
 ];
 
+const createConversationFromClassValidation = [
+  body('classId')
+    .notEmpty()
+    .withMessage('Class ID là bắt buộc')
+    .isUUID(4)
+    .withMessage('Class ID không hợp lệ'),
+];
+
 const sendMessageValidation = [
   param('conversationId')
     .isUUID(4)
@@ -57,6 +65,14 @@ router.post(
   authenticateToken,
   createConversationValidation,
   MessageController.createConversation
+);
+
+// Create conversation from class
+router.post(
+  '/conversations/from-class',
+  authenticateToken,
+  createConversationFromClassValidation,
+  MessageController.createConversationFromClass
 );
 
 // Send message

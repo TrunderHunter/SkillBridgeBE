@@ -89,6 +89,145 @@ export class MessageService {
     }
   }
 
+  // Create conversation from class (when tutor/student want to chat about existing class)
+  static async createConversationFromClass(classId: string): Promise<any> {
+    try {
+      const { LearningClass } = await import('../../models/LearningClass');
+      
+      // Get class details - NO POPULATE to keep IDs as strings
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        return {
+          success: false,
+          message: 'Không tìm thấy lớp học',
+        };
+      }
+
+      // Extract IDs as strings
+      const studentIdStr = learningClass.studentId.toString();
+      const tutorIdStr = learningClass.tutorId.toString();
+      const subjectIdStr = learningClass.subject.toString();
+
+      // Check if conversation already exists between tutor and student (ANY status, both directions)
+      let existingConversation = await Conversation.findOne({
+        $or: [
+          { studentId: studentIdStr, tutorId: tutorIdStr },
+          { studentId: tutorIdStr, tutorId: studentIdStr } // Check both directions just in case
+        ]
+      });
+
+      if (existingConversation) {
+        // Reactivate if closed
+        if (existingConversation.status !== 'ACTIVE') {
+          existingConversation.status = 'ACTIVE';
+          await existingConversation.save();
+        }
+        
+        // Populate and return
+        existingConversation = await Conversation.findById(existingConversation._id)
+          .populate('studentId', 'full_name avatar_url')
+          .populate('tutorId', 'full_name avatar_url')
+          .populate('tutorPostId', 'title')
+          .populate('subject', 'name');
+        
+        return {
+          success: true,
+          message: 'Cuộc trò chuyện đã tồn tại',
+          data: existingConversation,
+        };
+      }
+
+      // Try to find an existing contact request to link with
+      let contactRequest = await ContactRequest.findOne({
+        studentId: studentIdStr,
+        tutorId: tutorIdStr,
+      }).sort({ createdAt: -1 });
+
+      // Find a tutor post to associate with
+      const { TutorPost } = await import('../../models/TutorPost');
+      let tutorPost = await TutorPost.findOne({
+        tutorId: tutorIdStr,
+        subjects: subjectIdStr,
+        status: 'ACTIVE',
+      });
+
+      // If no matching tutor post, find any active post by this tutor
+      if (!tutorPost) {
+        tutorPost = await TutorPost.findOne({
+          tutorId: tutorIdStr,
+          status: 'ACTIVE',
+        });
+      }
+
+      // Create conversation directly (they have a class together, so they can chat)
+      const conversationData: any = {
+        studentId: studentIdStr,
+        tutorId: tutorIdStr,
+        subject: subjectIdStr, // Save the subject ID as string
+        status: 'ACTIVE',
+      };
+
+      // If we have a contact request, link it
+      if (contactRequest) {
+        conversationData.contactRequestId = contactRequest._id;
+        conversationData.tutorPostId = contactRequest.tutorPostId;
+      } else {
+        // No contact request - use class ID as reference and tutor post if available
+        conversationData.contactRequestId = `from-class-${classId}`;
+        conversationData.tutorPostId = tutorPost ? tutorPost._id.toString() : `virtual-post-${tutorIdStr}`;
+      }
+
+      // Try to create, handle duplicate key error gracefully
+      let conversation;
+      try {
+        conversation = new Conversation(conversationData);
+        await conversation.save();
+      } catch (error: any) {
+        // If duplicate key error (code 11000), fetch the existing conversation
+        if (error.code === 11000) {
+          console.log('⚠️ Duplicate conversation detected, fetching existing one');
+          existingConversation = await Conversation.findOne({
+            $or: [
+              { studentId: studentIdStr, tutorId: tutorIdStr },
+              { studentId: tutorIdStr, tutorId: studentIdStr }
+            ]
+          })
+            .populate('studentId', 'full_name avatar_url')
+            .populate('tutorId', 'full_name avatar_url')
+            .populate('tutorPostId', 'title')
+            .populate('subject', 'name');
+          
+          return {
+            success: true,
+            message: 'Cuộc trò chuyện đã tồn tại',
+            data: existingConversation,
+          };
+        }
+        throw error;
+      }
+
+      // Populate conversation data
+      const populatedConversation = await Conversation.findById(conversation._id)
+        .populate('studentId', 'full_name avatar_url')
+        .populate('tutorId', 'full_name avatar_url')
+        .populate('tutorPostId', 'title')
+        .populate('subject', 'name');
+
+      return {
+        success: true,
+        message: 'Tạo cuộc trò chuyện thành công',
+        data: populatedConversation,
+      };
+    } catch (error: any) {
+      console.error('❌ Create conversation from class error:', error);
+      return {
+        success: false,
+        message: error.message || 'Lỗi khi tạo cuộc trò chuyện từ lớp học',
+      };
+    }
+  }
+
   // Send a message
   static async sendMessage(messageData: ICreateMessageInput): Promise<any> {
     try {
@@ -281,9 +420,35 @@ export class MessageService {
   // Get user's conversations
   static async getUserConversations(userId: string): Promise<any> {
     try {
-      const conversations = await Conversation.find({
+      // Get conversations without populate first to check for bad data
+      const rawConversations = await Conversation.find({
         $or: [{ studentId: userId }, { tutorId: userId }],
         status: 'ACTIVE',
+      }).lean();
+
+      // Filter out conversations with invalid subject (stringified object)
+      const validConversationIds = rawConversations
+        .filter(conv => {
+          // Check if subject is a valid ObjectId string (24 hex chars)
+          const subjectStr = conv.subject?.toString() || '';
+          return /^[0-9a-fA-F]{24}$/.test(subjectStr);
+        })
+        .map(conv => conv._id);
+
+      // Delete invalid conversations
+      const invalidCount = rawConversations.length - validConversationIds.length;
+      if (invalidCount > 0) {
+        await Conversation.deleteMany({
+          _id: { $nin: validConversationIds },
+          $or: [{ studentId: userId }, { tutorId: userId }],
+          status: 'ACTIVE',
+        });
+        console.log(`🗑️ Deleted ${invalidCount} invalid conversations`);
+      }
+
+      // Now get valid conversations with populate
+      const conversations = await Conversation.find({
+        _id: { $in: validConversationIds },
       })
         .populate('studentId', 'full_name avatar_url')
         .populate('tutorId', 'full_name avatar_url')
