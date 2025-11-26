@@ -1302,25 +1302,25 @@ class ClassService {
 
             sessionAssignments.forEach((assignment) => {
               try {
-            const submission = assignment.submission;
-            const grade = assignment.grade;
-            let status: 'pending_submission' | 'pending_grade' | 'graded' =
-              'pending_submission';
-            if (grade) {
-              status = 'graded';
-            } else if (submission) {
-              status = 'pending_grade';
-            }
+                const submission = assignment.submission;
+                const grade = assignment.grade;
+                let status: 'pending_submission' | 'pending_grade' | 'graded' =
+                  'pending_submission';
+                if (grade) {
+                  status = 'graded';
+                } else if (submission) {
+                  status = 'pending_grade';
+                }
 
-            const now = new Date();
-            const deadline = assignment.deadline
-              ? new Date(assignment.deadline)
-              : undefined;
-            const isLate =
-              submission && deadline
-                ? new Date(submission.submittedAt) > deadline
-                : false;
-            const isOverdue = !submission && deadline ? now > deadline : false;
+                const now = new Date();
+                const deadline = assignment.deadline
+                  ? new Date(assignment.deadline)
+                  : undefined;
+                const isLate =
+                  submission && deadline
+                    ? new Date(submission.submittedAt) > deadline
+                    : false;
+                const isOverdue = !submission && deadline ? now > deadline : false;
 
                 assignments.push({
                   id:
@@ -2023,12 +2023,16 @@ class ClassService {
         throw new Error('Chỉ gia sư mới có thể xoá tài liệu');
       }
 
-      const material = (learningClass.materials as any).id(materialId);
-      if (!material) {
+      // Check if material exists and filter it out
+      const initialCount = learningClass.materials?.length || 0;
+      learningClass.materials = (learningClass.materials || []).filter(
+        (m: any) => m._id?.toString() !== materialId && m.id?.toString() !== materialId
+      );
+
+      if (learningClass.materials.length === initialCount) {
         throw new Error('Không tìm thấy tài liệu');
       }
 
-      material.remove();
       learningClass.markModified('materials');
       await learningClass.save();
 
@@ -2522,9 +2526,8 @@ class ClassService {
           if (!finalOnlineInfo || !finalOnlineInfo.meetingLink) {
             finalOnlineInfo = {
               platform: 'OTHER',
-              meetingLink: `https://8x8.vc/${
-                process.env.JITSI_TENANT || 'skillbridge'
-              }/skillbridge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              meetingLink: `https://8x8.vc/${process.env.JITSI_TENANT || 'skillbridge'
+                }/skillbridge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             } as any;
           }
         }

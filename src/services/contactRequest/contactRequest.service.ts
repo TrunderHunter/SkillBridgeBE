@@ -259,8 +259,12 @@ class ContactRequestService {
       const [requests, total] = await Promise.all([
         ContactRequest.find(query)
           .populate('tutorId', 'full_name avatar_url email phone_number')
-          .populate('tutorPostId', 'title pricePerSession')
-          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online')
+          .populate({
+            path: 'tutorPostId',
+            select:
+              'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
+          })
+          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online availability location')
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)
@@ -325,7 +329,7 @@ class ContactRequestService {
             path: 'tutorPostId',
             select: 'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
           })
-          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online')
+          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online availability location')
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)

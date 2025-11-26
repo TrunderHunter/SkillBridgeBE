@@ -264,7 +264,11 @@ export class ContactRequestController {
       })
         .populate('studentId', 'full_name avatar_url email phone_number')
         .populate('tutorId', 'full_name avatar_url email phone_number')
-        .populate('tutorPostId', 'title description pricePerSession sessionDuration')
+        .populate({
+          path: 'tutorPostId',
+          select: 'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
+        })
+        .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online availability location')
         .populate('subject', 'name')
         .lean();
 
