@@ -2490,6 +2490,46 @@ class ClassService {
           ? (subject as any)._id?.toString() || (subject as any).id?.toString()
           : subject.toString();
 
+      // Determine effective learning mode (reuse contract mode directly)
+      const determinedLearningMode = contract.learningMode;
+
+      // Auto-provision online meeting if needed (similar logic to contactRequest service)
+      let finalOnlineInfo = contract.onlineInfo;
+      if (determinedLearningMode === 'ONLINE') {
+        const missingMeetingLink = !finalOnlineInfo?.meetingLink;
+        if (missingMeetingLink) {
+          try {
+            const { provisionOnlineMeeting } = await import('../meeting/meeting.service');
+            const provisioned = await provisionOnlineMeeting(
+              finalOnlineInfo?.platform || 'OTHER',
+              {
+                title: contract.classTitle || contract.title,
+                startDate: contract.startDate,
+                schedule: contract.schedule,
+              }
+            );
+            if (provisioned) {
+              finalOnlineInfo = provisioned;
+            }
+          } catch (provisionErr) {
+            logger.warn(
+              'Online meeting provisioning failed when creating class from contract. Proceeding without auto meeting.',
+              provisionErr
+            );
+          }
+
+          // Fallback: ensure a shared online room link even if provisioning fails
+          if (!finalOnlineInfo || !finalOnlineInfo.meetingLink) {
+            finalOnlineInfo = {
+              platform: 'OTHER',
+              meetingLink: `https://8x8.vc/${
+                process.env.JITSI_TENANT || 'skillbridge'
+              }/skillbridge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            } as any;
+          }
+        }
+      }
+
       // Create learning class
       const learningClass = new LearningClass({
         contactRequestId: contract.contactRequestId,
@@ -2503,13 +2543,13 @@ class ClassService {
         pricePerSession: contract.pricePerSession,
         sessionDuration: contract.sessionDuration,
         totalSessions: contract.totalSessions,
-        learningMode: contract.learningMode,
+        learningMode: determinedLearningMode,
 
         schedule: contract.schedule,
         startDate: contract.startDate,
         expectedEndDate: contract.expectedEndDate,
         location: contract.location,
-        onlineInfo: contract.onlineInfo,
+        onlineInfo: finalOnlineInfo,
 
         sessions: [], // Will be generated
         totalAmount: contract.totalAmount,
