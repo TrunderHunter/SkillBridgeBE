@@ -272,9 +272,17 @@ class ContactRequestService {
           .lean(),
         ContactRequest.countDocuments(query)
       ]);
+      const learningClassMap = await this.buildLearningClassMap(requests);
 
       // Transform requests to frontend format
-      const transformedRequests = requests.map(mapContactRequestToResponse);
+      const transformedRequests = requests.map((request) => {
+        const mapped = mapContactRequestToResponse(request);
+        const learningClass = learningClassMap[mapped.id];
+        if (learningClass) {
+          mapped.learningClass = learningClass;
+        }
+        return mapped;
+      });
 
       return {
         success: true,
@@ -337,9 +345,17 @@ class ContactRequestService {
           .lean(),
         ContactRequest.countDocuments(query)
       ]);
+      const learningClassMap = await this.buildLearningClassMap(requests);
 
       // Transform requests to frontend format
-      const transformedRequests = requests.map(mapContactRequestToResponse);
+      const transformedRequests = requests.map((request) => {
+        const mapped = mapContactRequestToResponse(request);
+        const learningClass = learningClassMap[mapped.id];
+        if (learningClass) {
+          mapped.learningClass = learningClass;
+        }
+        return mapped;
+      });
 
       return {
         success: true,
@@ -709,6 +725,55 @@ class ContactRequestService {
     } catch (error) {
       logger.error('Generate learning sessions error:', error);
     }
+  }
+
+  /**
+   * Build a map of contactRequestId -> learningClass info to enrich responses
+   */
+  private async buildLearningClassMap(requests: any[]) {
+    const requestIds = (requests || [])
+      .map((req) => {
+        if (!req) return null;
+        if (typeof req._id === 'object' && req._id !== null && req._id.toString) {
+          return req._id.toString();
+        }
+        if (typeof req._id === 'string') return req._id;
+        if (req.id) return req.id.toString?.() ?? req.id;
+        return null;
+      })
+      .filter((id): id is string => Boolean(id));
+
+    if (requestIds.length === 0) {
+      return {};
+    }
+
+    const learningClasses = await LearningClass.find({
+      contactRequestId: { $in: requestIds },
+    })
+      .select('_id contactRequestId title status schedule startDate totalSessions learningMode')
+      .lean();
+
+    return (learningClasses || []).reduce<Record<string, any>>((acc, cls) => {
+      const contactRequestId = (cls as any)?.contactRequestId;
+      const key =
+        (typeof contactRequestId === 'object' && contactRequestId !== null && contactRequestId.toString)
+          ? contactRequestId.toString()
+          : contactRequestId;
+      if (!key) {
+        return acc;
+      }
+
+      acc[key] = {
+        id: cls._id?.toString?.() || cls._id,
+        title: cls.title,
+        status: cls.status,
+        startDate: cls.startDate,
+        schedule: cls.schedule,
+        totalSessions: cls.totalSessions,
+        learningMode: cls.learningMode,
+      };
+      return acc;
+    }, {});
   }
 
   /**
