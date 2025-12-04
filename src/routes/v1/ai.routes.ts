@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { SmartRecommendationController } from '../../controllers/ai/smartRecommendation.controller';
 import { aiSurveyController } from '../../controllers/ai/survey.controller';
+import { SpeechAIController } from '../../controllers/ai/speech.controller';
 import { authenticateToken, requireRole } from '../../middlewares/auth.middleware';
 import { UserRole } from '../../types/user.types';
-import { query } from 'express-validator';
+import { body, query } from 'express-validator';
 import { handleValidationErrors } from '../../middlewares/validation.middleware';
 import { surveyValidation } from '../../validators/survey.validator';
 
@@ -178,6 +179,18 @@ router.get(
   aiSurveyController.getSurveyStatus
 );
 
+/**
+ * GET /api/v1/ai/survey/exercises
+ * Recommend exercise templates dựa trên survey
+ * Requires: Student authentication
+ */
+router.get(
+  '/survey/exercises',
+  authenticateToken,
+  requireRole(UserRole.STUDENT),
+  aiSurveyController.getExerciseRecommendations
+);
+
 // ==================== AI EXPLANATION GENERATION ====================
 
 /**
@@ -189,6 +202,25 @@ router.post(
   '/explain-match',
   authenticateToken,
   SmartRecommendationController.generateMatchExplanation
+);
+
+/**
+ * POST /api/v1/ai/speech/transcribe
+ * Convert audio URL to transcript text
+ * Requires authentication (student uploads)
+ */
+router.post(
+  '/speech/transcribe',
+  authenticateToken,
+  [
+    body('audioUrl')
+      .notEmpty()
+      .withMessage('audioUrl là bắt buộc')
+      .isURL()
+      .withMessage('audioUrl phải là URL hợp lệ'),
+  ],
+  handleValidationErrors,
+  SpeechAIController.transcribeAudio
 );
 
 export default router;

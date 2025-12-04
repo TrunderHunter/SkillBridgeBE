@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { aiSurveyService } from '../../services/ai/survey.service';
 import { logger } from '../../utils/logger';
+import { exerciseRecommendationService } from '../../services/ai/exerciseRecommendation.service';
 
 /**
  * AI Survey Controller
@@ -89,6 +90,31 @@ class AISurveyController {
       res.status(500).json({
         success: false,
         message: error.message || 'Lỗi khi kiểm tra trạng thái khảo sát',
+      });
+    }
+  }
+
+  /**
+   * Recommend exercise templates based on student's survey
+   * GET /api/v1/ai/survey/exercises
+   */
+  async getExerciseRecommendations(req: Request, res: Response) {
+    try {
+      const studentId = req.user!.id;
+      const result =
+        await exerciseRecommendationService.recommendExercisesForStudent(
+          studentId
+        );
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      logger.error('❌ Get exercise recommendations error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Không thể gợi ý bài tập',
       });
     }
   }

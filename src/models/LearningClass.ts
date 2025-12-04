@@ -15,12 +15,36 @@ export interface ISessionHomeworkSubmission {
   fileUrl: string;
   notes?: string;
   submittedAt: Date;
+  textAnswer?: string;
+  audioUrl?: string;
+  speakingTranscript?: string;
 }
 
 export interface ISessionHomeworkGrade {
   score: number;
   feedback?: string;
   gradedAt: Date;
+}
+
+export interface IAssignmentAICriterion {
+  label: string;
+  description?: string;
+  score: number;
+  maxScore: number;
+  feedback?: string;
+}
+
+export interface IAssignmentAIEvaluation {
+  rubricId: string;
+  totalScore: number;
+  maxScore: number;
+  model?: string;
+  generatedAt: Date;
+  strengths?: string[];
+  improvements?: string[];
+  summary?: string;
+  criteria: IAssignmentAICriterion[];
+  rawResponse?: Record<string, any>;
 }
 
 export interface ISessionHomeworkAssignment {
@@ -34,6 +58,9 @@ export interface ISessionHomeworkAssignment {
   submission?: ISessionHomeworkSubmission;
   grade?: ISessionHomeworkGrade;
   isLegacy?: boolean;
+  templateId?: string;
+  rubricId?: string;
+  aiEvaluation?: IAssignmentAIEvaluation;
 }
 
 export interface ISessionHomework {
@@ -55,6 +82,9 @@ export interface ISessionHomework {
     fileUrl: string;
     notes?: string;
     submittedAt: Date;
+    textAnswer?: string;
+    audioUrl?: string;
+    speakingTranscript?: string;
   };
   /**
    * @deprecated Legacy grade field (use assignments[].grade instead)
@@ -247,6 +277,9 @@ const SessionHomeworkSubmissionSchema = new Schema<ISessionHomeworkSubmission>(
     fileUrl: { type: String, required: true },
     notes: { type: String, maxlength: 500 },
     submittedAt: { type: Date, default: Date.now },
+    textAnswer: { type: String, maxlength: 5000 },
+    audioUrl: { type: String },
+    speakingTranscript: { type: String, maxlength: 5000 },
   },
   { _id: false }
 );
@@ -260,6 +293,33 @@ const SessionHomeworkGradeSchema = new Schema<ISessionHomeworkGrade>(
   { _id: false }
 );
 
+const AssignmentAICriterionSchema = new Schema<IAssignmentAICriterion>(
+  {
+    label: { type: String, required: true },
+    description: { type: String },
+    score: { type: Number, required: true },
+    maxScore: { type: Number, required: true },
+    feedback: { type: String },
+  },
+  { _id: false }
+);
+
+const AssignmentAIEvaluationSchema = new Schema<IAssignmentAIEvaluation>(
+  {
+    rubricId: { type: String, ref: 'Rubric', required: true },
+    totalScore: { type: Number, required: true },
+    maxScore: { type: Number, required: true },
+    model: { type: String },
+    generatedAt: { type: Date, default: Date.now },
+    strengths: [{ type: String }],
+    improvements: [{ type: String }],
+    summary: { type: String },
+    criteria: { type: [AssignmentAICriterionSchema], default: [] },
+    rawResponse: { type: Schema.Types.Mixed },
+  },
+  { _id: false }
+);
+
 const SessionHomeworkAssignmentSchema = new Schema<ISessionHomeworkAssignment>(
   {
     _id: { type: String, default: uuidv4 },
@@ -268,9 +328,12 @@ const SessionHomeworkAssignmentSchema = new Schema<ISessionHomeworkAssignment>(
     fileUrl: { type: String },
     deadline: { type: Date, required: true },
     assignedAt: { type: Date, default: Date.now },
+    templateId: { type: String, ref: 'ExerciseTemplate' },
+    rubricId: { type: String, ref: 'Rubric' },
     submission: { type: SessionHomeworkSubmissionSchema },
     grade: { type: SessionHomeworkGradeSchema },
     isLegacy: { type: Boolean, default: false },
+    aiEvaluation: { type: AssignmentAIEvaluationSchema },
   },
   { _id: false }
 );
@@ -321,6 +384,9 @@ const LearningSessionSchema = new Schema<ILearningSession>(
         fileUrl: String,
         notes: { type: String, maxlength: 500 },
         submittedAt: Date,
+        textAnswer: { type: String, maxlength: 5000 },
+        audioUrl: String,
+        speakingTranscript: { type: String, maxlength: 5000 },
       },
       grade: {
         score: { type: Number, min: 0, max: 10 },

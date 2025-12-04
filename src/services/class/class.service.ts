@@ -1,9 +1,11 @@
 import {
   LearningClass,
   ISessionHomeworkAssignment,
+  IAssignmentAIEvaluation,
 } from '../../models/LearningClass';
 import { User } from '../../models/User';
 import { Subject } from '../../models/Subject';
+import { Rubric } from '../../models/Rubric';
 import { Contract } from '../../models/Contract';
 import { TutorProfile } from '../../models/TutorProfile';
 import { logger } from '../../utils/logger';
@@ -16,6 +18,8 @@ import {
   notifyCancellationResponded,
 } from '../notification/notification.helpers';
 import { v4 as uuidv4 } from 'uuid';
+import { geminiService } from '../ai/gemini.service';
+import { speechToTextService } from '../ai/speechToText.service';
 
 const LEGACY_ASSIGNMENT_PREFIX = 'legacy-session';
 
@@ -32,12 +36,18 @@ interface SessionAssignmentView {
     fileUrl: string;
     notes?: string;
     submittedAt: Date;
+    textAnswer?: string;
+    audioUrl?: string;
+    speakingTranscript?: string;
   };
   grade?: {
     score: number;
     feedback?: string;
     gradedAt: Date;
   };
+  templateId?: string;
+  rubricId?: string;
+  aiEvaluation?: IAssignmentAIEvaluation;
   status: AssignmentStatus;
   isLate: boolean;
   isLegacy?: boolean;
@@ -95,6 +105,9 @@ const buildSessionAssignmentList = (session: any): SessionAssignmentView[] => {
       assignedAt: plain.assignedAt,
       submission,
       grade,
+      templateId: plain.templateId,
+      rubricId: plain.rubricId,
+      aiEvaluation: plain.aiEvaluation,
       status: grade ? 'graded' : submission ? 'submitted' : 'pending',
       isLate: Boolean(isLate),
       isLegacy: !!plain.isLegacy,
@@ -199,6 +212,73 @@ const resolveSessionAssignment = (
   }
 
   return null;
+};
+
+const clampScore = (value: number, min: number, max: number) => {
+  if (Number.isNaN(value)) return min;
+  return Math.max(min, Math.min(max, value));
+};
+
+const buildAIEvaluationPrompt = (options: {
+  className: string;
+  assignmentTitle: string;
+  sessionNumber: number;
+  rubric: any;
+  studentResponse: string;
+}) => {
+  const { className, assignmentTitle, sessionNumber, rubric, studentResponse } =
+    options;
+  const rubricLines = (rubric?.criteria || [])
+    .map(
+      (criterion: any, index: number) =>
+        `${index + 1}. ${criterion.label} (tối đa ${criterion.maxScore || 0
+        } điểm) - ${criterion.description || ''}`
+    )
+    .join('\n');
+
+  const rubricJson = JSON.stringify(
+    (rubric?.criteria || []).map((criterion: any) => ({
+      label: criterion.label,
+      description: criterion.description || '',
+      maxScore: criterion.maxScore || 0,
+    }))
+  );
+
+  return `
+Bạn là giám khảo chuyên chấm bài viết cho lớp học "${className}".
+Nhiệm vụ: Đánh giá bài viết của học viên cho bài tập "${assignmentTitle}" (Buổi ${sessionNumber}) dựa trên RUBRIC bên dưới.
+
+RUBRIC (tiếng Việt):
+${rubricLines}
+
+RUBRIC_JSON:
+${rubricJson}
+
+Hãy trả về JSON theo đúng cấu trúc:
+{
+  "totalScore": number,
+  "criteria": [
+    {
+      "label": string, // giống label trong rubric
+      "score": number, // 0 đến maxScore của tiêu chí
+      "maxScore": number,
+      "feedback": string // ngắn gọn, tiếng Việt
+    }
+  ],
+  "strengths": string[], // 2-3 điểm mạnh
+  "improvements": string[], // 2-3 đề xuất cải thiện
+  "summary": string // 1-2 câu nhận xét chung
+}
+
+YÊU CẦU:
+- Điểm từng tiêu chí không vượt quá maxScore.
+- totalScore = tổng điểm các tiêu chí.
+- Feedback ngắn gọn, súc tích, tiếng Việt.
+- Nếu học viên viết quá ngắn/không đúng yêu cầu, hãy nêu rõ trong improvements.
+
+BÀI LÀM CỦA HỌC VIÊN:
+"""${studentResponse.trim()}"""
+`;
 };
 
 class ClassService {
@@ -952,6 +1032,8 @@ class ClassService {
       description: string;
       fileUrl?: string;
       deadline: Date;
+      templateId?: string;
+      rubricId?: string;
     }
   ) {
     try {
@@ -995,7 +1077,7 @@ class ClassService {
         sessionHomework.assignments = [];
       }
 
-      const newAssignment = {
+      const newAssignment: any = {
         _id: uuidv4(),
         title: homeworkData.title,
         description: homeworkData.description,
@@ -1003,6 +1085,13 @@ class ClassService {
         deadline: new Date(homeworkData.deadline),
         assignedAt: new Date(),
       };
+
+      if (homeworkData.templateId) {
+        newAssignment.templateId = homeworkData.templateId;
+      }
+      if (homeworkData.rubricId) {
+        newAssignment.rubricId = homeworkData.rubricId;
+      }
 
       sessionHomework.assignments.push(newAssignment);
       if (typeof (session as any).markModified === 'function') {
@@ -1057,6 +1146,8 @@ class ClassService {
       assignmentId?: string;
       fileUrl: string;
       notes?: string;
+      textAnswer?: string;
+      audioUrl?: string;
     }
   ) {
     try {
@@ -1108,6 +1199,22 @@ class ClassService {
       let assignmentTitle = '';
       let resolvedAssignmentId = submissionData.assignmentId;
 
+      // Auto-transcribe audio to text if available
+      let speakingTranscript: string | undefined;
+      if (submissionData.audioUrl && speechToTextService.isAvailable()) {
+        try {
+          logger.info('Starting audio transcription for submission...');
+          speakingTranscript = await speechToTextService.transcribeFromUrl(submissionData.audioUrl);
+          logger.info('Audio transcription completed:', speakingTranscript?.substring(0, 100));
+        } catch (transcribeError: any) {
+          logger.warn('Audio transcription failed (non-blocking):', transcribeError.message);
+          // Don't block submission if transcription fails
+        }
+      }
+
+      // Use transcript as textAnswer if no text provided but audio is transcribed
+      const finalTextAnswer = submissionData.textAnswer?.trim() || speakingTranscript;
+
       if (assignmentTarget.mode === 'array') {
         const assignment = assignmentTarget.assignment;
         assignment.submission = {
@@ -1115,7 +1222,11 @@ class ClassService {
           fileUrl: submissionData.fileUrl,
           notes: submissionData.notes,
           submittedAt: now,
+          textAnswer: finalTextAnswer,
+          audioUrl: submissionData.audioUrl,
+          speakingTranscript,
         };
+        assignment.aiEvaluation = undefined;
         deadline = assignment.deadline
           ? new Date(assignment.deadline)
           : undefined;
@@ -1130,6 +1241,9 @@ class ClassService {
           fileUrl: submissionData.fileUrl,
           notes: submissionData.notes,
           submittedAt: now,
+          textAnswer: finalTextAnswer,
+          audioUrl: submissionData.audioUrl,
+          speakingTranscript,
         };
         deadline = session.homework.assignment.deadline
           ? new Date(session.homework.assignment.deadline)
@@ -1524,6 +1638,182 @@ class ClassService {
     } catch (error: any) {
       logger.error('Grade homework error:', error);
       throw new Error(error.message || 'Không thể chấm điểm');
+    }
+  }
+
+  /**
+   * Generate AI evaluation for a homework submission (tutor only)
+   */
+  async generateAIHomeworkEvaluation(
+    classId: string,
+    sessionNumber: number,
+    assignmentId: string,
+    userId: string
+  ) {
+    try {
+      if (!geminiService.isAvailable()) {
+        throw new Error('Tính năng AI đang được nâng cấp. Vui lòng thử lại sau.');
+      }
+
+      const learningClass = await LearningClass.findById(classId).populate(
+        'subject',
+        'name'
+      );
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      if (learningClass.tutorId.toString() !== userId) {
+        throw new Error('Chỉ gia sư của lớp mới có thể dùng AI chấm điểm');
+      }
+
+      const session = learningClass.sessions.find(
+        (s) => s.sessionNumber === sessionNumber
+      );
+
+      if (!session) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      if (!assignmentId) {
+        throw new Error('Vui lòng chọn bài tập cần chấm AI');
+      }
+
+      const assignmentResult = resolveSessionAssignment(session, assignmentId);
+
+      if (!assignmentResult || assignmentResult.mode !== 'array') {
+        throw new Error('Chỉ hỗ trợ chấm AI cho bài tập mới');
+      }
+
+      const assignment = assignmentResult.assignment;
+
+      if (!assignment.submission) {
+        throw new Error('Học viên chưa nộp bài tập');
+      }
+
+      if (!assignment.submission.textAnswer) {
+        throw new Error('Bài nộp chưa có nội dung text để AI chấm điểm');
+      }
+
+      if (!assignment.rubricId) {
+        throw new Error('Bài tập chưa được gắn rubric để chấm điểm');
+      }
+
+      let rubric = await Rubric.findById(assignment.rubricId).lean();
+
+      // Một số bài tập cũ có thể lưu nhầm rubricId = tên rubric thay vì _id
+      // Thử fallback tìm theo name để tránh lỗi cho dữ liệu legacy
+      if (!rubric && typeof assignment.rubricId === 'string') {
+        rubric = await Rubric.findOne({ name: assignment.rubricId }).lean();
+        if (rubric) {
+          logger.warn(
+            'Rubric not found by id, but found by name. Legacy assignment may have stored rubricId as name.',
+            { rubricName: assignment.rubricId }
+          );
+        }
+      }
+
+      if (!rubric) {
+        throw new Error('Không tìm thấy rubric đã gắn cho bài tập');
+      }
+
+      if (!rubric.criteria || rubric.criteria.length === 0) {
+        throw new Error('Rubric chưa có tiêu chí chấm điểm');
+      }
+
+      const className =
+        (learningClass.subject as any)?.name ||
+        learningClass.title ||
+        'Lớp học';
+
+      const prompt = buildAIEvaluationPrompt({
+        className,
+        assignmentTitle: assignment.title,
+        sessionNumber,
+        rubric,
+        studentResponse: assignment.submission.textAnswer,
+      });
+
+      const aiResponse = await geminiService.generateJsonResponse(prompt);
+      const rubricCriteria = rubric.criteria || [];
+
+      const normalizedCriteria = rubricCriteria.map(
+        (criterion: any, index: number) => {
+          const aiCriteria = Array.isArray(aiResponse?.criteria)
+            ? aiResponse.criteria
+            : [];
+          const matched =
+            aiCriteria.find(
+              (item: any) =>
+                item?.label &&
+                item.label.toLowerCase().trim() ===
+                criterion.label.toLowerCase().trim()
+            ) || aiCriteria[index];
+
+          const score = clampScore(
+            Number(matched?.score ?? 0),
+            0,
+            Number(criterion.maxScore) || 0
+          );
+
+          return {
+            label: criterion.label,
+            description: criterion.description,
+            score,
+            maxScore: Number(criterion.maxScore) || 0,
+            feedback: matched?.feedback || '',
+          };
+        }
+      );
+
+      const totalScore = normalizedCriteria.reduce(
+        (sum, item) => sum + Number(item.score || 0),
+        0
+      );
+      const maxScore = normalizedCriteria.reduce(
+        (sum, item) => sum + Number(item.maxScore || 0),
+        0
+      );
+
+      assignment.aiEvaluation = {
+        rubricId: assignment.rubricId,
+        totalScore,
+        maxScore,
+        model: 'gemini-1.5-flash',
+        generatedAt: new Date(),
+        strengths: Array.isArray(aiResponse?.strengths)
+          ? aiResponse.strengths.slice(0, 5)
+          : [],
+        improvements: Array.isArray(aiResponse?.improvements)
+          ? aiResponse.improvements.slice(0, 5)
+          : [],
+        summary:
+          typeof aiResponse?.summary === 'string'
+            ? aiResponse.summary
+            : undefined,
+        criteria: normalizedCriteria,
+        rawResponse: aiResponse,
+      };
+
+      if (typeof (session as any).markModified === 'function') {
+        (session as any).markModified('homework.assignments');
+      }
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Đã tạo nhận xét AI cho bài viết',
+        data: {
+          sessionNumber,
+          assignmentId: assignment._id?.toString() || assignmentId,
+          evaluation: assignment.aiEvaluation,
+        },
+      };
+    } catch (error: any) {
+      logger.error('AI homework evaluation error:', error);
+      throw new Error(error.message || 'Không thể chấm điểm AI');
     }
   }
 

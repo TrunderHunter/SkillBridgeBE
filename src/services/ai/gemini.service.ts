@@ -8,8 +8,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
  */
 class GeminiService {
   private genAI: GoogleGenerativeAI | null = null;
-  private embeddingModel: string = 'embedding-001';
-  private textModel: string = 'gemini-pro';
+  private embeddingModel: string = 'text-embedding-004';
+  private textModel: string = 'gemini-1.5-flash-latest';
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -221,6 +221,35 @@ Giải thích chi tiết (tối đa 250 ký tự):`;
     } catch (error: any) {
       logger.error('❌ Gemini student match explanation error:', error);
       return 'Bài đăng này phù hợp với hồ sơ và khả năng dạy của bạn.';
+    }
+  }
+
+  /**
+   * Generate JSON response using Gemini (helper for structured outputs)
+   */
+  async generateJsonResponse(prompt: string): Promise<any> {
+    if (!this.isAvailable() || !this.genAI) {
+      throw new Error('Gemini API key not configured');
+    }
+
+    try {
+      const model = this.genAI.getGenerativeModel({ model: this.textModel });
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: 'application/json',
+        } as any,
+      });
+      const response = await result.response;
+      const text = response.text()?.trim();
+      if (!text) {
+        throw new Error('Empty AI response');
+      }
+      return JSON.parse(text);
+    } catch (error: any) {
+      logger.error('❌ Gemini JSON generation error:', error);
+      throw new Error(error.message || 'Không thể sinh nội dung AI');
     }
   }
 

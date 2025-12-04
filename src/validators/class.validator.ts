@@ -65,7 +65,15 @@ export const validateClass = {
           throw new Error('Hạn nộp bài phải sau thời điểm hiện tại');
         }
         return true;
-      })
+      }),
+    body('templateId')
+      .optional()
+      .isString()
+      .withMessage('templateId không hợp lệ'),
+    body('rubricId')
+      .optional()
+      .isString()
+      .withMessage('rubricId không hợp lệ'),
   ] as ValidationChain[],
 
   submitHomework: [
@@ -84,7 +92,17 @@ export const validateClass = {
       .isString()
       .trim()
       .isLength({ max: 500 })
-      .withMessage('Ghi chú không được vượt quá 500 ký tự')
+      .withMessage('Ghi chú không được vượt quá 500 ký tự'),
+    body('textAnswer')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 5000 })
+      .withMessage('Bài viết không được vượt quá 5000 ký tự'),
+    body('audioUrl')
+      .optional()
+      .isURL()
+      .withMessage('URL audio không hợp lệ'),
   ] as ValidationChain[],
 
   gradeHomework: [

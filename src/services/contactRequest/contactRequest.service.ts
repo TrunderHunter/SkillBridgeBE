@@ -553,13 +553,14 @@ class ContactRequestService {
         throw new Error('Không tìm thấy yêu cầu đã được chấp nhận');
       }
 
-      // Check if class already exists for this request
+      // Check if a non-cancelled class already exists for this request
       const existingClass = await LearningClass.findOne({
-        contactRequestId: classData.contactRequestId
+        contactRequestId: classData.contactRequestId,
+        status: { $ne: 'CANCELLED' },
       });
 
       if (existingClass) {
-        throw new Error('Lớp học đã được tạo cho yêu cầu này');
+        throw new Error('Đã tồn tại lớp học đang hoạt động hoặc đã hoàn thành cho yêu cầu này');
       }
 
       // ✅ KIỂM TRA TRÙNG LỊCH HỌC
@@ -749,6 +750,7 @@ class ContactRequestService {
 
     const learningClasses = await LearningClass.find({
       contactRequestId: { $in: requestIds },
+      status: { $ne: 'CANCELLED' },
     })
       .select('_id contactRequestId title status schedule startDate totalSessions learningMode')
       .lean();

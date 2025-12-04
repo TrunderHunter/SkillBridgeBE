@@ -33,23 +33,63 @@ const CHALLENGE_TRANSLATIONS: Record<string, string> = {
  * AI Survey Service
  */
 class AISurveyService {
+  private indexFixed = false;
+
+  /**
+   * Ensure proper indexes (fix duplicate key error)
+   */
+  private async ensureProperIndexes() {
+    if (this.indexFixed) return;
+    
+    try {
+      const collection = StudentSurvey.collection;
+      const indexes = await collection.indexInformation();
+      
+      // Check if problematic unique index exists
+      if (indexes['studentId_1'] && indexes['studentId_1'].some((spec: any) => spec[1] === 1 || spec.unique === true)) {
+        logger.warn('⚠️  Found problematic unique index on studentId, dropping...');
+        try {
+          await collection.dropIndex('studentId_1');
+          logger.info('✅ Dropped old unique index on studentId');
+        } catch (error) {
+          logger.error('Error dropping index:', error);
+        }
+      }
+      
+      this.indexFixed = true;
+    } catch (error) {
+      logger.error('Error ensuring indexes:', error);
+    }
+  }
+
   /**
    * Submit survey và nhận AI recommendations
    */
   async submitSurvey(studentId: string, surveyData: any) {
     try {
+      // 0. Ensure proper indexes (fix duplicate key error)
+      await this.ensureProperIndexes();
+      
       logger.info(`📋 Processing survey for student: ${studentId}`);
 
       // 1. Validate và convert subject names → IDs
       const subjectIds = await this.validateAndConvertSubjects(surveyData.subjects);
 
-      // 2. Deactivate old surveys
-      await StudentSurvey.updateMany(
-        { studentId, isActive: true },
-        { $set: { isActive: false } }
-      );
+      // 2. Check existing surveys (DEBUG LOG)
+      const existingSurveys = await StudentSurvey.find({ studentId });
+      logger.info(`🔍 DEBUG: Found ${existingSurveys.length} existing surveys for student ${studentId}`);
+      logger.info(`🔍 DEBUG: Active surveys: ${existingSurveys.filter(s => s.isActive).length}`);
+      
+      // List all indexes (DEBUG LOG)
+      const indexes = await StudentSurvey.collection.getIndexes();
+      logger.info(`🔍 DEBUG: Current indexes:`, JSON.stringify(indexes, null, 2));
 
-      // 3. Create new survey
+      // 2. DELETE all old surveys (WORKAROUND for unique index issue)
+      const deleteResult = await StudentSurvey.deleteMany({ studentId });
+      logger.info(`🔍 DEBUG: Deleted ${deleteResult.deletedCount} old surveys`);
+
+      // 3. Create new survey (now guaranteed no duplicate)
+      logger.info(`🔍 DEBUG: Attempting to create new survey...`);
       const survey = await StudentSurvey.create({
         studentId,
         gradeLevel: surveyData.gradeLevel,
@@ -253,7 +293,7 @@ Viết bằng tiếng Việt, giọng điệu thân thiện và chuyên nghiệp
       // Use geminiService's getEmbedding method instead of direct genAI access
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       
@@ -276,18 +316,29 @@ Viết bằng tiếng Việt, giọng điệu thân thiện và chuyên nghiệp
     try {
       const subjects = await Subject.find({ _id: { $in: survey.subjects } });
       const subjectNames = subjects.map(s => s.name).join(', ');
+      const targetGoals = survey.goals?.map(this.translateGoal).join(', ') || 'Cải thiện kết quả học tập';
+      const sessionsPerWeek = survey.studyFrequency || 2;
 
       const prompt = `
-Học sinh lớp ${survey.gradeLevel} cần học các môn: ${subjectNames}.
-Mục tiêu: ${survey.goals.map(this.translateGoal).join(', ')}.
+Học sinh ${survey.gradeLevel} cần học các môn: ${subjectNames}.
+Mục tiêu chính: ${targetGoals}.
 
-Hãy đề xuất một lộ trình học ngắn gọn (3-4 bullet points) trong 3 tháng.
-Viết bằng tiếng Việt, cụ thể và dễ hiểu.
+Hãy đề xuất một số gói học (combo) ngắn gọn dưới dạng bullet point, ví dụ:
+- Gói 4 tuần
+- Gói 8 tuần
+- Gói 12 tuần
+
+Với mỗi gói, hãy nêu:
+- Số buổi/tuần (ưu tiên khoảng ${sessionsPerWeek} buổi/tuần)
+- Tổng số buổi dự kiến
+- Mục tiêu trọng tâm trong giai đoạn đó (ôn nền tảng, luyện đề, tăng tốc,...)
+
+Viết bằng tiếng Việt, súc tích, dễ hiểu, tối đa 4 bullet points.
 `;
 
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       
@@ -418,6 +469,7 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
 
         // Calculate structured score
         const score = this.calculateSurveyMatchScore(survey, tutorPost, profile);
+        const scheduleScore = this.calculateScheduleMatchScore(survey, tutorPost);
 
         // Generate explanation if high score
         let explanation = '';
@@ -486,7 +538,7 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
             subjectMatch: this.checkSubjectMatch(survey, tutorPost),
             levelMatch: true,
             priceMatch: this.checkPriceMatch(survey, tutorPost),
-            scheduleMatch: false,
+            scheduleMatch: scheduleScore >= 0.5,
             semanticScore: 0,
             styleMatch: this.checkStyleMatch(survey, profile),
             personalityMatch: this.checkPersonalityMatch(survey, profile),
@@ -512,10 +564,10 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
     let score = 0;
     let weights = 0;
 
-    // Subject match (30%)
+    // Subject match (25%)
     const subjectMatch = this.checkSubjectMatch(survey, tutorPost) ? 1 : 0;
-    score += subjectMatch * 0.3;
-    weights += 0.3;
+    score += subjectMatch * 0.25;
+    weights += 0.25;
 
     // Price match (20%)
     const priceMatch = this.checkPriceMatch(survey, tutorPost) ? 1 : 0;
@@ -527,10 +579,15 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
     score += styleScore * 0.2;
     weights += 0.2;
 
-    // Priority-based scoring (30%)
+    // Schedule / availability match (15%)
+    const scheduleScore = this.calculateScheduleMatchScore(survey, tutorPost);
+    score += scheduleScore * 0.15;
+    weights += 0.15;
+
+    // Priority-based scoring (20%)
     const priorityScore = this.calculatePriorityScore(survey, tutorPost, profile);
-    score += priorityScore * 0.3;
-    weights += 0.3;
+    score += priorityScore * 0.2;
+    weights += 0.2;
 
     return weights > 0 ? score / weights : 0;
   }
@@ -584,6 +641,73 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
   private checkPriceMatch(survey: any, tutorPost: any): boolean {
     return tutorPost.pricePerSession >= survey.budgetRange.min &&
            tutorPost.pricePerSession <= survey.budgetRange.max;
+  }
+
+  /**
+   * Calculate schedule / availability match score (0–1)
+   * Dựa trên availableTime của học viên (morning/afternoon/evening/weekend)
+   * và teachingSchedule của bài đăng gia sư.
+   */
+  private calculateScheduleMatchScore(survey: any, tutorPost: any): number {
+    const preferred: string[] = Array.isArray(survey.availableTime)
+      ? survey.availableTime
+      : [];
+    const schedule: any[] = Array.isArray(tutorPost.teachingSchedule)
+      ? tutorPost.teachingSchedule
+      : [];
+
+    if (preferred.length === 0) {
+      // Không chọn khung thời gian → coi như trung lập
+      return 0.5;
+    }
+
+    if (schedule.length === 0) {
+      return 0;
+    }
+
+    const preferredSet = new Set(preferred);
+    const tutorBuckets = new Set<string>();
+
+    for (const slot of schedule) {
+      if (!slot?.startTime && !slot?.dayOfWeek && slot?.dayOfWeek !== 0) {
+        continue;
+      }
+
+      const [hourStr] = String(slot.startTime || '0:00').split(':');
+      const hour = Number.parseInt(hourStr, 10);
+      const dayOfWeek = Number(slot.dayOfWeek);
+
+      // Weekend bucket
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        tutorBuckets.add('weekend');
+      }
+
+      // Time-of-day buckets
+      if (hour >= 5 && hour < 12) {
+        tutorBuckets.add('morning');
+      } else if (hour >= 12 && hour < 18) {
+        tutorBuckets.add('afternoon');
+      } else if (hour >= 18 && hour < 23) {
+        tutorBuckets.add('evening');
+      }
+    }
+
+    if (tutorBuckets.size === 0) {
+      return 0;
+    }
+
+    let matched = 0;
+    preferredSet.forEach((p) => {
+      if (tutorBuckets.has(p)) {
+        matched += 1;
+      }
+    });
+
+    if (matched === 0) {
+      return 0;
+    }
+
+    return matched / preferredSet.size;
   }
 
   /**
@@ -676,7 +800,7 @@ Viết bằng tiếng Việt, thân thiện và chuyên nghiệp.
 
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       
