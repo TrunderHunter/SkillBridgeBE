@@ -59,6 +59,9 @@ export const mapContactRequestToResponse = (request: any): any => {
                 description: mapped.tutorPostId.description,
                 pricePerSession: mapped.tutorPostId.pricePerSession,
                 sessionDuration: mapped.tutorPostId.sessionDuration,
+                teachingMode: mapped.tutorPostId.teachingMode,
+                teachingSchedule: mapped.tutorPostId.teachingSchedule,
+                address: mapped.tutorPostId.address,
             };
         } else {
             mapped.tutorPost = null;
@@ -76,6 +79,9 @@ export const mapContactRequestToResponse = (request: any): any => {
                 grade_levels: mapped.studentPostId.grade_levels || [],
                 hourly_rate: mapped.studentPostId.hourly_rate,
                 is_online: mapped.studentPostId.is_online,
+                availability: mapped.studentPostId.availability,
+                location: mapped.studentPostId.location,
+                teachingSchedule: mapped.studentPostId.teachingSchedule,
             };
         } else {
             mapped.studentPost = null;

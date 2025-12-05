@@ -3,6 +3,7 @@ import { validationResult } from 'express-validator';
 import { contactRequestService } from '../../services/contactRequest/contactRequest.service';
 import { logger } from '../../utils/logger';
 import { ContactRequest } from '../../models/ContactRequest';
+import { LearningClass } from '../../models/LearningClass';
 import { mapContactRequestToResponse } from '../../utils/mappers/contactRequest.mapper';
 
 interface AuthenticatedRequest extends Request {
@@ -264,7 +265,11 @@ export class ContactRequestController {
       })
         .populate('studentId', 'full_name avatar_url email phone_number')
         .populate('tutorId', 'full_name avatar_url email phone_number')
-        .populate('tutorPostId', 'title description pricePerSession sessionDuration')
+        .populate({
+          path: 'tutorPostId',
+          select: 'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
+        })
+        .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online availability location')
         .populate('subject', 'name')
         .lean();
 
@@ -277,6 +282,25 @@ export class ContactRequestController {
 
       // Transform to frontend format
       const transformedRequest = mapContactRequestToResponse(contactRequest);
+
+      const learningClass = await LearningClass.findOne({
+        contactRequestId: requestId,
+        status: { $ne: 'CANCELLED' },
+      })
+        .select('_id title status startDate totalSessions learningMode schedule')
+        .lean();
+
+      if (learningClass) {
+        transformedRequest.learningClass = {
+          id: learningClass._id?.toString?.() || learningClass._id,
+          title: learningClass.title,
+          status: learningClass.status,
+          startDate: learningClass.startDate,
+          totalSessions: learningClass.totalSessions,
+          learningMode: learningClass.learningMode,
+          schedule: learningClass.schedule,
+        };
+      }
 
       res.json({
         success: true,

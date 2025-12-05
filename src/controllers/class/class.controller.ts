@@ -89,7 +89,7 @@ export class ClassController {
       const result = await classService.getTutorAssignments(tutorId);
       res.json(result);
     } catch (error: any) {
-      logger.error('Get tutor assignments controller error:', error);
+      logger.error('Error getting tutor assignments:', error.message);
       res.status(400).json({
         success: false,
         message: error.message || 'Không thể lấy danh sách bài tập',
@@ -370,13 +370,14 @@ export class ClassController {
 
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
-      const { title, description, fileUrl, deadline } = req.body;
+      const { title, description, fileUrl, deadline, templateId, rubricId } =
+        req.body;
 
       const result = await classService.assignHomework(
         classId,
         parseInt(sessionNumber),
         userId,
-        { title, description, fileUrl, deadline }
+        { title, description, fileUrl, deadline, templateId, rubricId }
       );
       res.json(result);
     } catch (error: any) {
@@ -408,13 +409,13 @@ export class ClassController {
 
       const { classId, sessionNumber } = req.params;
       const userId = req.user!.id;
-      const { assignmentId, fileUrl, notes } = req.body;
+      const { assignmentId, fileUrl, notes, textAnswer } = req.body;
 
       const result = await classService.submitHomework(
         classId,
         parseInt(sessionNumber),
         userId,
-        { assignmentId, fileUrl, notes }
+        { assignmentId, fileUrl, notes, textAnswer }
       );
       res.json(result);
     } catch (error: any) {
@@ -460,6 +461,33 @@ export class ClassController {
       res.status(400).json({
         success: false,
         message: error.message || 'Không thể chấm điểm',
+      });
+    }
+  }
+
+  /**
+   * Generate AI evaluation for homework (tutor only)
+   */
+  static async generateAIHomeworkEvaluation(
+    req: AuthenticatedRequest,
+    res: Response
+  ) {
+    try {
+      const { classId, sessionNumber, assignmentId } = req.params;
+      const userId = req.user!.id;
+
+      const result = await classService.generateAIHomeworkEvaluation(
+        classId,
+        parseInt(sessionNumber),
+        assignmentId,
+        userId
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('AI homework evaluation controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể chấm điểm AI',
       });
     }
   }

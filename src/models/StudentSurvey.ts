@@ -18,6 +18,7 @@ export interface IStudentSurvey extends Document {
   // === PREFERENCES ===
   teachingMode: 'ONLINE' | 'OFFLINE' | 'BOTH';
   preferredTeachingStyle: string[]; // ["traditional", "interactive", "practice", "creative"]
+  currentChallenges: string[]; // pain points students are facing
   
   // === SCHEDULE & BUDGET ===
   availableTime: string[]; // ["morning", "afternoon", "evening", "weekend"]
@@ -28,6 +29,7 @@ export interface IStudentSurvey extends Document {
   
   // === PERSONALITY ===
   learningPace: string; // "self_learner" | "need_guidance" | "fast_learner" | "steady_learner"
+  studyFrequency: number; // sessions per week
   priorities: {
     experience: number; // 1-5 ranking
     communication: number;
@@ -103,6 +105,18 @@ const StudentSurveySchema = new Schema<IStudentSurvey>(
       type: String,
       enum: ['traditional', 'interactive', 'practice', 'creative'],
     }],
+    currentChallenges: [{
+      type: String,
+      enum: [
+        'missing_foundation',
+        'lack_consistency',
+        'exam_pressure',
+        'low_motivation',
+        'time_management',
+        'communication_gap'
+      ],
+      default: [],
+    }],
     
     // Schedule & Budget
     availableTime: [{
@@ -127,6 +141,12 @@ const StudentSurveySchema = new Schema<IStudentSurvey>(
       type: String,
       required: true,
       enum: ['self_learner', 'need_guidance', 'fast_learner', 'steady_learner'],
+    },
+    studyFrequency: {
+      type: Number,
+      min: 1,
+      max: 7,
+      default: 2,
     },
     priorities: {
       experience: { type: Number, min: 1, max: 5 },

@@ -34,36 +34,48 @@ export class SmartRecommendationController {
       );
 
       // Format response
-      const formattedRecs = recommendations.map(rec => ({
-        tutorId: rec.tutorId,
-        matchScore: Math.round(rec.matchScore * 100), // Convert to percentage
-        explanation: rec.explanation,
-        tutor: {
-          name: rec.tutorPost.tutorId.full_name,
-          email: rec.tutorPost.tutorId.email,
-          phone: rec.tutorPost.tutorId.phone_number,
-          avatar: rec.tutorPost.tutorId.avatar_url,
-          headline: rec.tutorProfile.headline,
-          introduction: rec.tutorProfile.introduction?.substring(0, 200), // Truncate
-          rating: {
-            average: rec.tutorProfile?.ratingAverage || 0,
-            count: rec.tutorProfile?.ratingCount || 0,
-            badges: rec.tutorProfile?.badges || [],
-            lastReviewAt: rec.tutorProfile?.lastReviewAt || null,
+      const formattedRecs = recommendations.map(rec => {
+        const tutorUser = rec.tutorPost?.tutorId;
+        const tutorProfile = rec.tutorProfile || {};
+        const tutorPost = rec.tutorPost || {};
+
+        return {
+          tutorId: rec.tutorId,
+          matchScore: Math.round(rec.matchScore * 100), // Convert to percentage
+          explanation: rec.explanation,
+          tutor: {
+            name: tutorUser?.full_name || 'Gia sư ẩn danh',
+            email: tutorUser?.email || '',
+            phone: tutorUser?.phone_number || '',
+            avatar: tutorUser?.avatar_url || '',
+            headline: tutorProfile.headline || '',
+            introduction: tutorProfile.introduction?.substring(0, 200) || '',
+            rating: {
+              average: tutorProfile?.ratingAverage ?? 0,
+              count: tutorProfile?.ratingCount ?? 0,
+              badges: tutorProfile?.badges ?? [],
+              lastReviewAt: tutorProfile?.lastReviewAt ?? null,
+            },
           },
-        },
-        tutorPost: {
-          id: rec.tutorPost._id,
-          title: rec.tutorPost.title,
-          description: rec.tutorPost.description?.substring(0, 200), // Truncate
-          subjects: rec.tutorPost.subjects,
-          pricePerSession: rec.tutorPost.pricePerSession,
-          sessionDuration: rec.tutorPost.sessionDuration,
-          teachingMode: rec.tutorPost.teachingMode,
-          studentLevel: rec.tutorPost.studentLevel,
-        },
-        matchDetails: rec.matchDetails,
-      }));
+          tutorPost: {
+            id: tutorPost._id || '',
+            title: tutorPost.title || 'Thông tin bài đăng không khả dụng',
+            description: tutorPost.description?.substring(0, 200) || '',
+            subjects: tutorPost.subjects || [],
+            pricePerSession: tutorPost.pricePerSession ?? 0,
+            sessionDuration: tutorPost.sessionDuration ?? 60,
+            teachingMode: tutorPost.teachingMode || 'ONLINE',
+            studentLevel: tutorPost.studentLevel || [],
+          },
+          matchDetails: {
+            subjectMatch: !!rec.matchDetails?.subjectMatch,
+            levelMatch: !!rec.matchDetails?.levelMatch,
+            priceMatch: !!rec.matchDetails?.priceMatch,
+            scheduleMatch: !!rec.matchDetails?.scheduleMatch,
+            semanticScore: rec.matchDetails?.semanticScore ?? 0,
+          },
+        };
+      });
 
       sendSuccess(res, 'Tìm thấy các gợi ý phù hợp', {
         total: formattedRecs.length,

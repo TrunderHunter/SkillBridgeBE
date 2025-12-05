@@ -15,6 +15,7 @@ import classRoutes from './class.routes';
 import { contractRoutes } from './contract.routes';
 import messageRoutes from './messageRoutes';
 import aiRoutes from './ai.routes';
+import assignmentRoutes from './assignment.routes';
 import uploadRoutes from './upload.routes';
 import notificationRoutes from './notification.routes';
 import { paymentRoutes } from './payment.routes';
@@ -63,6 +64,9 @@ router.use('/messages', messageRoutes);
 
 // AI routes (smart recommendations, vectorization)
 router.use('/ai', aiRoutes);
+
+// Assignment & exercise library routes
+router.use('/assignments', assignmentRoutes);
 
 // Upload routes
 router.use('/upload', uploadRoutes);

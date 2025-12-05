@@ -77,7 +77,7 @@ export const uploadToCloudinary = async (
   });
 };
 
-// Upload generic attachment (images, pdfs, docs, zips...) with resource_type auto
+// Upload generic attachment (images, pdfs, docs, zips, audio...) with resource_type auto
 export const uploadToCloudinaryGeneric = async (
   buffer: Buffer,
   folder: string,
@@ -88,10 +88,17 @@ export const uploadToCloudinaryGeneric = async (
     let resourceType: 'image' | 'raw' | 'video' | 'auto' = 'raw'; // Default to raw for documents
     
     if (filename) {
-      const ext = filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|svg)$/);
-      if (ext) {
+      const lowerName = filename.toLowerCase();
+      
+      // Check for image files
+      if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lowerName)) {
         resourceType = 'image';
       }
+      // Check for audio/video files - Cloudinary uses 'video' type for both
+      else if (/\.(mp3|wav|m4a|ogg|webm|mp4|mov|avi|mkv|flac|aac)$/.test(lowerName)) {
+        resourceType = 'video';
+      }
+      // Everything else (pdf, doc, docx, zip, etc.) stays as 'raw'
     }
 
     const uploadOptions: any = {

@@ -20,37 +20,88 @@ const GRADE_LEVEL_MAPPING: Record<string, string[]> = {
   'Người đi làm': ['NGUOI_DI_LAM'],
 };
 
+const CHALLENGE_TRANSLATIONS: Record<string, string> = {
+  missing_foundation: 'Mất gốc kiến thức',
+  lack_consistency: 'Khó duy trì lịch học',
+  exam_pressure: 'Áp lực thi cử',
+  low_motivation: 'Thiếu động lực học',
+  time_management: 'Khó sắp xếp thời gian',
+  communication_gap: 'Ngại hỏi, cần hướng dẫn chi tiết',
+};
+
 /**
  * AI Survey Service
  */
 class AISurveyService {
+  private indexFixed = false;
+
+  /**
+   * Ensure proper indexes (fix duplicate key error)
+   */
+  private async ensureProperIndexes() {
+    if (this.indexFixed) return;
+    
+    try {
+      const collection = StudentSurvey.collection;
+      const indexes = await collection.indexInformation();
+      
+      // Check if problematic unique index exists
+      if (indexes['studentId_1'] && indexes['studentId_1'].some((spec: any) => spec[1] === 1 || spec.unique === true)) {
+        logger.warn('⚠️  Found problematic unique index on studentId, dropping...');
+        try {
+          await collection.dropIndex('studentId_1');
+          logger.info('✅ Dropped old unique index on studentId');
+        } catch (error) {
+          logger.error('Error dropping index:', error);
+        }
+      }
+      
+      this.indexFixed = true;
+    } catch (error) {
+      logger.error('Error ensuring indexes:', error);
+    }
+  }
+
   /**
    * Submit survey và nhận AI recommendations
    */
   async submitSurvey(studentId: string, surveyData: any) {
     try {
+      // 0. Ensure proper indexes (fix duplicate key error)
+      await this.ensureProperIndexes();
+      
       logger.info(`📋 Processing survey for student: ${studentId}`);
 
       // 1. Validate và convert subject names → IDs
       const subjectIds = await this.validateAndConvertSubjects(surveyData.subjects);
 
-      // 2. Deactivate old surveys
-      await StudentSurvey.updateMany(
-        { studentId, isActive: true },
-        { $set: { isActive: false } }
-      );
+      // 2. Check existing surveys (DEBUG LOG)
+      const existingSurveys = await StudentSurvey.find({ studentId });
+      logger.info(`🔍 DEBUG: Found ${existingSurveys.length} existing surveys for student ${studentId}`);
+      logger.info(`🔍 DEBUG: Active surveys: ${existingSurveys.filter(s => s.isActive).length}`);
+      
+      // List all indexes (DEBUG LOG)
+      const indexes = await StudentSurvey.collection.getIndexes();
+      logger.info(`🔍 DEBUG: Current indexes:`, JSON.stringify(indexes, null, 2));
 
-      // 3. Create new survey
+      // 2. DELETE all old surveys (WORKAROUND for unique index issue)
+      const deleteResult = await StudentSurvey.deleteMany({ studentId });
+      logger.info(`🔍 DEBUG: Deleted ${deleteResult.deletedCount} old surveys`);
+
+      // 3. Create new survey (now guaranteed no duplicate)
+      logger.info(`🔍 DEBUG: Attempting to create new survey...`);
       const survey = await StudentSurvey.create({
         studentId,
         gradeLevel: surveyData.gradeLevel,
         subjects: subjectIds,
         goals: surveyData.goals,
+        currentChallenges: surveyData.currentChallenges,
         teachingMode: surveyData.teachingMode,
         preferredTeachingStyle: surveyData.preferredTeachingStyle,
         availableTime: surveyData.availableTime,
         budgetRange: surveyData.budgetRange,
         learningPace: surveyData.learningPace,
+        studyFrequency: surveyData.studyFrequency,
         priorities: surveyData.priorities,
       });
 
@@ -61,13 +112,16 @@ class AISurveyService {
       survey.aiAnalysis = aiAnalysis;
       await survey.save();
 
+      const surveyJson = survey.toJSON();
+
       // 5. Find matching tutors
-      const recommendations = await this.findMatchingTutors(survey);
+      const recommendations = await this.findMatchingTutors(surveyJson);
+      const formattedSurvey = await this.formatSurveyResponse(surveyJson);
 
       logger.info(`✅ Found ${recommendations.length} matching tutors`);
 
       return {
-        survey: survey.toJSON(),
+        survey: formattedSurvey,
         recommendations,
         aiAnalysis,
       };
@@ -76,6 +130,45 @@ class AISurveyService {
       logger.error('❌ Survey submission error:', error);
       throw new Error(`Failed to process survey: ${error.message}`);
     }
+  }
+
+  /**
+   * Get active survey document
+   */
+  async getActiveSurvey(studentId: string) {
+    return StudentSurvey.findOne({
+      studentId,
+      isActive: true
+    }).lean();
+  }
+
+  /**
+   * Get student survey summary + tutors for frontend
+   */
+  async getStudentSurveyResult(studentId: string) {
+    const survey = await this.getActiveSurvey(studentId);
+    if (!survey) {
+      return null;
+    }
+
+    let aiAnalysis = survey.aiAnalysis;
+
+    if (!aiAnalysis) {
+      aiAnalysis = await this.generateAIAnalysis(survey);
+      await StudentSurvey.updateOne(
+        { _id: survey._id },
+        { $set: { aiAnalysis } }
+      );
+    }
+
+    const recommendations = await this.findMatchingTutors(survey);
+    const formattedSurvey = await this.formatSurveyResponse(survey);
+
+    return {
+      survey: formattedSurvey,
+      aiAnalysis,
+      recommendations,
+    };
   }
 
   /**
@@ -91,6 +184,24 @@ class AISurveyService {
     }
 
     return subjects.map(s => s._id);
+  }
+
+  /**
+   * Format survey response for frontend (convert subject IDs → names)
+   */
+  private async formatSurveyResponse(survey: any) {
+    const subjectDocs = await Subject.find({
+      _id: { $in: survey.subjects }
+    })
+      .select('name')
+      .lean();
+
+    const subjectNames = subjectDocs.map(subject => subject.name);
+
+    return {
+      ...survey,
+      subjects: subjectNames,
+    };
   }
 
   /**
@@ -144,6 +255,15 @@ class AISurveyService {
       parts.push(`Phong cách học ưa thích: ${styleTexts}`);
     }
 
+    if (survey.studyFrequency) {
+      parts.push(`Mong muốn học ${survey.studyFrequency} buổi mỗi tuần`);
+    }
+
+    if (survey.currentChallenges?.length > 0) {
+      const challengeTexts = survey.currentChallenges.map(this.translateChallenge).join(', ');
+      parts.push(`Khó khăn chính: ${challengeTexts}`);
+    }
+
     parts.push(`Tốc độ học: ${this.translateLearningPace(survey.learningPace)}`);
     parts.push(`Hình thức: ${survey.teachingMode === 'ONLINE' ? 'Trực tuyến' : survey.teachingMode === 'OFFLINE' ? 'Tại nhà' : 'Linh hoạt'}`);
 
@@ -173,7 +293,7 @@ Viết bằng tiếng Việt, giọng điệu thân thiện và chuyên nghiệp
       // Use geminiService's getEmbedding method instead of direct genAI access
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       
@@ -196,18 +316,29 @@ Viết bằng tiếng Việt, giọng điệu thân thiện và chuyên nghiệp
     try {
       const subjects = await Subject.find({ _id: { $in: survey.subjects } });
       const subjectNames = subjects.map(s => s.name).join(', ');
+      const targetGoals = survey.goals?.map(this.translateGoal).join(', ') || 'Cải thiện kết quả học tập';
+      const sessionsPerWeek = survey.studyFrequency || 2;
 
       const prompt = `
-Học sinh lớp ${survey.gradeLevel} cần học các môn: ${subjectNames}.
-Mục tiêu: ${survey.goals.map(this.translateGoal).join(', ')}.
+Học sinh ${survey.gradeLevel} cần học các môn: ${subjectNames}.
+Mục tiêu chính: ${targetGoals}.
 
-Hãy đề xuất một lộ trình học ngắn gọn (3-4 bullet points) trong 3 tháng.
-Viết bằng tiếng Việt, cụ thể và dễ hiểu.
+Hãy đề xuất một số gói học (combo) ngắn gọn dưới dạng bullet point, ví dụ:
+- Gói 4 tuần
+- Gói 8 tuần
+- Gói 12 tuần
+
+Với mỗi gói, hãy nêu:
+- Số buổi/tuần (ưu tiên khoảng ${sessionsPerWeek} buổi/tuần)
+- Tổng số buổi dự kiến
+- Mục tiêu trọng tâm trong giai đoạn đó (ôn nền tảng, luyện đề, tăng tốc,...)
+
+Viết bằng tiếng Việt, súc tích, dễ hiểu, tối đa 4 bullet points.
 `;
 
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       
@@ -236,12 +367,30 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
       types.push('Gia sư sáng tạo, tư duy phản biện');
     }
 
+    if (survey.studyFrequency >= 4) {
+      types.push('Gia sư có thể kèm lịch học dày và giao bài đều');
+    }
+
     // Based on learning pace
     if (survey.learningPace === 'fast_learner') {
       types.push('Gia sư có thể dạy nâng cao');
     }
     if (survey.learningPace === 'need_guidance') {
       types.push('Gia sư kiên nhẫn, tận tâm');
+    }
+
+    // Based on challenges
+    if (survey.currentChallenges?.includes('lack_consistency')) {
+      types.push('Gia sư theo sát và nhắc nhở tiến độ');
+    }
+    if (survey.currentChallenges?.includes('missing_foundation')) {
+      types.push('Gia sư củng cố kiến thức nền tảng');
+    }
+    if (survey.currentChallenges?.includes('exam_pressure')) {
+      types.push('Gia sư luyện thi có lộ trình rõ ràng');
+    }
+    if (survey.currentChallenges?.includes('time_management')) {
+      types.push('Gia sư linh hoạt thời gian học');
     }
 
     // Based on priorities
@@ -252,7 +401,7 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
       types.push('Gia sư dạy từ 3+ năm');
     }
 
-    return types.slice(0, 3); // Top 3
+    return types.slice(0, 4); // Top suggestions
   }
 
   /**
@@ -281,7 +430,7 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
 
       // 2. Find candidate tutors
       const tutorPosts = await TutorPost.find(filters)
-        .populate('tutorId', 'full_name email avatar_url')
+        .populate('tutorId', 'full_name email phone_number avatar_url')
         .populate('subjects', 'name category')
         .limit(50)
         .lean();
@@ -320,6 +469,7 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
 
         // Calculate structured score
         const score = this.calculateSurveyMatchScore(survey, tutorPost, profile);
+        const scheduleScore = this.calculateScheduleMatchScore(survey, tutorPost);
 
         // Generate explanation if high score
         let explanation = '';
@@ -327,21 +477,69 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
           explanation = await this.generateMatchExplanation(survey, tutorPost, profile, score);
         }
 
-        // Get tutor ID for response
-        const responseTutorId = typeof tutorPost.tutorId === 'object' && '_id' in tutorPost.tutorId
-          ? (tutorPost.tutorId as any)._id
-          : tutorPost.tutorId;
+        // Build tutor info
+        const tutorUser =
+          typeof tutorPost.tutorId === 'object' && tutorPost.tutorId !== null
+            ? (tutorPost.tutorId as any)
+            : null;
+
+        const responseTutorId =
+          typeof tutorPost.tutorId === 'object' && '_id' in tutorPost.tutorId
+            ? (tutorPost.tutorId as any)._id?.toString() ?? ''
+            : typeof tutorPost.tutorId === 'string'
+            ? tutorPost.tutorId
+            : '';
+
+        const formattedTutor = {
+          name: tutorUser?.full_name || 'Gia sư ẩn danh',
+          email: tutorUser?.email || '',
+          phone: tutorUser?.phone_number || '',
+          avatar: tutorUser?.avatar_url || '',
+          headline: profile.headline || '',
+          introduction: profile.introduction?.substring(0, 200) || '',
+          rating: {
+            average: profile.ratingAverage ?? 0,
+            count: profile.ratingCount ?? 0,
+            badges: profile.badges ?? [],
+            lastReviewAt: profile.lastReviewAt ?? null,
+          },
+        };
+
+        const formattedTutorPost = {
+          id: tutorPost._id?.toString?.() || tutorPost.id || '',
+          _id: tutorPost._id?.toString?.() || tutorPost.id || '',
+          title: tutorPost.title || 'Thông tin bài đăng không khả dụng',
+          description: tutorPost.description?.substring(0, 200) || '',
+          subjects: (tutorPost.subjects || []).map((subject: any) =>
+            typeof subject === 'object'
+              ? {
+                  _id: subject._id,
+                  name: subject.name,
+                  category: subject.category,
+                }
+              : {
+                  _id: subject,
+                  name: subject,
+                }
+          ),
+          pricePerSession: tutorPost.pricePerSession ?? 0,
+          sessionDuration: tutorPost.sessionDuration ?? 60,
+          teachingMode: tutorPost.teachingMode || 'ONLINE',
+          studentLevel: tutorPost.studentLevel || [],
+        };
 
         recommendations.push({
           tutorId: responseTutorId,
-          tutorPost,
-          tutorProfile: profile,
+          tutor: formattedTutor,
+          tutorPost: formattedTutorPost,
           matchScore: Math.round(score * 100),
           explanation,
           matchDetails: {
             subjectMatch: this.checkSubjectMatch(survey, tutorPost),
             levelMatch: true,
             priceMatch: this.checkPriceMatch(survey, tutorPost),
+            scheduleMatch: scheduleScore >= 0.5,
+            semanticScore: 0,
             styleMatch: this.checkStyleMatch(survey, profile),
             personalityMatch: this.checkPersonalityMatch(survey, profile),
           },
@@ -366,10 +564,10 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
     let score = 0;
     let weights = 0;
 
-    // Subject match (30%)
+    // Subject match (25%)
     const subjectMatch = this.checkSubjectMatch(survey, tutorPost) ? 1 : 0;
-    score += subjectMatch * 0.3;
-    weights += 0.3;
+    score += subjectMatch * 0.25;
+    weights += 0.25;
 
     // Price match (20%)
     const priceMatch = this.checkPriceMatch(survey, tutorPost) ? 1 : 0;
@@ -381,10 +579,15 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
     score += styleScore * 0.2;
     weights += 0.2;
 
-    // Priority-based scoring (30%)
+    // Schedule / availability match (15%)
+    const scheduleScore = this.calculateScheduleMatchScore(survey, tutorPost);
+    score += scheduleScore * 0.15;
+    weights += 0.15;
+
+    // Priority-based scoring (20%)
     const priorityScore = this.calculatePriorityScore(survey, tutorPost, profile);
-    score += priorityScore * 0.3;
-    weights += 0.3;
+    score += priorityScore * 0.2;
+    weights += 0.2;
 
     return weights > 0 ? score / weights : 0;
   }
@@ -438,6 +641,73 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
   private checkPriceMatch(survey: any, tutorPost: any): boolean {
     return tutorPost.pricePerSession >= survey.budgetRange.min &&
            tutorPost.pricePerSession <= survey.budgetRange.max;
+  }
+
+  /**
+   * Calculate schedule / availability match score (0–1)
+   * Dựa trên availableTime của học viên (morning/afternoon/evening/weekend)
+   * và teachingSchedule của bài đăng gia sư.
+   */
+  private calculateScheduleMatchScore(survey: any, tutorPost: any): number {
+    const preferred: string[] = Array.isArray(survey.availableTime)
+      ? survey.availableTime
+      : [];
+    const schedule: any[] = Array.isArray(tutorPost.teachingSchedule)
+      ? tutorPost.teachingSchedule
+      : [];
+
+    if (preferred.length === 0) {
+      // Không chọn khung thời gian → coi như trung lập
+      return 0.5;
+    }
+
+    if (schedule.length === 0) {
+      return 0;
+    }
+
+    const preferredSet = new Set(preferred);
+    const tutorBuckets = new Set<string>();
+
+    for (const slot of schedule) {
+      if (!slot?.startTime && !slot?.dayOfWeek && slot?.dayOfWeek !== 0) {
+        continue;
+      }
+
+      const [hourStr] = String(slot.startTime || '0:00').split(':');
+      const hour = Number.parseInt(hourStr, 10);
+      const dayOfWeek = Number(slot.dayOfWeek);
+
+      // Weekend bucket
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        tutorBuckets.add('weekend');
+      }
+
+      // Time-of-day buckets
+      if (hour >= 5 && hour < 12) {
+        tutorBuckets.add('morning');
+      } else if (hour >= 12 && hour < 18) {
+        tutorBuckets.add('afternoon');
+      } else if (hour >= 18 && hour < 23) {
+        tutorBuckets.add('evening');
+      }
+    }
+
+    if (tutorBuckets.size === 0) {
+      return 0;
+    }
+
+    let matched = 0;
+    preferredSet.forEach((p) => {
+      if (tutorBuckets.has(p)) {
+        matched += 1;
+      }
+    });
+
+    if (matched === 0) {
+      return 0;
+    }
+
+    return matched / preferredSet.size;
   }
 
   /**
@@ -515,6 +785,8 @@ Viết bằng tiếng Việt, cụ thể và dễ hiểu.
 Học sinh lớp ${survey.gradeLevel} đang tìm gia sư dạy ${subjectNames}.
 Phong cách học ưa thích: ${survey.preferredTeachingStyle?.join(', ')}.
 Tốc độ học: ${this.translateLearningPace(survey.learningPace)}.
+${survey.studyFrequency ? `Tần suất mong muốn: ${survey.studyFrequency} buổi/tuần.` : ''}
+${survey.currentChallenges?.length ? `Khó khăn nổi bật: ${survey.currentChallenges.map(this.translateChallenge).join(', ')}.` : ''}
 
 Gia sư: ${tutorName}
 Kinh nghiệm: ${profile.teaching_experience || 'Chưa cung cấp'}
@@ -528,7 +800,7 @@ Viết bằng tiếng Việt, thân thiện và chuyên nghiệp.
 
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       
@@ -583,6 +855,10 @@ Viết bằng tiếng Việt, thân thiện và chuyên nghiệp.
       'steady_learner': 'Học chậm nhưng chắc',
     };
     return translations[pace] || pace;
+  }
+
+  private translateChallenge(challenge: string): string {
+    return CHALLENGE_TRANSLATIONS[challenge] || challenge;
   }
 }
 

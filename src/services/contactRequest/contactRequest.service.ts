@@ -259,8 +259,12 @@ class ContactRequestService {
       const [requests, total] = await Promise.all([
         ContactRequest.find(query)
           .populate('tutorId', 'full_name avatar_url email phone_number')
-          .populate('tutorPostId', 'title pricePerSession')
-          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online')
+          .populate({
+            path: 'tutorPostId',
+            select:
+              'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
+          })
+          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online availability location')
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)
@@ -268,9 +272,17 @@ class ContactRequestService {
           .lean(),
         ContactRequest.countDocuments(query)
       ]);
+      const learningClassMap = await this.buildLearningClassMap(requests);
 
       // Transform requests to frontend format
-      const transformedRequests = requests.map(mapContactRequestToResponse);
+      const transformedRequests = requests.map((request) => {
+        const mapped = mapContactRequestToResponse(request);
+        const learningClass = learningClassMap[mapped.id];
+        if (learningClass) {
+          mapped.learningClass = learningClass;
+        }
+        return mapped;
+      });
 
       return {
         success: true,
@@ -325,7 +337,7 @@ class ContactRequestService {
             path: 'tutorPostId',
             select: 'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
           })
-          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online')
+          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online availability location')
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)
@@ -333,9 +345,17 @@ class ContactRequestService {
           .lean(),
         ContactRequest.countDocuments(query)
       ]);
+      const learningClassMap = await this.buildLearningClassMap(requests);
 
       // Transform requests to frontend format
-      const transformedRequests = requests.map(mapContactRequestToResponse);
+      const transformedRequests = requests.map((request) => {
+        const mapped = mapContactRequestToResponse(request);
+        const learningClass = learningClassMap[mapped.id];
+        if (learningClass) {
+          mapped.learningClass = learningClass;
+        }
+        return mapped;
+      });
 
       return {
         success: true,
@@ -533,13 +553,14 @@ class ContactRequestService {
         throw new Error('Không tìm thấy yêu cầu đã được chấp nhận');
       }
 
-      // Check if class already exists for this request
+      // Check if a non-cancelled class already exists for this request
       const existingClass = await LearningClass.findOne({
-        contactRequestId: classData.contactRequestId
+        contactRequestId: classData.contactRequestId,
+        status: { $ne: 'CANCELLED' },
       });
 
       if (existingClass) {
-        throw new Error('Lớp học đã được tạo cho yêu cầu này');
+        throw new Error('Đã tồn tại lớp học đang hoạt động hoặc đã hoàn thành cho yêu cầu này');
       }
 
       // ✅ KIỂM TRA TRÙNG LỊCH HỌC
@@ -705,6 +726,56 @@ class ContactRequestService {
     } catch (error) {
       logger.error('Generate learning sessions error:', error);
     }
+  }
+
+  /**
+   * Build a map of contactRequestId -> learningClass info to enrich responses
+   */
+  private async buildLearningClassMap(requests: any[]) {
+    const requestIds = (requests || [])
+      .map((req) => {
+        if (!req) return null;
+        if (typeof req._id === 'object' && req._id !== null && req._id.toString) {
+          return req._id.toString();
+        }
+        if (typeof req._id === 'string') return req._id;
+        if (req.id) return req.id.toString?.() ?? req.id;
+        return null;
+      })
+      .filter((id): id is string => Boolean(id));
+
+    if (requestIds.length === 0) {
+      return {};
+    }
+
+    const learningClasses = await LearningClass.find({
+      contactRequestId: { $in: requestIds },
+      status: { $ne: 'CANCELLED' },
+    })
+      .select('_id contactRequestId title status schedule startDate totalSessions learningMode')
+      .lean();
+
+    return (learningClasses || []).reduce<Record<string, any>>((acc, cls) => {
+      const contactRequestId = (cls as any)?.contactRequestId;
+      const key =
+        (typeof contactRequestId === 'object' && contactRequestId !== null && contactRequestId.toString)
+          ? contactRequestId.toString()
+          : contactRequestId;
+      if (!key) {
+        return acc;
+      }
+
+      acc[key] = {
+        id: cls._id?.toString?.() || cls._id,
+        title: cls.title,
+        status: cls.status,
+        startDate: cls.startDate,
+        schedule: cls.schedule,
+        totalSessions: cls.totalSessions,
+        learningMode: cls.learningMode,
+      };
+      return acc;
+    }, {});
   }
 
   /**
