@@ -23,4 +23,3 @@ export { Payment } from './Payment';
 export { Conversation } from './Conversation';
 export { Message } from './Message';
 export { ExerciseTemplate } from './ExerciseTemplate';
-export { Rubric } from './Rubric';
