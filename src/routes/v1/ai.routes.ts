@@ -57,6 +57,24 @@ router.get(
   SmartRecommendationController.getSmartRecommendations
 );
 
+/**
+ * GET /api/v1/ai/tutors/:tutorId/posts/:postId/explanation
+ * Get AI-generated explanation for a specific tutor-post match (ON-DEMAND)
+ * 
+ * This endpoint should be called by frontend ONLY when user clicks on a tutor.
+ * Avoids generating explanations for all 10 results upfront.
+ * 
+ * Cost saving: 90% (250 VNĐ → 25 VNĐ per search)
+ * 
+ * Requires: Student authentication
+ */
+router.get(
+  '/tutors/:tutorId/posts/:postId/explanation',
+  authenticateToken,
+  requireRole(UserRole.STUDENT),
+  SmartRecommendationController.getOnDemandExplanation
+);
+
 // ==================== TUTOR SMART STUDENT RECOMMENDATIONS ====================
 
 /**

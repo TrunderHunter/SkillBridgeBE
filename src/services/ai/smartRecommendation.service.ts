@@ -98,14 +98,37 @@ class SmartRecommendationService {
 
       logger.info(`✅ Found ${candidateTutorPosts.length} candidate tutors after filtering`);
 
-      // Step 4: Generate query vector for semantic search
-      const queryText = this.buildQueryText(studentPost);
+      // Step 4: Generate query vector for semantic search (WITH CACHING)
       let queryVector: number[] | null = null;
 
-      if (geminiService.isAvailable()) {
+      // Check if we have cached vector and if post hasn't been updated since
+      if (studentPost.postVector && studentPost.vectorUpdatedAt) {
+        const postUpdatedAt = new Date(studentPost.updated_at || studentPost.created_at || Date.now());
+        const vectorUpdatedAt = new Date(studentPost.vectorUpdatedAt);
+        
+        if (vectorUpdatedAt >= postUpdatedAt) {
+          // Use cached vector
+          queryVector = studentPost.postVector;
+          logger.info('✅ Using cached query vector (cost saved: $0.000125)');
+        }
+      }
+
+      // Generate new vector only if cache miss or outdated
+      if (!queryVector && geminiService.isAvailable()) {
         try {
+          const queryText = this.buildQueryText(studentPost);
           queryVector = await geminiService.getEmbedding(queryText);
-          logger.info('✅ Query vector generated');
+          logger.info('✅ Query vector generated (cost: $0.000125)');
+
+          // Cache the vector in database for future use
+          await Post.updateOne(
+            { _id: studentPostId },
+            {
+              postVector: queryVector,
+              vectorUpdatedAt: new Date()
+            }
+          );
+          logger.info('💾 Query vector cached in database');
         } catch (error) {
           logger.warn('⚠️ Failed to generate query vector, using filter-only mode');
         }
@@ -124,9 +147,17 @@ class SmartRecommendationService {
         .sort((a, b) => b.matchScore - a.matchScore)
         .slice(0, limit);
 
-      // Step 7: Generate explanations if needed
+      // Step 7: Generate explanations if requested (NOT RECOMMENDED - use on-demand instead)
+      // For backward compatibility, still support includeExplanations param
+      // But recommend using GET /ai/tutors/:tutorId/posts/:postId/explanation instead
       if (includeExplanations && geminiService.isAvailable()) {
+        logger.warn('⚠️ Auto-generating explanations (expensive). Consider on-demand API instead.');
         await this.addExplanations(studentPost, filteredRecs);
+      } else if (includeExplanations) {
+        // Set placeholder - frontend should call on-demand API
+        filteredRecs.forEach(rec => {
+          rec.explanation = ''; // Empty - frontend will fetch on-demand
+        });
       }
 
       logger.info(`✅ Returning ${filteredRecs.length} recommendations`);
@@ -232,7 +263,11 @@ class SmartRecommendationService {
     return await TutorPost.find(filters)
       .populate('tutorId', 'full_name email phone_number avatar_url')
       .populate('subjects', 'name')
-      .limit(100) // Limit to avoid processing too many
+      .sort({ 
+        'rating.average': -1,  // Ưu tiên rating cao
+        'rating.count': -1     // Ưu tiên nhiều review
+      })
+      .limit(200) // TĂNG từ 100 → 200 để có coverage tốt hơn 50%
       .lean();
   }
 
@@ -333,7 +368,7 @@ class SmartRecommendationService {
     let score = 0;
     let factors = 0;
 
-    // Subject match (weight: 0.3)
+    // Subject match (weight: 0.4) - TĂNG từ 0.3 → 0.4 (quan trọng nhất)
     if (studentPost.subjects && tutorPost.subjects) {
       const studentSubjects = new Set(
         studentPost.subjects.map((s: any) => 
@@ -348,34 +383,34 @@ class SmartRecommendationService {
 
       const intersection = [...studentSubjects].filter(s => tutorSubjects.has(s));
       const matchRatio = intersection.length / studentSubjects.size;
-      score += matchRatio * 0.3;
-      factors += 0.3;
+      score += matchRatio * 0.4;
+      factors += 0.4;
     }
 
-    // Level match (weight: 0.25)
+    // Level match (weight: 0.3) - TĂNG từ 0.25 → 0.3 (rất quan trọng)
     if (studentPost.grade_levels && tutorPost.studentLevel) {
       const hasMatch = studentPost.grade_levels.some((level: string) =>
         tutorPost.studentLevel.includes(level)
       );
-      score += (hasMatch ? 1 : 0) * 0.25;
-      factors += 0.25;
+      score += (hasMatch ? 1 : 0) * 0.3;
+      factors += 0.3;
     }
 
-    // Price match (weight: 0.25)
+    // Price match (weight: 0.2) - GIẢM từ 0.25 → 0.2 (có thể thương lượng)
     if (studentPost.hourly_rate && tutorPost.pricePerSession) {
       const { min = 0, max = Infinity } = studentPost.hourly_rate;
       const inRange = tutorPost.pricePerSession >= min && tutorPost.pricePerSession <= max;
-      score += (inRange ? 1 : 0) * 0.25;
-      factors += 0.25;
+      score += (inRange ? 1 : 0) * 0.2;
+      factors += 0.2;
     }
 
-    // Teaching mode match (weight: 0.2)
+    // Teaching mode match (weight: 0.1) - GIẢM từ 0.2 → 0.1 (ít quan trọng nhất)
     if (studentPost.is_online !== undefined && tutorPost.teachingMode) {
       const studentMode = studentPost.is_online ? 'ONLINE' : 'OFFLINE';
       const matches = tutorPost.teachingMode === 'BOTH' || 
                      tutorPost.teachingMode === studentMode;
-      score += (matches ? 1 : 0) * 0.2;
-      factors += 0.2;
+      score += (matches ? 1 : 0) * 0.1;
+      factors += 0.1;
     }
 
     return factors > 0 ? score / factors : 0;
@@ -432,6 +467,7 @@ class SmartRecommendationService {
 
   /**
    * Add AI-generated explanations to recommendations
+   * @deprecated Use generateSingleExplanation instead for on-demand generation
    */
   private async addExplanations(
     studentPost: any,
@@ -453,6 +489,87 @@ class SmartRecommendationService {
         logger.error('Failed to generate explanation:', error);
         rec.explanation = 'Gia sư phù hợp với yêu cầu của bạn.';
       }
+    }
+  }
+
+  /**
+   * Generate explanation for a specific tutor-post match (ON-DEMAND)
+   * This is the recommended way to get explanations - only when user clicks
+   * 
+   * @param studentPostId - Student post ID
+   * @param tutorId - Tutor user ID
+   * @returns AI-generated explanation
+   */
+  async generateSingleExplanation(
+    studentPostId: string,
+    tutorId: string
+  ): Promise<string> {
+    try {
+      if (!geminiService.isAvailable()) {
+        return 'Gia sư phù hợp với yêu cầu của bạn.';
+      }
+
+      logger.info(`🔍 Generating on-demand explanation for tutor ${tutorId} and post ${studentPostId}`);
+
+      // Get student post
+      const studentPost = await Post.findById(studentPostId)
+        .populate('subjects', 'name')
+        .lean();
+
+      if (!studentPost) {
+        throw new Error('Student post not found');
+      }
+
+      // Get tutor profile
+      const tutorProfile = await TutorProfile.findOne({ user_id: tutorId })
+        .populate('subjects', 'name')
+        .lean();
+
+      if (!tutorProfile) {
+        throw new Error('Tutor profile not found');
+      }
+
+      // Get tutor user info
+      const tutorUser = await User.findById(tutorId)
+        .select('full_name')
+        .lean();
+
+      // Get tutor's active posts (to get subjects, price, etc.)
+      const tutorPosts = await TutorPost.find({
+        tutorId: tutorId,
+        status: 'ACTIVE'
+      })
+        .populate('subjects', 'name')
+        .limit(1)
+        .lean();
+
+      const tutorPost = tutorPosts[0];
+
+      // Calculate match score for context
+      let matchScore = 0.5; // Default
+      if (tutorPost) {
+        matchScore = this.calculateStructuredMatch(studentPost, tutorPost);
+      }
+
+      // Generate explanation
+      const explanation = await geminiService.generateMatchExplanation(
+        studentPost,
+        {
+          full_name: tutorUser?.full_name || 'Gia sư',
+          subjects: tutorPost?.subjects || [],
+          teaching_experience: tutorProfile.teaching_experience,
+          introduction: tutorProfile.introduction
+        },
+        matchScore
+      );
+
+      logger.info(`✅ On-demand explanation generated (cost: ~25 VNĐ)`);
+
+      return explanation;
+
+    } catch (error: any) {
+      logger.error('❌ Failed to generate on-demand explanation:', error);
+      return 'Gia sư có kinh nghiệm phù hợp với yêu cầu của bạn.';
     }
   }
 }
