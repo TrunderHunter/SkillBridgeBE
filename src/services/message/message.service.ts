@@ -33,13 +33,102 @@ export interface IMessagePaginationOptions {
 }
 
 export class MessageService {
+  // Get or create conversation by class ID (more reliable than contactRequestId)
+  static async getOrCreateConversationByClass(classId: string): Promise<any> {
+    try {
+      const { LearningClass } = await import('../../models/LearningClass');
+      const learningClass = await LearningClass.findById(classId)
+        .populate('studentId', 'full_name avatar_url')
+        .populate('tutorId', 'full_name avatar_url')
+        .populate('tutorPostId', 'title')
+        .populate('subject', 'name');
+
+      if (!learningClass) {
+        return {
+          success: false,
+          message: 'Không tìm thấy lớp học',
+        };
+      }
+
+      // Extract ObjectIds from populated fields
+      const studentIdStr =
+        typeof learningClass.studentId === 'object'
+          ? (learningClass.studentId as any)._id
+          : learningClass.studentId;
+      const tutorIdStr =
+        typeof learningClass.tutorId === 'object'
+          ? (learningClass.tutorId as any)._id
+          : learningClass.tutorId;
+      const tutorPostIdStr =
+        typeof learningClass.tutorPostId === 'object'
+          ? (learningClass.tutorPostId as any)._id
+          : learningClass.tutorPostId;
+      const subjectIdStr =
+        typeof learningClass.subject === 'object'
+          ? (learningClass.subject as any)._id
+          : learningClass.subject;
+
+      // Try to find existing conversation by studentId and tutorId
+      const existingConversation = await Conversation.findOne({
+        studentId: studentIdStr,
+        tutorId: tutorIdStr,
+        tutorPostId: tutorPostIdStr,
+      })
+        .populate('studentId', 'full_name avatar_url')
+        .populate('tutorId', 'full_name avatar_url')
+        .populate('tutorPostId', 'title')
+        .populate('subject', 'name');
+
+      if (existingConversation) {
+        return {
+          success: true,
+          message: 'Cuộc trò chuyện đã tồn tại',
+          data: existingConversation,
+        };
+      }
+
+      // Create new conversation
+      const conversation = new Conversation({
+        contactRequestId: learningClass.contactRequestId,
+        studentId: studentIdStr,
+        tutorId: tutorIdStr,
+        tutorPostId: tutorPostIdStr,
+        subject: subjectIdStr,
+        status: 'ACTIVE',
+      });
+
+      await conversation.save();
+
+      // Populate conversation data
+      const populatedConversation = await Conversation.findById(
+        conversation._id
+      )
+        .populate('studentId', 'full_name avatar_url')
+        .populate('tutorId', 'full_name avatar_url')
+        .populate('tutorPostId', 'title')
+        .populate('subject', 'name');
+
+      return {
+        success: true,
+        message: 'Tạo cuộc trò chuyện thành công',
+        data: populatedConversation,
+      };
+    } catch (error: any) {
+      console.error('❌ Create conversation by class error:', error);
+      return {
+        success: false,
+        message: error.message || 'Lỗi khi tạo cuộc trò chuyện',
+      };
+    }
+  }
+
   // Create a new conversation when contact request is accepted
   static async createConversation(contactRequestId: string): Promise<any> {
     try {
-      // Check if conversation already exists
       const existingConversation = await Conversation.findOne({
         contactRequestId,
       });
+
       if (existingConversation) {
         return {
           success: true,

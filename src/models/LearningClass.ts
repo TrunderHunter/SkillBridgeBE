@@ -34,19 +34,6 @@ export interface IAssignmentAICriterion {
   feedback?: string;
 }
 
-export interface IAssignmentAIEvaluation {
-  rubricId: string;
-  totalScore: number;
-  maxScore: number;
-  model?: string;
-  generatedAt: Date;
-  strengths?: string[];
-  improvements?: string[];
-  summary?: string;
-  criteria: IAssignmentAICriterion[];
-  rawResponse?: Record<string, any>;
-}
-
 export interface ISessionHomeworkAssignment {
   _id: string;
   id?: string;
@@ -59,8 +46,6 @@ export interface ISessionHomeworkAssignment {
   grade?: ISessionHomeworkGrade;
   isLegacy?: boolean;
   templateId?: string;
-  rubricId?: string;
-  aiEvaluation?: IAssignmentAIEvaluation;
 }
 
 export interface ISessionHomework {
@@ -304,22 +289,6 @@ const AssignmentAICriterionSchema = new Schema<IAssignmentAICriterion>(
   { _id: false }
 );
 
-const AssignmentAIEvaluationSchema = new Schema<IAssignmentAIEvaluation>(
-  {
-    rubricId: { type: String, ref: 'Rubric', required: true },
-    totalScore: { type: Number, required: true },
-    maxScore: { type: Number, required: true },
-    model: { type: String },
-    generatedAt: { type: Date, default: Date.now },
-    strengths: [{ type: String }],
-    improvements: [{ type: String }],
-    summary: { type: String },
-    criteria: { type: [AssignmentAICriterionSchema], default: [] },
-    rawResponse: { type: Schema.Types.Mixed },
-  },
-  { _id: false }
-);
-
 const SessionHomeworkAssignmentSchema = new Schema<ISessionHomeworkAssignment>(
   {
     _id: { type: String, default: uuidv4 },
@@ -329,11 +298,9 @@ const SessionHomeworkAssignmentSchema = new Schema<ISessionHomeworkAssignment>(
     deadline: { type: Date, required: true },
     assignedAt: { type: Date, default: Date.now },
     templateId: { type: String, ref: 'ExerciseTemplate' },
-    rubricId: { type: String, ref: 'Rubric' },
     submission: { type: SessionHomeworkSubmissionSchema },
     grade: { type: SessionHomeworkGradeSchema },
     isLegacy: { type: Boolean, default: false },
-    aiEvaluation: { type: AssignmentAIEvaluationSchema },
   },
   { _id: false }
 );

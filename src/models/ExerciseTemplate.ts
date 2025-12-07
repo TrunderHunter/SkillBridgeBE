@@ -13,7 +13,6 @@ export interface IExerciseTemplate extends Document {
   gradeLevels: string[];
   difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
   tags: string[];
-  rubricId?: string;
   content: {
     prompt: string;
     sampleAnswer?: string;
@@ -69,10 +68,6 @@ const ExerciseTemplateSchema = new Schema<IExerciseTemplate>(
     tags: {
       type: [String],
       default: [],
-    },
-    rubricId: {
-      type: String,
-      ref: 'Rubric',
     },
     content: {
       prompt: {

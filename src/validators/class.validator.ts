@@ -70,10 +70,6 @@ export const validateClass = {
       .optional()
       .isString()
       .withMessage('templateId không hợp lệ'),
-    body('rubricId')
-      .optional()
-      .isString()
-      .withMessage('rubricId không hợp lệ'),
   ] as ValidationChain[],
 
   submitHomework: [

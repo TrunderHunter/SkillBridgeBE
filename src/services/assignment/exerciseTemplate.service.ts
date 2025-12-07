@@ -1,5 +1,4 @@
 import { ExerciseTemplate, IExerciseTemplate } from '../../models/ExerciseTemplate';
-import { Rubric } from '../../models/Rubric';
 
 export interface ExerciseTemplateFilters {
   subjectId?: string;

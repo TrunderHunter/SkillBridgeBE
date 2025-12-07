@@ -94,6 +94,59 @@ export class SmartRecommendationController {
   }
 
   /**
+   * Generate AI explanation for a specific tutor-post match (ON-DEMAND)
+   * GET /api/v1/ai/tutors/:tutorId/posts/:postId/explanation
+   * 
+   * This is the recommended way to get match explanations.
+   * Only generate when user actually clicks on a tutor (not for all 10 results).
+   * 
+   * Cost: ~25 VNĐ per call
+   * Savings: 90% compared to auto-generating for all 10 tutors
+   */
+  static async getOnDemandExplanation(req: Request, res: Response): Promise<void> {
+    try {
+      const { tutorId, postId } = req.params;
+      const userId = req.user!.id;
+
+      logger.info(`🔍 On-demand explanation request: tutor=${tutorId}, post=${postId}`);
+
+      // Verify post belongs to user
+      const { Post } = await import('../../models/Post');
+      const post = await Post.findById(postId);
+      
+      if (!post) {
+        return sendError(res, 'Không tìm thấy bài đăng', undefined, 404);
+      }
+
+      if (post.author_id !== userId) {
+        return sendError(res, 'Không có quyền truy cập bài đăng này', undefined, 403);
+      }
+
+      // Generate explanation
+      const explanation = await smartRecommendationService.generateSingleExplanation(
+        postId,
+        tutorId
+      );
+
+      sendSuccess(res, 'Tạo giải thích thành công', {
+        tutorId,
+        postId,
+        explanation,
+        generatedAt: new Date(),
+      });
+
+    } catch (error: any) {
+      logger.error('❌ On-demand explanation error:', error);
+      sendError(
+        res,
+        error.message || 'Không thể tạo giải thích',
+        undefined,
+        500
+      );
+    }
+  }
+
+  /**
    * Trigger vectorization for a tutor profile
    * POST /api/v1/tutors/profile/vectorize
    */

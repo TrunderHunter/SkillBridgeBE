@@ -147,11 +147,7 @@ router.post(
   ClassController.gradeHomework
 );
 
-router.post(
-  '/:classId/sessions/:sessionNumber/homework/:assignmentId/ai-evaluate',
-  requireTutorRole,
-  ClassController.generateAIHomeworkEvaluation
-);
+
 
 // Request to cancel session (both tutor and student)
 router.post(
