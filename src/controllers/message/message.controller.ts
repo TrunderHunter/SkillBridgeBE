@@ -168,15 +168,34 @@ export class MessageController {
     }
   }
 
-  // Get conversation by contact request ID
-  static async getConversationByContactRequest(req: Request, res: Response): Promise<void> {
+  // Get or create conversation by class ID
+  static async getOrCreateConversationByClass(req: Request, res: Response): Promise<void> {
     try {
-      const { contactRequestId } = req.params;
+      const { classId } = req.params;
       const userId = req.user?.id;
 
       if (!userId) {
         return sendError(res, 'Không xác định được người dùng', undefined, 401);
       }
+
+      const result = await MessageService.getOrCreateConversationByClass(classId);
+
+      if (result.success) {
+        sendSuccess(res, result.message, result.data);
+      } else {
+        sendError(res, result.message, undefined, 404);
+      }
+    } catch (error: any) {
+      console.error('❌ Get/create conversation by class error:', error);
+      sendError(res, error.message || 'Lỗi khi lấy cuộc trò chuyện', undefined, 500);
+    }
+  }
+
+  // Get conversation by contact request ID
+  static async getConversationByContactRequest(req: Request, res: Response): Promise<void> {
+    try {
+      const { contactRequestId } = req.params;
+      const userId = req.user?.id;
 
       // Find conversation by contact request ID
       const { Conversation } = await import('../../models/Conversation');

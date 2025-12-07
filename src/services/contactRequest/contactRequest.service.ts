@@ -646,6 +646,30 @@ class ContactRequestService {
       // Generate initial sessions
       await this.generateLearningSessions(learningClass._id); // ✅ Fix tên hàm
 
+      // Create conversation for chat communication
+      try {
+        const { Conversation } = await import('../../models/Conversation');
+        const existingConversation = await Conversation.findOne({ 
+          contactRequestId: classData.contactRequestId 
+        });
+        
+        if (!existingConversation) {
+          const conversation = new Conversation({
+            contactRequestId: classData.contactRequestId,
+            studentId: contactRequest.studentId,
+            tutorId: contactRequest.tutorId,
+            tutorPostId: contactRequest.tutorPostId,
+            subject: contactRequest.subject,
+            status: 'ACTIVE',
+          });
+          await conversation.save();
+          logger.info('✅ Created conversation for learning class');
+        }
+      } catch (convError) {
+        logger.error('Failed to create conversation:', convError);
+        // Don't throw error, just log it
+      }
+
       // Send notification to student
       try {
         const tutor = await User.findById(tutorId);

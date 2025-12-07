@@ -98,6 +98,13 @@ router.patch(
   MessageController.closeConversation
 );
 
+// Get or create conversation by class ID
+router.get(
+  '/conversations/class/:classId',
+  authenticateToken,
+  MessageController.getOrCreateConversationByClass
+);
+
 // Get conversation by contact request ID
 router.get(
   '/conversations/contact-request/:contactRequestId',
