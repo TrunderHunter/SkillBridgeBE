@@ -493,6 +493,152 @@ class SmartRecommendationService {
   }
 
   /**
+   * Generate detailed rule-based explanation for tutor match
+   * No AI needed - fast and free
+   */
+  private generateDetailedTutorExplanation(
+    studentPost: any,
+    tutorInfo: {
+      full_name: string;
+      subjects: any[];
+      teaching_experience?: string;
+      introduction?: string;
+      grade_levels?: string[];
+    },
+    matchScore: number
+  ): string {
+    const reasons: string[] = [];
+
+    // Subject match
+    if (studentPost.subjects && tutorInfo.subjects) {
+      const studentSubjects = studentPost.subjects.map((s: any) => 
+        typeof s === 'object' ? s.name : s
+      );
+      const tutorSubjects = tutorInfo.subjects.map((s: any) => 
+        typeof s === 'object' ? s.name : s
+      );
+      const matchingSubjects = studentSubjects.filter((s: string) => 
+        tutorSubjects.some((ts: string) => ts === s)
+      );
+      
+      if (matchingSubjects.length > 0) {
+        reasons.push(`Có kinh nghiệm dạy môn **${matchingSubjects.join(', ')}**`);
+      }
+    }
+
+    // Grade level match
+    if (studentPost.grade_levels && tutorInfo.grade_levels) {
+      const matchingLevels = studentPost.grade_levels.filter((l: string) => 
+        tutorInfo.grade_levels?.includes(l)
+      );
+      if (matchingLevels.length > 0) {
+        reasons.push(`Phù hợp với cấp độ **${matchingLevels.join(', ')}**`);
+      }
+    }
+
+    // Teaching experience
+    if (tutorInfo.teaching_experience) {
+      const years = parseInt(tutorInfo.teaching_experience);
+      if (!isNaN(years)) {
+        if (years >= 5) {
+          reasons.push(`Có **${years} năm** kinh nghiệm giảng dạy`);
+        } else if (years >= 2) {
+          reasons.push(`Có **${years} năm** kinh nghiệm`);
+        }
+      }
+    }
+
+    // Teaching mode match
+    if (studentPost.is_online !== undefined) {
+      const mode = studentPost.is_online ? 'Online' : 'Offline';
+      reasons.push(`Hình thức học phù hợp (**${mode}**)`);
+    }
+
+    // Match score indicator
+    if (matchScore >= 0.7) {
+      reasons.unshift('**Rất phù hợp** với yêu cầu của bạn');
+    } else if (matchScore >= 0.5) {
+      reasons.unshift('**Phù hợp** với yêu cầu của bạn');
+    }
+
+    // Build explanation
+    if (reasons.length === 0) {
+      return `${tutorInfo.full_name} có kinh nghiệm giảng dạy phù hợp với yêu cầu của bạn.`;
+    }
+
+    return `${tutorInfo.full_name}: ${reasons.join('. ')}.`;
+  }
+
+  /**
+   * Generate detailed rule-based explanation for student post match (from tutor's perspective)
+   * No AI needed - fast and free
+   */
+  generateDetailedStudentExplanation(
+    studentPost: any,
+    tutorPost: any,
+    matchDetails: any,
+    matchScore: number
+  ): string {
+    const reasons: string[] = [];
+
+    // Subject match
+    if (matchDetails?.subjectMatch === 100) {
+      const subjectNames = (studentPost.subjects || [])
+        .map((s: any) => (typeof s === 'object' ? s.name : s))
+        .join(', ');
+      reasons.push(`Môn học khớp hoàn toàn (**${subjectNames}**)`);
+    } else if (matchDetails?.subjectMatch >= 50) {
+      reasons.push('Môn học có phần khớp');
+    }
+
+    // Level match
+    if (matchDetails?.levelMatch === 100) {
+      const levels = (studentPost.grade_levels || []).join(', ');
+      reasons.push(`Cấp độ phù hợp (**${levels}**)`);
+    } else if (matchDetails?.levelMatch >= 50) {
+      reasons.push('Cấp độ tương đối phù hợp');
+    }
+
+    // Price match
+    if (matchDetails?.priceMatch === 100) {
+      const minPrice = studentPost.hourly_rate?.min?.toLocaleString('vi-VN') || '';
+      const maxPrice = studentPost.hourly_rate?.max?.toLocaleString('vi-VN') || '';
+      if (minPrice && maxPrice) {
+        reasons.push(`Mức giá trong khoảng bạn đưa ra (**${minPrice} - ${maxPrice} VNĐ/giờ**)`);
+      } else {
+        reasons.push('Mức giá phù hợp');
+      }
+    } else if (matchDetails?.priceMatch >= 50) {
+      reasons.push('Mức giá gần với mức bạn đưa ra');
+    }
+
+    // Mode match
+    if (matchDetails?.modeMatch === 100) {
+      const mode = studentPost.is_online ? 'Online' : 'Offline';
+      reasons.push(`Hình thức học phù hợp (**${mode}**)`);
+    }
+
+    // Match score indicator
+    let baseExplanation = '';
+    if (matchScore >= 0.8) {
+      baseExplanation = '**Rất phù hợp** với bài đăng gia sư của bạn';
+    } else if (matchScore >= 0.6) {
+      baseExplanation = '**Khá phù hợp** với bài đăng gia sư của bạn';
+    } else if (matchScore >= 0.4) {
+      baseExplanation = 'Có một số điểm phù hợp';
+    } else {
+      baseExplanation = 'Có thể phù hợp với một số điều kiện';
+    }
+
+    // Build explanation
+    if (reasons.length > 0) {
+      return `${baseExplanation}. ${reasons.join('. ')}.`;
+    }
+
+    return baseExplanation;
+  }
+
+  /**
    * Generate explanation for a specific tutor-post match (ON-DEMAND)
    * This is the recommended way to get explanations - only when user clicks
    * 
@@ -505,25 +651,20 @@ class SmartRecommendationService {
     tutorId: string
   ): Promise<string> {
     try {
-      if (!geminiService.isAvailable()) {
-        return 'Gia sư phù hợp với yêu cầu của bạn.';
-      }
-
       logger.info(`🔍 Generating on-demand explanation for tutor ${tutorId} and post ${studentPostId}`);
 
-      // Get student post
-      const studentPost = await Post.findById(studentPostId)
-        .populate('subjects', 'name')
-        .lean();
+      // Get student post (subjects is array of strings, not references)
+      const studentPost = await Post.findById(studentPostId).lean();
 
       if (!studentPost) {
+        logger.error(`❌ Student post not found: ${studentPostId}`);
         throw new Error('Student post not found');
       }
+      
+      logger.info(`✅ Found student post: ${studentPost.title}`);
 
-      // Get tutor profile
-      const tutorProfile = await TutorProfile.findOne({ user_id: tutorId })
-        .populate('subjects', 'name')
-        .lean();
+      // Get tutor profile (subjects is array of ObjectIds)
+      const tutorProfile = await TutorProfile.findOne({ user_id: tutorId }).lean();
 
       if (!tutorProfile) {
         throw new Error('Tutor profile not found');
@@ -534,14 +675,22 @@ class SmartRecommendationService {
         .select('full_name')
         .lean();
 
-      // Get tutor's active posts (to get subjects, price, etc.)
+      // Get tutor's active posts (subjects is array of ObjectIds that need population)
+      const { Subject } = await import('../../models/Subject');
       const tutorPosts = await TutorPost.find({
         tutorId: tutorId,
         status: 'ACTIVE'
       })
-        .populate('subjects', 'name')
         .limit(1)
         .lean();
+
+      // Manually populate subjects for tutor post if exists
+      let tutorPostSubjects: any[] = [];
+      if (tutorPosts.length > 0 && tutorPosts[0].subjects) {
+        const subjectIds = tutorPosts[0].subjects;
+        const subjectDocs = await Subject.find({ _id: { $in: subjectIds } }).select('name').lean();
+        tutorPostSubjects = subjectDocs;
+      }
 
       const tutorPost = tutorPosts[0];
 
@@ -551,19 +700,37 @@ class SmartRecommendationService {
         matchScore = this.calculateStructuredMatch(studentPost, tutorPost);
       }
 
-      // Generate explanation
-      const explanation = await geminiService.generateMatchExplanation(
-        studentPost,
-        {
-          full_name: tutorUser?.full_name || 'Gia sư',
-          subjects: tutorPost?.subjects || [],
-          teaching_experience: tutorProfile.teaching_experience,
-          introduction: tutorProfile.introduction
-        },
-        matchScore
-      );
-
-      logger.info(`✅ On-demand explanation generated (cost: ~25 VNĐ)`);
+      // Try AI explanation first, fallback to rule-based if quota exceeded
+      let explanation: string;
+      
+      try {
+        explanation = await geminiService.generateMatchExplanation(
+          studentPost,
+          {
+            full_name: tutorUser?.full_name || 'Gia sư',
+            subjects: tutorPostSubjects,
+            teaching_experience: tutorProfile.teaching_experience,
+            introduction: tutorProfile.introduction
+          },
+          matchScore
+        );
+        logger.info(`✅ On-demand explanation generated (AI, ~25 VNĐ)`);
+      } catch (aiError: any) {
+        // AI failed (quota/429/etc) - fallback to rule-based
+        logger.warn('⚠️ AI explanation failed, using rule-based fallback:', aiError.message);
+        explanation = this.generateDetailedTutorExplanation(
+          studentPost,
+          {
+            full_name: tutorUser?.full_name || 'Gia sư',
+            subjects: tutorPostSubjects,
+            teaching_experience: tutorProfile.teaching_experience,
+            introduction: tutorProfile.introduction,
+            grade_levels: tutorPost?.studentLevel || []
+          },
+          matchScore
+        );
+        logger.info(`✅ On-demand explanation generated (rule-based fallback, free)`);
+      }
 
       return explanation;
 

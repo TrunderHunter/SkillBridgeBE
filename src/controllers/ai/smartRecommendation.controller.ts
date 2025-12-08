@@ -492,6 +492,12 @@ export class SmartRecommendationController {
     try {
       const { tutorPostId, studentPostId, matchScore } = req.body;
 
+      logger.info(`🤖 [generateMatchExplanation] Request received:`, {
+        tutorPostId,
+        studentPostId,
+        matchScore,
+      });
+
       if (!tutorPostId || !studentPostId) {
         return sendError(res, 'tutorPostId và studentPostId là bắt buộc', undefined, 400);
       }
@@ -524,34 +530,96 @@ export class SmartRecommendationController {
         return sendError(res, 'Không tìm thấy bài đăng học viên', undefined, 404);
       }
 
-      // Build tutor summary
+      // Build tutor summary with full context
       const tutorSummary = {
         headline: tutorProfile?.headline || tutorPost.title || '',
-        introduction: tutorProfile?.introduction?.substring(0, 200) || tutorPost.description?.substring(0, 200) || '',
-        teaching_experience: tutorProfile?.teaching_experience?.substring(0, 200) || '',
+        introduction: tutorProfile?.introduction || tutorPost.description || '',
+        teaching_experience: tutorProfile?.teaching_experience || '',
         subjects: tutorPost.subjects || [],
+        pricePerSession: tutorPost.pricePerSession,
+        teachingMode: tutorPost.teachingMode,
       };
 
-      // Build student post data
+      // Build student post data with full details
       const studentPostData = {
         title: studentPost.title,
-        content: studentPost.content?.substring(0, 200) || '',
+        content: studentPost.content || '',
         subjects: studentPost.subjects || [],
         grade_levels: studentPost.grade_levels || [],
         requirements: studentPost.requirements || '',
+        hourly_rate: studentPost.hourly_rate,
+        is_online: studentPost.is_online,
       };
 
-      // Generate explanation using AI
-      const { geminiService } = await import('../../services/ai/gemini.service');
-      const explanation = await geminiService.generateStudentMatchExplanation(
-        tutorSummary,
-        studentPostData,
-        matchScoreNum
-      );
+      // Calculate match details
+      const matchDetails = {
+        subjectMatch: tutorPost.subjects?.some((ts: any) =>
+          studentPost.subjects?.some((ss: any) =>
+            (typeof ts === 'object' ? ts.name : ts) === (typeof ss === 'object' ? ss.name : ss)
+          )
+        ) ? 100 : 0,
+        levelMatch: tutorPost.studentLevel?.some((level: string) =>
+          studentPost.grade_levels?.includes(level)
+        ) ? 100 : 0,
+        priceMatch:
+          studentPost.hourly_rate &&
+          tutorPost.pricePerSession &&
+          tutorPost.pricePerSession >= (studentPost.hourly_rate.min || 0) &&
+          tutorPost.pricePerSession <= (studentPost.hourly_rate.max || Number.MAX_SAFE_INTEGER)
+            ? 100
+            : 0,
+        modeMatch:
+          tutorPost.teachingMode === 'BOTH' ||
+          (studentPost.is_online && tutorPost.teachingMode === 'ONLINE') ||
+          (!studentPost.is_online && tutorPost.teachingMode === 'OFFLINE')
+            ? 100
+            : 30,
+      };
 
-      sendSuccess(res, 'Đã tạo giải thích AI', {
+      // Try AI explanation first, fallback to rule-based if quota exceeded
+      let explanation: string;
+      let usedAI = false;
+
+      try {
+        const { geminiService } = await import('../../services/ai/gemini.service');
+        
+        logger.info('🤖 [generateMatchExplanation] Calling geminiService.generateStudentMatchExplanation');
+        logger.info('📊 Match details:', matchDetails);
+        
+        explanation = await geminiService.generateStudentMatchExplanation(
+          tutorSummary,
+          studentPostData,
+          matchScoreNum,
+          matchDetails
+        );
+
+        usedAI = true;
+        logger.info(`✅ [generateMatchExplanation] AI explanation generated (cost: ~25 VNĐ):`, {
+          explanationLength: explanation.length,
+          preview: explanation.substring(0, 100),
+        });
+      } catch (aiError: any) {
+        // AI failed (quota/429/etc) - fallback to rule-based
+        logger.warn('⚠️ AI explanation failed, using rule-based fallback:', aiError.message);
+        
+        const { smartRecommendationService } = await import('../../services/ai/smartRecommendation.service');
+        explanation = smartRecommendationService.generateDetailedStudentExplanation(
+          studentPostData,
+          tutorPost,
+          matchDetails,
+          matchScoreNum
+        );
+
+        logger.info(`✅ [generateMatchExplanation] Rule-based explanation generated (free):`, {
+          explanationLength: explanation.length,
+          preview: explanation.substring(0, 100),
+        });
+      }
+
+      sendSuccess(res, usedAI ? 'Đã tạo giải thích AI' : 'Đã tạo giải thích', {
         explanation,
         matchScore: matchScoreNum,
+        usedAI,
       });
 
     } catch (error: any) {

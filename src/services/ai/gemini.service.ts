@@ -9,7 +9,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 class GeminiService {
   private genAI: GoogleGenerativeAI | null = null;
   private embeddingModel: string = 'text-embedding-004';
-  private textModel: string = 'gemini-1.5-flash-latest';
+  private textModel: string = 'gemini-2.0-flash';
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -146,7 +146,8 @@ Giải thích (tối đa 150 ký tự):`;
 
     } catch (error: any) {
       logger.error('❌ Gemini explanation error:', error);
-      return 'Gia sư có kinh nghiệm phù hợp với yêu cầu của bạn.';
+      // Re-throw error so caller can handle fallback
+      throw error;
     }
   }
 
@@ -161,66 +162,124 @@ Giải thích (tối đa 150 ký tự):`;
   async generateStudentMatchExplanation(
     tutorSummary: any,
     studentPost: any,
-    matchScore: number
+    matchScore: number,
+    matchDetails?: any
   ): Promise<string> {
+    logger.info('🤖 [generateStudentMatchExplanation] Called with:', {
+      tutorSubjects: tutorSummary.subjects?.length,
+      studentSubjects: studentPost.subjects?.length,
+      matchScore,
+      hasMatchDetails: !!matchDetails,
+    });
+
     if (!this.isAvailable() || !this.genAI) {
+      logger.warn('⚠️ [generateStudentMatchExplanation] Gemini not available, using fallback');
       return 'Bài đăng này phù hợp với hồ sơ và khả năng dạy của bạn.';
     }
 
     try {
       const model = this.genAI.getGenerativeModel({ model: this.textModel });
+      logger.info('✅ [generateStudentMatchExplanation] Gemini model loaded');
 
       const subjectNames = studentPost.subjects?.map((s: any) =>
         typeof s === 'object' ? s.name : s
       ).join(', ') || 'N/A';
 
-      const prompt = `
-Bạn là trợ lý AI giúp giải thích lý do tại sao một bài đăng tìm gia sư phù hợp với một gia sư.
+      const tutorSubjects = tutorSummary.subjects?.map((s: any) => 
+        typeof s === 'object' ? s.name : s
+      ).join(', ') || 'N/A';
 
-THÔNG TIN GIA SƯ:
+      // Build match details info
+      let matchInfo = '';
+      if (matchDetails) {
+        const matches = [];
+        if (matchDetails.subjectMatch === 100) {
+          matches.push(`✓ Môn học KHỚP: ${subjectNames}`);
+        }
+        if (matchDetails.levelMatch === 100) {
+          matches.push(`✓ Cấp độ KHỚP: ${studentPost.grade_levels?.join(', ')}`);
+        }
+        if (matchDetails.priceMatch === 100) {
+          matches.push(`✓ Mức giá PHÙ HỢP`);
+        }
+        if (matchDetails.modeMatch === 100) {
+          const mode = studentPost.is_online ? 'Online' : 'Offline';
+          matches.push(`✓ Hình thức ${mode} PHÙ HỢP`);
+        }
+        matchInfo = matches.length > 0 ? `\n\nCÁC ĐIỂM KHỚP:\n${matches.join('\n')}` : '';
+      }
+
+      const prompt = `
+Bạn là trợ lý AI chuyên phân tích sự phù hợp giữa gia sư và học viên.
+
+THÔNG TIN GIA SƯ (BẠN):
 - Tiêu đề: ${tutorSummary.headline || 'Chưa cập nhật'}
-- Môn dạy: ${tutorSummary.subjects?.map((s: any) => typeof s === 'object' ? s.name : s).join(', ') || 'N/A'}
+- Môn dạy: ${tutorSubjects}
 - Kinh nghiệm: ${tutorSummary.teaching_experience || 'Chưa cập nhật'}
-- Giới thiệu: ${tutorSummary.introduction || ''}
+- Giới thiệu: ${tutorSummary.introduction || 'Chưa có thông tin'}
+${tutorSummary.pricePerSession ? `- Học phí: ${tutorSummary.pricePerSession?.toLocaleString('vi-VN')} VNĐ/buổi` : ''}
+${tutorSummary.teachingMode ? `- Hình thức: ${tutorSummary.teachingMode}` : ''}
 
 THÔNG TIN BÀI ĐĂNG TÌM GIA SƯ:
 - Tiêu đề: ${studentPost.title}
 - Môn học cần: ${subjectNames}
 - Lớp: ${studentPost.grade_levels?.join(', ') || 'N/A'}
+- Học phí mong muốn: ${studentPost.hourly_rate?.min ? `${studentPost.hourly_rate.min?.toLocaleString('vi-VN')} - ${studentPost.hourly_rate.max?.toLocaleString('vi-VN')} VNĐ/giờ` : 'Thỏa thuận'}
+- Hình thức: ${studentPost.is_online ? 'Online' : 'Offline'}
 - Yêu cầu: ${studentPost.requirements || 'Không có yêu cầu đặc biệt'}
-- Chi tiết: ${studentPost.content || ''}
+- Chi tiết: ${studentPost.content || 'Không có mô tả chi tiết'}
+${matchInfo}
 
 ĐỘ PHÙ HỢP: ${(matchScore * 100).toFixed(0)}%
 
-Hãy viết một đoạn giải thích CHI TIẾT (tối đa 250 ký tự) về TẠI SAO bài đăng này phù hợp với bạn.
-YÊU CẦU:
-1. Nêu CỤ THỂ các điểm khớp: môn học nào, cấp độ nào, yêu cầu gì
-2. Nhấn mạnh điểm MẠNH của bạn phù hợp với yêu cầu (kinh nghiệm, chuyên môn, phương pháp)
-3. Nếu có thông tin về giá cả, hình thức học (online/offline), hãy đề cập nếu phù hợp
-4. Viết tự nhiên, dễ hiểu, không dùng từ ngữ chung chung như "phù hợp", "khớp" mà nêu CỤ THỂ
+NHIỆM VỤ:
+Viết 1 đoạn văn CHI TIẾT (150-200 từ) giải thích TẠI SAO bài đăng học viên này PHÙ HỢP với BẠN (gia sư).
 
-VÍ DỤ TỐT:
-- "Học viên cần gia sư Toán lớp 12 luyện thi đại học. Bạn có 5 năm kinh nghiệm dạy Toán THPT, chuyên luyện thi với phương pháp dễ hiểu, phù hợp với yêu cầu này."
-- "Bài đăng tìm gia sư Hóa học hữu cơ lớp 11, học online. Bạn đang dạy Hóa học và có kinh nghiệm dạy online, đúng với nhu cầu của học viên."
+QUY TẮC QUAN TRỌNG:
+1. BẮT ĐẦU BẰNG: "Học viên cần [môn học cụ thể] [cấp độ cụ thể]..."
+2. NÊU CỤ THỂ các điểm khớp theo thứ tự:
+   - Môn học: "Bạn đang dạy [môn] và [kinh nghiệm cụ thể]"
+   - Cấp độ: "Bạn có kinh nghiệm với [cấp độ], [thành tích/phương pháp]"
+   - Mức giá: "Học phí bạn đưa ra [so sánh với mong muốn của học viên]"
+   - Hình thức: "Bạn [có thể dạy online/offline], phù hợp với nhu cầu"
+3. NHẤN MẠNH điểm mạnh CỤ THỂ của bạn: số năm kinh nghiệm, phương pháp giảng dạy, thành tích học viên cũ
+4. KHÔNG DÙNG từ chung chung như "phù hợp", "khớp", "tốt" mà phải nêu SỰ THẬT CỤ THỂ
+5. KẾT THÚC với lý do TẠI SAO học viên nên chọn bạn
 
-VÍ DỤ KHÔNG TỐT (quá chung chung):
-- "Bài đăng này phù hợp với hồ sơ của bạn"
-- "Môn học và cấp độ khớp với khả năng dạy của bạn"
+VÍ DỤ XUẤT SẮC:
+"Học viên cần gia sư Toán lớp 12 luyện thi THPT Quốc gia với học phí 150,000-200,000 VNĐ/giờ. Bạn có 5 năm kinh nghiệm dạy Toán THPT, đã giúp 20+ học sinh đạt điểm 9-10 trong kỳ thi. Học phí bạn đưa ra là 180,000 VNĐ/giờ, nằm trong khoảng học viên mong muốn. Bạn dạy theo phương pháp tư duy logic, giải nhanh bài khó, và có tài liệu riêng cho từng chủ đề. Với kinh nghiệm chuyên luyện thi và tỷ lệ học sinh đỗ đại học cao, bạn sẽ giúp học viên đạt mục tiêu."
 
-Giải thích chi tiết (tối đa 250 ký tự):`;
+VÍ DỤ TỆ (KHÔNG LÀM):
+"Bài đăng này phù hợp với hồ sơ của bạn vì môn học và cấp độ khớp."
 
+HÃY VIẾT (150-200 từ):`;
+
+      logger.info('📤 [generateStudentMatchExplanation] Sending prompt to Gemini...');
       const result = await model.generateContent(prompt);
       const response = await result.response;
-      const explanation = response.text().trim();
+      let explanation = response.text().trim();
 
-      // Limit to 250 characters
-      return explanation.length > 250
-        ? explanation.substring(0, 247) + '...'
-        : explanation;
+      logger.info('📥 [generateStudentMatchExplanation] Received response from Gemini:', {
+        length: explanation.length,
+        preview: explanation.substring(0, 100),
+      });
+
+      // Remove markdown formatting if present
+      explanation = explanation.replace(/\*\*/g, '').replace(/\*/g, '');
+
+      // Limit to reasonable length (around 600 characters for Vietnamese)
+      if (explanation.length > 600) {
+        explanation = explanation.substring(0, 597) + '...';
+        logger.info('✂️ [generateStudentMatchExplanation] Trimmed explanation to 600 chars');
+      }
+
+      logger.info('✅ [generateStudentMatchExplanation] Final explanation ready');
+      return explanation;
 
     } catch (error: any) {
-      logger.error('❌ Gemini student match explanation error:', error);
-      return 'Bài đăng này phù hợp với hồ sơ và khả năng dạy của bạn.';
+      logger.error('❌ [generateStudentMatchExplanation] Gemini error:', error);
+      // Re-throw error so caller can handle fallback with detailed rule-based explanation
+      throw error;
     }
   }
 

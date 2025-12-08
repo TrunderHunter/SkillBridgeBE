@@ -441,12 +441,12 @@ export class PostService {
           ];
         }
 
-        // Lọc theo khoảng học phí (range overlap logic)
+        // Lọc theo khoảng học phí (post's range must be within filter range)
         if (min_hourly_rate !== undefined && !isNaN(min_hourly_rate)) {
-          query['hourly_rate.max'] = { $gte: Number(min_hourly_rate) };
+          query['hourly_rate.min'] = { $gte: Number(min_hourly_rate) };
         }
         if (max_hourly_rate !== undefined && !isNaN(max_hourly_rate)) {
-          query['hourly_rate.min'] = { $lte: Number(max_hourly_rate) };
+          query['hourly_rate.max'] = { $lte: Number(max_hourly_rate) };
         }
       }
 
@@ -1084,10 +1084,10 @@ export class PostService {
         ];
       }
       if ((filterOptions as any).min_hourly_rate !== undefined) {
-        baseQuery['hourly_rate.max'] = { $gte: Number((filterOptions as any).min_hourly_rate) };
+        baseQuery['hourly_rate.min'] = { $gte: Number((filterOptions as any).min_hourly_rate) };
       }
       if ((filterOptions as any).max_hourly_rate !== undefined) {
-        baseQuery['hourly_rate.min'] = { $lte: Number((filterOptions as any).max_hourly_rate) };
+        baseQuery['hourly_rate.max'] = { $lte: Number((filterOptions as any).max_hourly_rate) };
       }
 
       // 5) Fetch candidates
@@ -1124,10 +1124,10 @@ export class PostService {
           ];
         }
         if ((filterOptions as any).min_hourly_rate !== undefined) {
-          relaxedQuery['hourly_rate.max'] = { $gte: Number((filterOptions as any).min_hourly_rate) };
+          relaxedQuery['hourly_rate.min'] = { $gte: Number((filterOptions as any).min_hourly_rate) };
         }
         if ((filterOptions as any).max_hourly_rate !== undefined) {
-          relaxedQuery['hourly_rate.min'] = { $lte: Number((filterOptions as any).max_hourly_rate) };
+          relaxedQuery['hourly_rate.max'] = { $lte: Number((filterOptions as any).max_hourly_rate) };
         }
 
         // Note: intentionally NOT forcing subject/level from tutor post or price overlap here.
