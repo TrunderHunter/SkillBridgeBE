@@ -12,6 +12,7 @@ import { Certificate } from '../../models/Certificate';
 import { Achievement } from '../../models/Achievement';
 import { Subject } from '../../models/Subject';
 import { Province, District, Ward } from '../../models';
+import { createVietnameseSearchRegex } from '../../utils/vietnameseSearch';
 
 // Interface for tutor eligibility checking
 export interface ITutorEligibilityRequirement {
@@ -280,9 +281,9 @@ export class TutorPostService {
         filter['address.district'] = district;
       }
 
-      // Xử lý tìm kiếm bằng từ khóa (text search)
+      // Xử lý tìm kiếm bằng từ khóa (text search) - hỗ trợ tìm kiếm không dấu
       if (search && search.trim()) {
-        const searchRegex = new RegExp(search.trim(), 'i');
+        const searchRegex = createVietnameseSearchRegex(search.trim());
         // Tìm ID của các môn học và gia sư khớp với từ khóa
         const matchingSubjects = await Subject.find({ name: searchRegex })
           .select('_id')

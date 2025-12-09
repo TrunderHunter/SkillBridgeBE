@@ -12,6 +12,11 @@ import {
   isValidUuid,
   toObjectId,
 } from './uuidToObjectId';
+import {
+  removeVietnameseAccents,
+  createVietnameseSearchRegex,
+  matchesVietnameseSearch,
+} from './vietnameseSearch';
 
 export {
   logger,
@@ -24,4 +29,7 @@ export {
   generateUuid,
   isValidUuid,
   toObjectId,
+  removeVietnameseAccents,
+  createVietnameseSearchRegex,
+  matchesVietnameseSearch,
 };

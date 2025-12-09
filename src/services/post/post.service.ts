@@ -16,6 +16,7 @@ import { mapTutorPostToResponse } from '../../utils/mappers/tutorPost.mapper';
 import { v4 as uuidv4, validate as validateUUID } from 'uuid';
 import { VerificationRequest } from '../../models/VerificationRequest';
 import { logger } from '../../utils/logger';
+import { createVietnameseSearchRegex, matchesVietnameseSearch } from '../../utils/vietnameseSearch';
 
 export interface ITutorSearchQuery {
   // Core filters
@@ -925,20 +926,19 @@ export class PostService {
         });
       }
 
+      // Text search with Vietnamese accent support (tìm kiếm không dấu)
       if (searchQuery.search && searchQuery.search.trim()) {
-        const searchTerm = searchQuery.search.trim().toLowerCase();
+        const searchTerm = searchQuery.search.trim();
         filteredTutors = filteredTutors.filter(
           (tutor) =>
-            tutor.title?.toLowerCase().includes(searchTerm) ||
-            tutor.description?.toLowerCase().includes(searchTerm) ||
+            matchesVietnameseSearch(tutor.title || '', searchTerm) ||
+            matchesVietnameseSearch(tutor.description || '', searchTerm) ||
             (typeof tutor.tutorId === 'object' &&
               tutor.tutorId &&
               'full_name' in tutor.tutorId &&
-              (tutor.tutorId as any).full_name
-                ?.toLowerCase()
-                .includes(searchTerm)) ||
+              matchesVietnameseSearch((tutor.tutorId as any).full_name || '', searchTerm)) ||
             tutor.subjects?.some((subject: any) =>
-              subject.name?.toLowerCase().includes(searchTerm)
+              matchesVietnameseSearch(subject.name || '', searchTerm)
             )
         );
       }
@@ -1271,12 +1271,12 @@ export class PostService {
         }
       }
 
-      // Text search
+      // Text search with Vietnamese accent support (tìm kiếm không dấu)
       if (searchQuery.search && searchQuery.search.trim()) {
-        const searchTerm = searchQuery.search.trim();
+        const searchRegex = createVietnameseSearchRegex(searchQuery.search.trim());
         baseFilter.$or = [
-          { title: { $regex: searchTerm, $options: 'i' } },
-          { description: { $regex: searchTerm, $options: 'i' } },
+          { title: searchRegex },
+          { description: searchRegex },
         ];
       }
 
