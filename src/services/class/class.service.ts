@@ -279,8 +279,12 @@ class ClassService {
       // Extract tutorId - prefer populated, fallback to raw
       let tutorId: string | null = null;
       if (learningClass.tutorId) {
-        if (typeof learningClass.tutorId === 'object' && learningClass.tutorId !== null) {
-          tutorId = (learningClass.tutorId as any)._id?.toString() ||
+        if (
+          typeof learningClass.tutorId === 'object' &&
+          learningClass.tutorId !== null
+        ) {
+          tutorId =
+            (learningClass.tutorId as any)._id?.toString() ||
             (learningClass.tutorId as any).id?.toString() ||
             null;
         } else {
@@ -296,8 +300,12 @@ class ClassService {
       // Extract studentId - prefer populated, fallback to raw
       let studentId: string | null = null;
       if (learningClass.studentId) {
-        if (typeof learningClass.studentId === 'object' && learningClass.studentId !== null) {
-          studentId = (learningClass.studentId as any)._id?.toString() ||
+        if (
+          typeof learningClass.studentId === 'object' &&
+          learningClass.studentId !== null
+        ) {
+          studentId =
+            (learningClass.studentId as any)._id?.toString() ||
             (learningClass.studentId as any).id?.toString() ||
             null;
         } else {
@@ -489,8 +497,10 @@ class ClassService {
 
       // Update tutor rating summary for search ranking
       const tutorId =
-        typeof learningClass.tutorId === 'object' && learningClass.tutorId !== null
-          ? (learningClass.tutorId as any)._id?.toString() || String(learningClass.tutorId)
+        typeof learningClass.tutorId === 'object' &&
+        learningClass.tutorId !== null
+          ? (learningClass.tutorId as any)._id?.toString() ||
+            String(learningClass.tutorId)
           : String(learningClass.tutorId);
 
       await this.updateTutorRatingSummary(tutorId, rating, previousRating);
@@ -577,8 +587,12 @@ class ClassService {
       // Extract tutorId - prefer populated, fallback to raw
       let tutorId: string | null = null;
       if (learningClass.tutorId) {
-        if (typeof learningClass.tutorId === 'object' && learningClass.tutorId !== null) {
-          tutorId = (learningClass.tutorId as any)._id?.toString() ||
+        if (
+          typeof learningClass.tutorId === 'object' &&
+          learningClass.tutorId !== null
+        ) {
+          tutorId =
+            (learningClass.tutorId as any)._id?.toString() ||
             (learningClass.tutorId as any).id?.toString() ||
             null;
         } else {
@@ -594,8 +608,12 @@ class ClassService {
       // Extract studentId - prefer populated, fallback to raw
       let studentId: string | null = null;
       if (learningClass.studentId) {
-        if (typeof learningClass.studentId === 'object' && learningClass.studentId !== null) {
-          studentId = (learningClass.studentId as any)._id?.toString() ||
+        if (
+          typeof learningClass.studentId === 'object' &&
+          learningClass.studentId !== null
+        ) {
+          studentId =
+            (learningClass.studentId as any)._id?.toString() ||
             (learningClass.studentId as any).id?.toString() ||
             null;
         } else {
@@ -629,20 +647,25 @@ class ClassService {
           isUpcoming: new Date(plainSession.scheduledDate) > new Date(),
           isPast: new Date(plainSession.scheduledDate) < new Date(),
           canEdit: tutorId === userId,
+          // Payment information
+          paymentStatus: plainSession.paymentStatus || 'UNPAID',
+          paymentRequired: plainSession.paymentRequired !== false, // Default true if not specified
         };
       });
 
       const tutorName =
-        typeof learningClass.tutorId === 'object' && learningClass.tutorId !== null
+        typeof learningClass.tutorId === 'object' &&
+        learningClass.tutorId !== null
           ? (learningClass.tutorId as any).full_name ||
-          (learningClass.tutorId as any).email ||
-          'Gia sư'
+            (learningClass.tutorId as any).email ||
+            'Gia sư'
           : 'Gia sư';
       const studentName =
-        typeof learningClass.studentId === 'object' && learningClass.studentId !== null
+        typeof learningClass.studentId === 'object' &&
+        learningClass.studentId !== null
           ? (learningClass.studentId as any).full_name ||
-          (learningClass.studentId as any).email ||
-          'Học viên'
+            (learningClass.studentId as any).email ||
+            'Học viên'
           : 'Học viên';
 
       const persistentAssignments = (learningClass.assignments || []).map(
@@ -672,19 +695,19 @@ class ClassService {
           const grade = assignment.grade;
           const derivedSubmission = submission
             ? [
-              {
-                _id: `SESSION-${session.sessionNumber}-${assignmentEntityId || uuidv4()}`,
-                studentId,
-                studentName,
-                note: submission.notes,
-                fileUrl: submission.fileUrl,
-                fileName: undefined,
-                fileSize: undefined,
-                mimeType: undefined,
-                submittedAt: submission.submittedAt,
-                updatedAt: submission.submittedAt,
-              },
-            ]
+                {
+                  _id: `SESSION-${session.sessionNumber}-${assignmentEntityId || uuidv4()}`,
+                  studentId,
+                  studentName,
+                  note: submission.notes,
+                  fileUrl: submission.fileUrl,
+                  fileName: undefined,
+                  fileSize: undefined,
+                  mimeType: undefined,
+                  submittedAt: submission.submittedAt,
+                  updatedAt: submission.submittedAt,
+                },
+              ]
             : [];
 
           return {
@@ -693,8 +716,8 @@ class ClassService {
             instructions: assignment.description,
             attachment: assignment.fileUrl
               ? {
-                fileUrl: assignment.fileUrl,
-              }
+                  fileUrl: assignment.fileUrl,
+                }
               : undefined,
             dueDate: assignment.deadline,
             createdBy: {
@@ -1126,16 +1149,25 @@ class ClassService {
       if (submissionData.audioUrl && speechToTextService.isAvailable()) {
         try {
           logger.info('Starting audio transcription for submission...');
-          speakingTranscript = await speechToTextService.transcribeFromUrl(submissionData.audioUrl);
-          logger.info('Audio transcription completed:', speakingTranscript?.substring(0, 100));
+          speakingTranscript = await speechToTextService.transcribeFromUrl(
+            submissionData.audioUrl
+          );
+          logger.info(
+            'Audio transcription completed:',
+            speakingTranscript?.substring(0, 100)
+          );
         } catch (transcribeError: any) {
-          logger.warn('Audio transcription failed (non-blocking):', transcribeError.message);
+          logger.warn(
+            'Audio transcription failed (non-blocking):',
+            transcribeError.message
+          );
           // Don't block submission if transcription fails
         }
       }
 
       // Use transcript as textAnswer if no text provided but audio is transcribed
-      const finalTextAnswer = submissionData.textAnswer?.trim() || speakingTranscript;
+      const finalTextAnswer =
+        submissionData.textAnswer?.trim() || speakingTranscript;
 
       if (assignmentTarget.mode === 'array') {
         const assignment = assignmentTarget.assignment;
@@ -1355,7 +1387,8 @@ class ClassService {
                   submission && deadline
                     ? new Date(submission.submittedAt) > deadline
                     : false;
-                const isOverdue = !submission && deadline ? now > deadline : false;
+                const isOverdue =
+                  !submission && deadline ? now > deadline : false;
 
                 assignments.push({
                   id:
@@ -1376,7 +1409,8 @@ class ClassService {
                     id:
                       (learningClass as any).studentId?._id?.toString() ||
                       learningClass.studentId.toString(),
-                    name: (learningClass as any).studentId?.full_name || 'Học viên',
+                    name:
+                      (learningClass as any).studentId?.full_name || 'Học viên',
                     avatar: (learningClass as any).studentId?.avatar_url,
                   },
                   submission: submission || null,
@@ -1387,7 +1421,10 @@ class ClassService {
                   isLegacy: assignment.isLegacy || false,
                 });
               } catch (assignmentError: any) {
-                logger.error('Error processing assignment:', assignmentError.message);
+                logger.error(
+                  'Error processing assignment:',
+                  assignmentError.message
+                );
               }
             });
           } catch (sessionError: any) {
@@ -1624,8 +1661,8 @@ class ClassService {
               meetingLink: learningClass.onlineInfo?.meetingLink,
               location: learningClass.location
                 ? {
-                  details: (learningClass.location as any).address,
-                }
+                    details: (learningClass.location as any).address,
+                  }
                 : undefined,
               attendance: session.attendance || {
                 tutorAttended: false,
@@ -1633,6 +1670,9 @@ class ClassService {
               },
               homework: homeworkSummary,
               cancellationRequest: session.cancellationRequest || null,
+              // Payment information
+              paymentStatus: session.paymentStatus || 'UNPAID',
+              paymentRequired: session.paymentRequired !== false, // Default true if not specified
               canAttend,
               canJoin: bothAttended,
               tutor: learningClass.tutorId,
@@ -2061,7 +2101,8 @@ class ClassService {
       // Check if material exists and filter it out
       const initialCount = learningClass.materials?.length || 0;
       learningClass.materials = (learningClass.materials || []).filter(
-        (m: any) => m._id?.toString() !== materialId && m.id?.toString() !== materialId
+        (m: any) =>
+          m._id?.toString() !== materialId && m.id?.toString() !== materialId
       );
 
       if (learningClass.materials.length === initialCount) {
@@ -2538,7 +2579,9 @@ class ClassService {
         const missingMeetingLink = !finalOnlineInfo?.meetingLink;
         if (missingMeetingLink) {
           try {
-            const { provisionOnlineMeeting } = await import('../meeting/meeting.service');
+            const { provisionOnlineMeeting } = await import(
+              '../meeting/meeting.service'
+            );
             const provisioned = await provisionOnlineMeeting(
               finalOnlineInfo?.platform || 'OTHER',
               {
@@ -2561,8 +2604,9 @@ class ClassService {
           if (!finalOnlineInfo || !finalOnlineInfo.meetingLink) {
             finalOnlineInfo = {
               platform: 'OTHER',
-              meetingLink: `https://8x8.vc/${process.env.JITSI_TENANT || 'skillbridge'
-                }/skillbridge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              meetingLink: `https://8x8.vc/${
+                process.env.JITSI_TENANT || 'skillbridge'
+              }/skillbridge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             } as any;
           }
         }
