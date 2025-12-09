@@ -10,14 +10,21 @@ import routes from './routes/index';
 
 const app = express();
 
-// Security middlewares
-app.use(helmet());
+// CORS must be before helmet to ensure CORS headers are set first
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
     credentials: true, // Allow cookies
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
   })
 );
+
+// Security middlewares
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 
 // Cookie parser
 app.use(cookieParser());

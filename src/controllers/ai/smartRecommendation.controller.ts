@@ -147,6 +147,172 @@ export class SmartRecommendationController {
   }
 
   /**
+   * Generate AI explanation for a specific student-tutor post match (ON-DEMAND) - FOR TUTOR
+   * GET /api/v1/ai/tutor-posts/:tutorPostId/student-posts/:studentPostId/explanation
+   * 
+   * This is the recommended way to get match explanations for tutors.
+   * Only generate when tutor actually clicks on a student post (not for all results).
+   * 
+   * Cost: ~25 VNĐ per call
+   * Savings: 90% compared to auto-generating for all recommendations
+   */
+  static async getOnDemandStudentExplanation(req: Request, res: Response): Promise<void> {
+    try {
+      const { tutorPostId, studentPostId } = req.params;
+      const userId = req.user!.id;
+
+      logger.info(`🔍 On-demand student explanation request: tutorPost=${tutorPostId}, studentPost=${studentPostId}`);
+
+      // Verify tutor post belongs to user
+      const { TutorPost } = await import('../../models/TutorPost');
+      const tutorPost = await TutorPost.findById(tutorPostId)
+        .populate('subjects', 'name')
+        .lean();
+      
+      if (!tutorPost) {
+        return sendError(res, 'Không tìm thấy bài đăng gia sư', undefined, 404);
+      }
+
+      if (tutorPost.tutorId.toString() !== userId) {
+        return sendError(res, 'Không có quyền truy cập bài đăng này', undefined, 403);
+      }
+
+      // Get tutor profile for additional context
+      const { TutorProfile } = await import('../../models/TutorProfile');
+      const tutorProfile = await TutorProfile.findOne({ user_id: userId }).lean();
+
+      // Get student post
+      const { Post } = await import('../../models/Post');
+      const studentPost = await Post.findById(studentPostId)
+        .populate('subjects', 'name')
+        .lean();
+
+      if (!studentPost) {
+        return sendError(res, 'Không tìm thấy bài đăng học viên', undefined, 404);
+      }
+
+      // Build tutor summary with full context
+      const tutorSummary = {
+        headline: tutorProfile?.headline || tutorPost.title || '',
+        introduction: tutorProfile?.introduction || tutorPost.description || '',
+        teaching_experience: tutorProfile?.teaching_experience || '',
+        subjects: tutorPost.subjects || [],
+        pricePerSession: tutorPost.pricePerSession,
+        teachingMode: tutorPost.teachingMode,
+        studentLevel: tutorPost.studentLevel || [],
+      };
+
+      // Build student post data with full details
+      const studentPostData = {
+        title: studentPost.title,
+        content: studentPost.content || '',
+        subjects: studentPost.subjects || [],
+        grade_levels: studentPost.grade_levels || [],
+        requirements: studentPost.requirements || '',
+        hourly_rate: studentPost.hourly_rate,
+        is_online: studentPost.is_online,
+      };
+
+      // Calculate match details
+      const matchDetails = {
+        subjectMatch: tutorPost.subjects?.some((ts: any) =>
+          studentPost.subjects?.some((ss: any) =>
+            (typeof ts === 'object' ? ts.name : ts) === (typeof ss === 'object' ? ss.name : ss)
+          )
+        ) ? 100 : 0,
+        levelMatch: tutorPost.studentLevel?.some((level: string) =>
+          studentPost.grade_levels?.includes(level)
+        ) ? 100 : 0,
+        priceMatch:
+          studentPost.hourly_rate &&
+          tutorPost.pricePerSession &&
+          tutorPost.pricePerSession >= (studentPost.hourly_rate.min || 0) &&
+          tutorPost.pricePerSession <= (studentPost.hourly_rate.max || Number.MAX_SAFE_INTEGER)
+            ? 100
+            : 0,
+        modeMatch:
+          tutorPost.teachingMode === 'BOTH' ||
+          (studentPost.is_online && tutorPost.teachingMode === 'ONLINE') ||
+          (!studentPost.is_online && tutorPost.teachingMode === 'OFFLINE')
+            ? 100
+            : 30,
+      };
+
+      // Calculate overall match score
+      const matchScore = (matchDetails.subjectMatch * 0.4 + matchDetails.levelMatch * 0.25 + 
+                         matchDetails.priceMatch * 0.2 + matchDetails.modeMatch * 0.15) / 100;
+
+      // Try AI explanation first, fallback to rule-based if quota exceeded
+      let explanation: string;
+      let usedAI = false;
+
+      try {
+        const { geminiService } = await import('../../services/ai/gemini.service');
+        
+        // DEBUG: Check Gemini availability
+        logger.info('🔍 [DEBUG] Checking Gemini service...');
+        logger.info(`🔍 [DEBUG] GEMINI_API_KEY exists: ${!!process.env.GEMINI_API_KEY}`);
+        logger.info(`🔍 [DEBUG] GEMINI_API_KEY length: ${process.env.GEMINI_API_KEY?.length || 0}`);
+        logger.info(`🔍 [DEBUG] geminiService.isAvailable(): ${geminiService.isAvailable()}`);
+        
+        logger.info('🤖 [getOnDemandStudentExplanation] Calling geminiService.generateStudentMatchExplanation');
+        logger.info('🔍 [DEBUG] tutorSummary:', JSON.stringify(tutorSummary, null, 2));
+        logger.info('🔍 [DEBUG] studentPostData:', JSON.stringify(studentPostData, null, 2));
+        logger.info('🔍 [DEBUG] matchScore:', matchScore);
+        logger.info('🔍 [DEBUG] matchDetails:', JSON.stringify(matchDetails, null, 2));
+        
+        explanation = await geminiService.generateStudentMatchExplanation(
+          tutorSummary,
+          studentPostData,
+          matchScore,
+          matchDetails
+        );
+
+        usedAI = true;
+        logger.info(`✅ [getOnDemandStudentExplanation] AI explanation generated (cost: ~25 VNĐ):`, {
+          explanationLength: explanation.length,
+          preview: explanation.substring(0, 100),
+        });
+      } catch (aiError: any) {
+        // AI failed (quota/429/etc) - fallback to rule-based
+        logger.error('❌ [DEBUG] AI explanation FAILED with error:', {
+          name: aiError.name,
+          message: aiError.message,
+          stack: aiError.stack?.substring(0, 500),
+        });
+        
+        const { smartRecommendationService } = await import('../../services/ai/smartRecommendation.service');
+        explanation = smartRecommendationService.generateDetailedStudentExplanation(
+          studentPostData,
+          tutorPost,
+          matchDetails,
+          matchScore
+        );
+
+        logger.info(`✅ [getOnDemandStudentExplanation] Rule-based explanation generated (free)`);
+      }
+
+      sendSuccess(res, usedAI ? 'Tạo giải thích AI thành công' : 'Tạo giải thích thành công', {
+        tutorPostId,
+        studentPostId,
+        explanation,
+        matchScore: Math.round(matchScore * 100),
+        usedAI,
+        generatedAt: new Date(),
+      });
+
+    } catch (error: any) {
+      logger.error('❌ On-demand student explanation error:', error);
+      sendError(
+        res,
+        error.message || 'Không thể tạo giải thích',
+        undefined,
+        500
+      );
+    }
+  }
+
+  /**
    * Trigger vectorization for a tutor profile
    * POST /api/v1/tutors/profile/vectorize
    */

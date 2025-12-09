@@ -75,6 +75,24 @@ router.get(
   SmartRecommendationController.getOnDemandExplanation
 );
 
+/**
+ * GET /api/v1/ai/tutor-posts/:tutorPostId/student-posts/:studentPostId/explanation
+ * Get AI-generated explanation for a specific student-tutor post match (ON-DEMAND) - FOR TUTOR
+ * 
+ * This endpoint should be called by frontend ONLY when tutor clicks on a student post.
+ * Avoids generating explanations for all results upfront.
+ * 
+ * Cost saving: 90% per search
+ * 
+ * Requires: Tutor authentication
+ */
+router.get(
+  '/tutor-posts/:tutorPostId/student-posts/:studentPostId/explanation',
+  authenticateToken,
+  requireRole(UserRole.TUTOR),
+  SmartRecommendationController.getOnDemandStudentExplanation
+);
+
 // ==================== TUTOR SMART STUDENT RECOMMENDATIONS ====================
 
 /**

@@ -9,17 +9,22 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 class GeminiService {
   private genAI: GoogleGenerativeAI | null = null;
   private embeddingModel: string = 'text-embedding-004';
-  private textModel: string = 'gemini-2.0-flash';
+  private textModel: string = 'gemini-2.5-flash';
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
+    
+    logger.info(`🔍 [GeminiService] Constructor called`);
+    logger.info(`🔍 [GeminiService] API Key exists: ${!!apiKey}`);
+    logger.info(`🔍 [GeminiService] API Key length: ${apiKey?.length || 0}`);
     
     if (!apiKey) {
       logger.warn('⚠️ GEMINI_API_KEY not found. AI features will be disabled.');
       // Don't throw error, just disable AI features
     } else {
       this.genAI = new GoogleGenerativeAI(apiKey);
-      logger.info('✅ Gemini AI Service initialized');
+      logger.info('✅ Gemini AI Service initialized with genAI instance');
+      logger.info(`🔍 [GeminiService] genAI created: ${!!this.genAI}`);
     }
   }
 
@@ -27,7 +32,9 @@ class GeminiService {
    * Check if Gemini service is available
    */
   isAvailable(): boolean {
-    return !!process.env.GEMINI_API_KEY;
+    const available = !!process.env.GEMINI_API_KEY && !!this.genAI;
+    logger.info(`🔍 [GeminiService] isAvailable() called, result: ${available}`);
+    return available;
   }
 
   /**
@@ -102,7 +109,7 @@ class GeminiService {
     matchScore: number
   ): Promise<string> {
     if (!this.isAvailable() || !this.genAI) {
-      return 'Gia sư phù hợp với yêu cầu của bạn.';
+      throw new Error('Gemini AI not available - API key not configured');
     }
 
     try {
@@ -173,8 +180,8 @@ Giải thích (tối đa 150 ký tự):`;
     });
 
     if (!this.isAvailable() || !this.genAI) {
-      logger.warn('⚠️ [generateStudentMatchExplanation] Gemini not available, using fallback');
-      return 'Bài đăng này phù hợp với hồ sơ và khả năng dạy của bạn.';
+      logger.warn('⚠️ [generateStudentMatchExplanation] Gemini not available');
+      throw new Error('Gemini AI not available - API key not configured');
     }
 
     try {
