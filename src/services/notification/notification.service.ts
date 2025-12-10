@@ -22,7 +22,10 @@ export interface NotificationData {
     | 'CONTRACT_APPROVED'
     | 'CONTRACT_REJECTED'
     | 'CONTRACT_EXPIRED'
-    | 'CONTRACT_CANCELLED';
+    | 'CONTRACT_CANCELLED'
+    | 'SESSION_REPORT_CREATED'
+    | 'SESSION_REPORT_UNDER_REVIEW'
+    | 'SESSION_REPORT_RESOLVED';
   title: string;
   message: string;
   data?: any;
