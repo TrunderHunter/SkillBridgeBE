@@ -8,11 +8,11 @@ import {
   CreateContactRequestInput,
   TutorResponseInput,
   CreateLearningClassInput,
-  ContactRequestFilters
+  ContactRequestFilters,
 } from '../../types/contactRequest.types';
 import {
   notifyContactRequestSent,
-  notifyContactRequestResponded
+  notifyContactRequestResponded,
 } from '../notification/notification.helpers';
 import { mapContactRequestToResponse } from '../../utils/mappers/contactRequest.mapper';
 import { Post } from '../../models/Post';
@@ -29,7 +29,7 @@ class ContactRequestService {
       // Validate tutor post exists and is active
       const tutorPost = await TutorPost.findOne({
         _id: requestData.tutorPostId,
-        status: 'ACTIVE'
+        status: 'ACTIVE',
       }).populate('tutorId');
 
       if (!tutorPost) {
@@ -37,9 +37,13 @@ class ContactRequestService {
       }
 
       // Get tutorId - handle both populated and non-populated cases
-      const tutorId = typeof tutorPost.tutorId === 'object' && tutorPost.tutorId !== null && '_id' in tutorPost.tutorId
-        ? (tutorPost.tutorId as any)._id.toString()
-        : tutorPost.tutorId.toString();
+      const tutorId =
+        typeof tutorPost.tutorId === 'object' &&
+        tutorPost.tutorId !== null &&
+        tutorPost.tutorId &&
+        '_id' in tutorPost.tutorId
+          ? (tutorPost.tutorId as any)._id.toString()
+          : tutorPost.tutorId?.toString() || '';
 
       // Prevent student from contacting themselves
       if (tutorId === studentId) {
@@ -55,7 +59,7 @@ class ContactRequestService {
       const existingRequest = await ContactRequest.findOne({
         studentId,
         tutorPostId: requestData.tutorPostId,
-        status: 'PENDING'
+        status: 'PENDING',
       });
 
       if (existingRequest) {
@@ -83,7 +87,8 @@ class ContactRequestService {
         studentContact: {
           phone: requestData.studentContact.phone || student.phone_number,
           email: requestData.studentContact.email || student.email,
-          preferredContactMethod: requestData.studentContact.preferredContactMethod,
+          preferredContactMethod:
+            requestData.studentContact.preferredContactMethod,
         },
       });
 
@@ -105,7 +110,7 @@ class ContactRequestService {
       return {
         success: true,
         message: 'Gửi yêu cầu liên hệ thành công',
-        data: contactRequest
+        data: contactRequest,
       };
     } catch (error: any) {
       logger.error('Create contact request error:', error);
@@ -134,11 +139,13 @@ class ContactRequestService {
       const tutorPost = await TutorPost.findOne({
         _id: requestData.tutorPostId,
         tutorId,
-        status: 'ACTIVE'
+        status: 'ACTIVE',
       }).populate('subjects');
 
       if (!tutorPost) {
-        throw new Error('Bài đăng gia sư không hợp lệ hoặc không thuộc sở hữu của bạn');
+        throw new Error(
+          'Bài đăng gia sư không hợp lệ hoặc không thuộc sở hữu của bạn'
+        );
       }
 
       // Validate student post
@@ -149,7 +156,8 @@ class ContactRequestService {
 
       // Prevent contacting self (in case roles overlap in system)
       const studentId =
-        typeof studentPost.author_id === 'object' && (studentPost as any).author_id._id
+        typeof studentPost.author_id === 'object' &&
+        (studentPost as any).author_id._id
           ? (studentPost as any).author_id._id.toString()
           : studentPost.author_id.toString();
       if (studentId === tutorId) {
@@ -161,7 +169,9 @@ class ContactRequestService {
         typeof s === 'object' && s._id ? s._id.toString() : s.toString()
       );
       if (!subjectIds.includes(requestData.subject)) {
-        throw new Error('Môn học không có trong danh sách dạy của bài đăng gia sư');
+        throw new Error(
+          'Môn học không có trong danh sách dạy của bài đăng gia sư'
+        );
       }
 
       // Check existing pending request between tutor and this student for the same tutorPost
@@ -169,7 +179,7 @@ class ContactRequestService {
         studentId,
         tutorId,
         tutorPostId: requestData.tutorPostId,
-        status: 'PENDING'
+        status: 'PENDING',
       });
       if (existing) {
         throw new Error('Bạn đã gửi yêu cầu và đang chờ phản hồi từ học viên');
@@ -188,7 +198,8 @@ class ContactRequestService {
         message: requestData.message,
         preferredSchedule: requestData.preferredSchedule,
         expectedPrice: requestData.expectedPrice ?? tutorPost.pricePerSession,
-        sessionDuration: requestData.sessionDuration || tutorPost.sessionDuration || 60,
+        sessionDuration:
+          requestData.sessionDuration || tutorPost.sessionDuration || 60,
         learningMode: requestData.learningMode,
         studentContact: {
           phone: (studentUser as any)?.phone_number,
@@ -203,7 +214,9 @@ class ContactRequestService {
       try {
         const tutor = await User.findById(tutorId);
         const tutorName = tutor?.full_name || tutor?.email || 'Gia sư';
-        const { notifyTeachRequestSent } = await import('../notification/notification.helpers');
+        const { notifyTeachRequestSent } = await import(
+          '../notification/notification.helpers'
+        );
         await notifyTeachRequestSent(studentId, tutorName, contactRequest._id);
       } catch (notifErr) {
         logger.error('Failed to send teach request notification:', notifErr);
@@ -218,7 +231,9 @@ class ContactRequestService {
       return {
         success: true,
         message: 'Đã gửi đề nghị dạy tới học viên',
-        data: populated ? mapContactRequestToResponse(populated) : contactRequest,
+        data: populated
+          ? mapContactRequestToResponse(populated)
+          : contactRequest,
       };
     } catch (error: any) {
       logger.error('Create request from tutor error:', error);
@@ -239,7 +254,7 @@ class ContactRequestService {
         dateFrom,
         dateTo,
         page = 1,
-        limit = 10
+        limit = 10,
       } = filters;
 
       const query: any = { studentId };
@@ -262,15 +277,18 @@ class ContactRequestService {
           .populate({
             path: 'tutorPostId',
             select:
-              'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
+              'title description pricePerSession sessionDuration teachingMode teachingSchedule address',
           })
-          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online availability location')
+          .populate(
+            'studentPostId',
+            'title content subjects grade_levels hourly_rate is_online availability location'
+          )
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit)
           .lean(),
-        ContactRequest.countDocuments(query)
+        ContactRequest.countDocuments(query),
       ]);
       const learningClassMap = await this.buildLearningClassMap(requests);
 
@@ -291,9 +309,9 @@ class ContactRequestService {
           pagination: {
             current: page,
             total: Math.ceil(total / limit),
-            count: total
-          }
-        }
+            count: total,
+          },
+        },
       };
     } catch (error: any) {
       logger.error('Get student requests error:', error);
@@ -313,7 +331,7 @@ class ContactRequestService {
         dateFrom,
         dateTo,
         page = 1,
-        limit = 10
+        limit = 10,
       } = filters;
 
       const query: any = { tutorId };
@@ -335,15 +353,19 @@ class ContactRequestService {
           .populate('tutorId', 'full_name avatar_url email phone_number')
           .populate({
             path: 'tutorPostId',
-            select: 'title description pricePerSession sessionDuration teachingMode teachingSchedule address'
+            select:
+              'title description pricePerSession sessionDuration teachingMode teachingSchedule address',
           })
-          .populate('studentPostId', 'title content subjects grade_levels hourly_rate is_online availability location')
+          .populate(
+            'studentPostId',
+            'title content subjects grade_levels hourly_rate is_online availability location'
+          )
           .populate('subject', 'name')
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit)
           .lean(),
-        ContactRequest.countDocuments(query)
+        ContactRequest.countDocuments(query),
       ]);
       const learningClassMap = await this.buildLearningClassMap(requests);
 
@@ -364,9 +386,9 @@ class ContactRequestService {
           pagination: {
             current: page,
             total: Math.ceil(total / limit),
-            count: total
-          }
-        }
+            count: total,
+          },
+        },
       };
     } catch (error: any) {
       logger.error('Get tutor requests error:', error);
@@ -386,7 +408,7 @@ class ContactRequestService {
       const contactRequest = await ContactRequest.findOne({
         _id: requestId,
         studentId,
-        status: 'PENDING'
+        status: 'PENDING',
       });
 
       if (!contactRequest) {
@@ -418,7 +440,9 @@ class ContactRequestService {
       try {
         const student = await User.findById(studentId);
         const studentName = student?.full_name || student?.email || 'Học viên';
-        const { notifyTeachRequestResponded } = await import('../notification/notification.helpers');
+        const { notifyTeachRequestResponded } = await import(
+          '../notification/notification.helpers'
+        );
         await notifyTeachRequestResponded(
           contactRequest.tutorId.toString(),
           studentName,
@@ -426,17 +450,25 @@ class ContactRequestService {
           contactRequest._id
         );
       } catch (notifErr) {
-        logger.error('Failed to notify tutor about student response:', notifErr);
+        logger.error(
+          'Failed to notify tutor about student response:',
+          notifErr
+        );
       }
 
       const populatedRequest = await ContactRequest.findById(contactRequest._id)
         .populate('studentId', 'full_name avatar_url email phone_number')
         .populate('tutorId', 'full_name avatar_url email phone_number')
-        .populate('tutorPostId', 'title description pricePerSession sessionDuration')
+        .populate(
+          'tutorPostId',
+          'title description pricePerSession sessionDuration'
+        )
         .populate('subject', 'name')
         .lean();
 
-      const transformed = populatedRequest ? mapContactRequestToResponse(populatedRequest) : null;
+      const transformed = populatedRequest
+        ? mapContactRequestToResponse(populatedRequest)
+        : null;
 
       return {
         success: true,
@@ -464,7 +496,7 @@ class ContactRequestService {
       const contactRequest = await ContactRequest.findOne({
         _id: requestId,
         tutorId,
-        status: 'PENDING'
+        status: 'PENDING',
       });
 
       if (!contactRequest) {
@@ -516,17 +548,24 @@ class ContactRequestService {
       const populatedRequest = await ContactRequest.findById(contactRequest._id)
         .populate('studentId', 'full_name avatar_url email phone_number')
         .populate('tutorId', 'full_name avatar_url email phone_number')
-        .populate('tutorPostId', 'title description pricePerSession sessionDuration')
+        .populate(
+          'tutorPostId',
+          'title description pricePerSession sessionDuration'
+        )
         .populate('subject', 'name')
         .lean();
 
-      const transformedRequest = populatedRequest ? mapContactRequestToResponse(populatedRequest) : null;
+      const transformedRequest = populatedRequest
+        ? mapContactRequestToResponse(populatedRequest)
+        : null;
 
       return {
         success: true,
-        message: responseData.action === 'ACCEPT' ?
-          'Chấp nhận yêu cầu thành công' : 'Từ chối yêu cầu thành công',
-        data: transformedRequest
+        message:
+          responseData.action === 'ACCEPT'
+            ? 'Chấp nhận yêu cầu thành công'
+            : 'Từ chối yêu cầu thành công',
+        data: transformedRequest,
       };
     } catch (error: any) {
       logger.error('Respond to request error:', error);
@@ -546,7 +585,7 @@ class ContactRequestService {
       const contactRequest = await ContactRequest.findOne({
         _id: classData.contactRequestId,
         tutorId,
-        status: 'ACCEPTED'
+        status: 'ACCEPTED',
       }).populate('tutorPostId');
 
       if (!contactRequest) {
@@ -560,7 +599,9 @@ class ContactRequestService {
       });
 
       if (existingClass) {
-        throw new Error('Đã tồn tại lớp học đang hoạt động hoặc đã hoàn thành cho yêu cầu này');
+        throw new Error(
+          'Đã tồn tại lớp học đang hoạt động hoặc đã hoàn thành cho yêu cầu này'
+        );
       }
 
       // ✅ KIỂM TRA TRÙNG LỊCH HỌC
@@ -580,29 +621,40 @@ class ContactRequestService {
       const sessionsPerWeek = classData.schedule.dayOfWeek.length;
       const totalWeeks = Math.ceil(classData.totalSessions / sessionsPerWeek);
       const expectedEndDate = new Date(startDate);
-      expectedEndDate.setDate(expectedEndDate.getDate() + (totalWeeks * 7));
+      expectedEndDate.setDate(expectedEndDate.getDate() + totalWeeks * 7);
 
       // Auto-provision online meeting if needed
-      const determinedLearningMode = contactRequest.learningMode === 'FLEXIBLE'
-        ? (classData.location ? 'OFFLINE' : 'ONLINE')
-        : contactRequest.learningMode;
+      const determinedLearningMode =
+        contactRequest.learningMode === 'FLEXIBLE'
+          ? classData.location
+            ? 'OFFLINE'
+            : 'ONLINE'
+          : contactRequest.learningMode;
 
       let finalOnlineInfo = classData.onlineInfo;
       if (determinedLearningMode === 'ONLINE') {
         const missingMeetingLink = !finalOnlineInfo?.meetingLink;
         if (missingMeetingLink) {
           try {
-            const { provisionOnlineMeeting } = await import('../meeting/meeting.service');
-            const provisioned = await provisionOnlineMeeting(finalOnlineInfo?.platform || 'OTHER', {
-              title: classData.title,
-              startDate,
-              schedule: classData.schedule,
-            });
+            const { provisionOnlineMeeting } = await import(
+              '../meeting/meeting.service'
+            );
+            const provisioned = await provisionOnlineMeeting(
+              finalOnlineInfo?.platform || 'OTHER',
+              {
+                title: classData.title,
+                startDate,
+                schedule: classData.schedule,
+              }
+            );
             if (provisioned) {
               finalOnlineInfo = provisioned;
             }
           } catch (provisionErr) {
-            logger.warn('Online meeting provisioning failed. Proceeding without auto meeting.', provisionErr);
+            logger.warn(
+              'Online meeting provisioning failed. Proceeding without auto meeting.',
+              provisionErr
+            );
           }
           // Fallback: ensure a shared online room link even if provisioning fails
           if (!finalOnlineInfo || !finalOnlineInfo.meetingLink) {
@@ -649,10 +701,10 @@ class ContactRequestService {
       // Create conversation for chat communication
       try {
         const { Conversation } = await import('../../models/Conversation');
-        const existingConversation = await Conversation.findOne({ 
-          contactRequestId: classData.contactRequestId 
+        const existingConversation = await Conversation.findOne({
+          contactRequestId: classData.contactRequestId,
         });
-        
+
         if (!existingConversation) {
           const conversation = new Conversation({
             contactRequestId: classData.contactRequestId,
@@ -674,7 +726,9 @@ class ContactRequestService {
       try {
         const tutor = await User.findById(tutorId);
         const tutorName = tutor?.full_name || tutor?.email || 'Gia sư';
-        const { notifyClassCreated } = await import('../notification/notification.helpers');
+        const { notifyClassCreated } = await import(
+          '../notification/notification.helpers'
+        );
         await notifyClassCreated(
           contactRequest.studentId.toString(),
           tutorName,
@@ -689,7 +743,7 @@ class ContactRequestService {
       return {
         success: true,
         message: 'Tạo lớp học thành công',
-        data: learningClass
+        data: learningClass,
       };
     } catch (error: any) {
       logger.error('Create learning class error:', error);
@@ -710,7 +764,9 @@ class ContactRequestService {
       let currentDate = new Date(learningClass.startDate);
 
       // Parse startTime from schedule (format: "HH:mm")
-      const [startHour, startMinute] = learningClass.schedule.startTime.split(':').map(Number);
+      const [startHour, startMinute] = learningClass.schedule.startTime
+        .split(':')
+        .map(Number);
 
       while (sessionNumber <= learningClass.totalSessions) {
         const dayOfWeek = currentDate.getDay();
@@ -740,7 +796,7 @@ class ContactRequestService {
         currentDate.setDate(currentDate.getDate() + 1);
 
         // Safety check to prevent infinite loop
-        if (currentDate.getTime() > Date.now() + (365 * 24 * 60 * 60 * 1000)) {
+        if (currentDate.getTime() > Date.now() + 365 * 24 * 60 * 60 * 1000) {
           break;
         }
       }
@@ -759,7 +815,11 @@ class ContactRequestService {
     const requestIds = (requests || [])
       .map((req) => {
         if (!req) return null;
-        if (typeof req._id === 'object' && req._id !== null && req._id.toString) {
+        if (
+          typeof req._id === 'object' &&
+          req._id !== null &&
+          req._id.toString
+        ) {
           return req._id.toString();
         }
         if (typeof req._id === 'string') return req._id;
@@ -776,13 +836,17 @@ class ContactRequestService {
       contactRequestId: { $in: requestIds },
       status: { $ne: 'CANCELLED' },
     })
-      .select('_id contactRequestId title status schedule startDate totalSessions learningMode')
+      .select(
+        '_id contactRequestId title status schedule startDate totalSessions learningMode'
+      )
       .lean();
 
     return (learningClasses || []).reduce<Record<string, any>>((acc, cls) => {
       const contactRequestId = (cls as any)?.contactRequestId;
       const key =
-        (typeof contactRequestId === 'object' && contactRequestId !== null && contactRequestId.toString)
+        typeof contactRequestId === 'object' &&
+        contactRequestId !== null &&
+        contactRequestId.toString
           ? contactRequestId.toString()
           : contactRequestId;
       if (!key) {
@@ -810,7 +874,7 @@ class ContactRequestService {
       const contactRequest = await ContactRequest.findOne({
         _id: requestId,
         studentId,
-        status: { $in: ['PENDING', 'ACCEPTED'] }
+        status: { $in: ['PENDING', 'ACCEPTED'] },
       });
 
       if (!contactRequest) {
@@ -822,7 +886,7 @@ class ContactRequestService {
 
       return {
         success: true,
-        message: 'Hủy yêu cầu thành công'
+        message: 'Hủy yêu cầu thành công',
       };
     } catch (error: any) {
       logger.error('Cancel request error:', error);
@@ -846,8 +910,8 @@ class ContactRequestService {
         // Chỉ check các lớp chưa kết thúc
         $or: [
           { actualEndDate: { $exists: false } },
-          { actualEndDate: { $gt: startDate } }
-        ]
+          { actualEndDate: { $gt: startDate } },
+        ],
       });
 
       if (activeClasses.length === 0) {
@@ -859,7 +923,7 @@ class ContactRequestService {
         const existingSchedule = existingClass.schedule;
 
         // Kiểm tra xem có ngày nào trùng nhau không
-        const commonDays = newSchedule.dayOfWeek.filter(day =>
+        const commonDays = newSchedule.dayOfWeek.filter((day) =>
           existingSchedule.dayOfWeek.includes(day)
         );
 
@@ -877,15 +941,23 @@ class ContactRequestService {
 
         if (isTimeOverlap) {
           // Tìm tên ngày trùng
-          const dayNames = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
-          const conflictDays = commonDays.map(d => dayNames[d]).join(', ');
+          const dayNames = [
+            'Chủ nhật',
+            'Thứ hai',
+            'Thứ ba',
+            'Thứ tư',
+            'Thứ năm',
+            'Thứ sáu',
+            'Thứ bảy',
+          ];
+          const conflictDays = commonDays.map((d) => dayNames[d]).join(', ');
 
           throw new Error(
             `Lịch học bị trùng với lớp "${existingClass.title}".\n` +
-            `Ngày trùng: ${conflictDays}\n` +
-            `Giờ học hiện tại: ${existingSchedule.startTime} - ${existingSchedule.endTime}\n` +
-            `Giờ học mới: ${newSchedule.startTime} - ${newSchedule.endTime}\n` +
-            `Vui lòng chọn lịch khác hoặc điều chỉnh giờ học.`
+              `Ngày trùng: ${conflictDays}\n` +
+              `Giờ học hiện tại: ${existingSchedule.startTime} - ${existingSchedule.endTime}\n` +
+              `Giờ học mới: ${newSchedule.startTime} - ${newSchedule.endTime}\n` +
+              `Vui lòng chọn lịch khác hoặc điều chỉnh giờ học.`
           );
         }
       }
@@ -923,7 +995,5 @@ class ContactRequestService {
     return start1Min < end2Min && start2Min < end1Min;
   }
 }
-
-
 
 export const contactRequestService = new ContactRequestService();

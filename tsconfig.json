@@ -15,6 +15,11 @@
     "emitDecoratorMetadata": true,
     "allowSyntheticDefaultImports": true,
     "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictPropertyInitialization": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "baseUrl": "./",
     "paths": {
       "@/*": ["src/*"],
