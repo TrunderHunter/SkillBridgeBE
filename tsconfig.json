@@ -20,6 +20,8 @@
     "strictPropertyInitialization": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
+    "noImplicitThis": false,
+    "strictBindCallApply": false,
     "baseUrl": "./",
     "paths": {
       "@/*": ["src/*"],
