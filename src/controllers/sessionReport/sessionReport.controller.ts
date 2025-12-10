@@ -24,8 +24,7 @@ export class SessionReportController {
       const userId = req.user!.id;
       const userRole = req.user!.role as 'STUDENT' | 'TUTOR';
 
-      const { classId, sessionNumber, reportedAgainst, description, priority } =
-        req.body;
+      const { classId, sessionNumber, description, priority } = req.body;
 
       // Get evidence files if uploaded
       const evidenceFiles = req.files as Express.Multer.File[] | undefined;
@@ -34,7 +33,6 @@ export class SessionReportController {
         {
           classId,
           sessionNumber: parseInt(sessionNumber),
-          reportedAgainst,
           description,
           priority,
         },

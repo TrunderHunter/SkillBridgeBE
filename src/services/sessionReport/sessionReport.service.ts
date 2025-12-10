@@ -19,7 +19,6 @@ import {
 interface CreateReportData {
   classId: string;
   sessionNumber: number;
-  reportedAgainst: 'STUDENT' | 'TUTOR';
   description: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 }
@@ -218,19 +217,10 @@ class SessionReportService {
         throw new Error('Bạn không có quyền báo cáo buổi học này');
       }
 
-      // Verify reportedAgainst matches the reporter's role
-      if (
-        reporterRole === 'STUDENT' &&
-        reportData.reportedAgainst !== 'TUTOR'
-      ) {
-        throw new Error('Học viên chỉ có thể báo cáo gia sư');
-      }
-      if (
-        reporterRole === 'TUTOR' &&
-        reportData.reportedAgainst !== 'STUDENT'
-      ) {
-        throw new Error('Gia sư chỉ có thể báo cáo học viên');
-      }
+      // Tự động xác định reportedAgainst dựa trên vai trò người báo cáo
+      // Học viên báo cáo về gia sư, gia sư báo cáo về học viên
+      const reportedAgainst: 'STUDENT' | 'TUTOR' =
+        reporterRole === 'STUDENT' ? 'TUTOR' : 'STUDENT';
 
       // Get reporter info
       const reporter = await User.findById(reporterId);
@@ -255,7 +245,7 @@ class SessionReportService {
         classId: reportData.classId,
         sessionNumber: reportData.sessionNumber,
         reportedBy: reporterInfo,
-        reportedAgainst: reportData.reportedAgainst,
+        reportedAgainst: reportedAgainst,
         description: reportData.description,
         evidence,
         priority: reportData.priority || 'MEDIUM',
@@ -274,7 +264,7 @@ class SessionReportService {
       // Notify the other party and admin
       const otherPartyId = await this.getOtherPartyUserId(
         reportData.classId,
-        reportData.reportedAgainst
+        reportedAgainst
       );
 
       if (otherPartyId) {
@@ -366,9 +356,7 @@ class SessionReportService {
   /**
    * Get all reports (Admin only)
    */
-  async getAllReports(
-    filters: GetReportsFilter = {}
-  ): Promise<{
+  async getAllReports(filters: GetReportsFilter = {}): Promise<{
     reports: ISessionReport[];
     total: number;
     page: number;
