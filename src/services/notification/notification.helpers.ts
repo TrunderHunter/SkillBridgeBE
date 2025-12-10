@@ -4,7 +4,11 @@ import NotificationService from './notification.service';
  * Helper functions to send notifications for specific events
  */
 
-export const notifyContactRequestSent = async (tutorId: string, studentName: string, requestId: string) => {
+export const notifyContactRequestSent = async (
+  tutorId: string,
+  studentName: string,
+  requestId: string
+) => {
   await NotificationService.sendNotification({
     type: 'socket',
     userId: tutorId,
@@ -17,7 +21,11 @@ export const notifyContactRequestSent = async (tutorId: string, studentName: str
   });
 };
 
-export const notifyTeachRequestSent = async (studentId: string, tutorName: string, requestId: string) => {
+export const notifyTeachRequestSent = async (
+  studentId: string,
+  tutorName: string,
+  requestId: string
+) => {
   await NotificationService.sendNotification({
     type: 'socket',
     userId: studentId,
@@ -36,15 +44,17 @@ export const notifyContactRequestResponded = async (
   action: 'ACCEPT' | 'REJECT',
   requestId: string
 ) => {
-  const message = action === 'ACCEPT' 
-    ? `${tutorName} đã chấp nhận yêu cầu học của bạn`
-    : `${tutorName} đã từ chối yêu cầu học của bạn`;
+  const message =
+    action === 'ACCEPT'
+      ? `${tutorName} đã chấp nhận yêu cầu học của bạn`
+      : `${tutorName} đã từ chối yêu cầu học của bạn`;
 
   await NotificationService.sendNotification({
     type: 'socket',
     userId: studentId,
     notificationType: 'CONTACT_REQUEST',
-    title: action === 'ACCEPT' ? 'Yêu cầu được chấp nhận' : 'Yêu cầu bị từ chối',
+    title:
+      action === 'ACCEPT' ? 'Yêu cầu được chấp nhận' : 'Yêu cầu bị từ chối',
     message,
     priority: 'high',
     actionUrl: `/student/contact-requests`,
@@ -67,7 +77,8 @@ export const notifyTeachRequestResponded = async (
     type: 'socket',
     userId: tutorId,
     notificationType: 'CONTACT_REQUEST',
-    title: action === 'ACCEPT' ? 'Đề nghị được chấp nhận' : 'Đề nghị bị từ chối',
+    title:
+      action === 'ACCEPT' ? 'Đề nghị được chấp nhận' : 'Đề nghị bị từ chối',
     message,
     priority: 'high',
     actionUrl: `/tutor/contact-requests`,
@@ -202,15 +213,17 @@ export const notifyCancellationResponded = async (
   sessionNumber: number,
   classId: string
 ) => {
-  const message = action === 'APPROVED'
-    ? `${responderName} đã chấp nhận huỷ buổi ${sessionNumber} - ${className}`
-    : `${responderName} đã từ chối huỷ buổi ${sessionNumber} - ${className}`;
+  const message =
+    action === 'APPROVED'
+      ? `${responderName} đã chấp nhận huỷ buổi ${sessionNumber} - ${className}`
+      : `${responderName} đã từ chối huỷ buổi ${sessionNumber} - ${className}`;
 
   await NotificationService.sendNotification({
     type: 'socket',
     userId: requesterId,
     notificationType: 'CANCELLATION_RESPONDED',
-    title: action === 'APPROVED' ? 'Yêu cầu được chấp nhận' : 'Yêu cầu bị từ chối',
+    title:
+      action === 'APPROVED' ? 'Yêu cầu được chấp nhận' : 'Yêu cầu bị từ chối',
     message,
     priority: 'high',
     actionUrl: `/schedule/calendar`,
@@ -229,9 +242,72 @@ export const notifyNewMessage = async (
     userId: recipientId,
     notificationType: 'MESSAGE',
     title: `Tin nhắn từ ${senderName}`,
-    message: messagePreview.length > 50 ? messagePreview.substring(0, 50) + '...' : messagePreview,
+    message:
+      messagePreview.length > 50
+        ? messagePreview.substring(0, 50) + '...'
+        : messagePreview,
     priority: 'normal',
     actionUrl: `/messages/${conversationId}`,
     data: { conversationId, senderName },
+  });
+};
+
+/**
+ * Session Report Notification Helpers
+ */
+
+export const notifySessionReportCreated = async (
+  recipientId: string,
+  reporterName: string,
+  classId: string,
+  sessionNumber: number,
+  reportId: string
+) => {
+  await NotificationService.sendNotification({
+    type: 'socket',
+    userId: recipientId,
+    notificationType: 'SESSION_REPORT_CREATED',
+    title: 'Báo cáo buổi học mới',
+    message: `${reporterName} đã báo cáo buổi học số ${sessionNumber}`,
+    priority: 'high',
+    actionUrl: `/classes/${classId}/reports/${reportId}`,
+    data: { classId, sessionNumber, reportId, reporterName },
+  });
+};
+
+export const notifySessionReportUnderReview = async (
+  userId: string,
+  classId: string,
+  sessionNumber: number,
+  reportId: string
+) => {
+  await NotificationService.sendNotification({
+    type: 'socket',
+    userId: userId,
+    notificationType: 'SESSION_REPORT_UNDER_REVIEW',
+    title: 'Báo cáo đang được xem xét',
+    message: `Báo cáo buổi học số ${sessionNumber} đang được admin xem xét`,
+    priority: 'normal',
+    actionUrl: `/classes/${classId}/reports/${reportId}`,
+    data: { classId, sessionNumber, reportId },
+  });
+};
+
+export const notifySessionReportResolved = async (
+  userId: string,
+  classId: string,
+  sessionNumber: number,
+  reportId: string,
+  decision: string
+) => {
+  await NotificationService.sendNotification({
+    type: 'socket',
+    userId: userId,
+    notificationType: 'SESSION_REPORT_RESOLVED',
+    title: 'Báo cáo đã được xử lý',
+    message: `Báo cáo buổi học số ${sessionNumber} đã được admin giải quyết`,
+    priority: 'high',
+    actionUrl: `/classes/${classId}/reports/${reportId}`,
+    data: { classId, sessionNumber, reportId, decision },
   });
 };

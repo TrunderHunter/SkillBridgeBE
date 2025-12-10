@@ -18,7 +18,10 @@ export interface INotification extends Document {
     | 'CONTRACT_APPROVED'
     | 'CONTRACT_REJECTED'
     | 'CONTRACT_EXPIRED'
-    | 'CONTRACT_CANCELLED';
+    | 'CONTRACT_CANCELLED'
+    | 'SESSION_REPORT_CREATED'
+    | 'SESSION_REPORT_RESOLVED'
+    | 'SESSION_REPORT_UNDER_REVIEW';
   title: string;
   message: string;
   data?: any;
@@ -55,6 +58,9 @@ const NotificationSchema = new Schema<INotification>(
         'CONTRACT_EXPIRED',
         'CONTRACT_CANCELLED',
         'ASSIGNMENT_DEADLINE_REMINDER',
+        'SESSION_REPORT_CREATED',
+        'SESSION_REPORT_RESOLVED',
+        'SESSION_REPORT_UNDER_REVIEW',
       ],
       required: true,
     },
