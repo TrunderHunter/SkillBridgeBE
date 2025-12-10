@@ -19,6 +19,8 @@ import assignmentRoutes from './assignment.routes';
 import uploadRoutes from './upload.routes';
 import notificationRoutes from './notification.routes';
 import { paymentRoutes } from './payment.routes';
+import sessionReportRoutes from './sessionReport.routes';
+import adminSessionReportRoutes from './admin-sessionReport.routes';
 
 const router = express.Router();
 
@@ -37,6 +39,7 @@ router.use('/tutor', tutorQualificationRoutes);
 
 // Admin routes
 router.use('/admin', adminVerificationRoutes);
+router.use('/admin', adminSessionReportRoutes);
 
 // Post routes
 router.use('/posts', postRoutes);
@@ -76,5 +79,8 @@ router.use('/notifications', notificationRoutes);
 
 // Payment routes
 router.use('/payments', paymentRoutes);
+
+// Session report routes
+router.use('/session-reports', sessionReportRoutes);
 
 export default router;
