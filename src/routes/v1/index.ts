@@ -21,6 +21,8 @@ import notificationRoutes from './notification.routes';
 import { paymentRoutes } from './payment.routes';
 import sessionReportRoutes from './sessionReport.routes';
 import adminSessionReportRoutes from './admin-sessionReport.routes';
+import adminUserRoutes from './admin-user.routes';
+import adminPaymentRoutes from '../admin-payment.routes';
 
 const router = express.Router();
 
@@ -40,6 +42,8 @@ router.use('/tutor', tutorQualificationRoutes);
 // Admin routes
 router.use('/admin', adminVerificationRoutes);
 router.use('/admin', adminSessionReportRoutes);
+router.use('/admin', adminUserRoutes);
+router.use('/admin/payments', adminPaymentRoutes);
 
 // Post routes
 router.use('/posts', postRoutes);
