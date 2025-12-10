@@ -516,19 +516,6 @@ class SessionReportService {
         throw new Error('Không tìm thấy thông tin admin');
       }
 
-      // Create resolution
-      const resolution: IReportResolution = {
-        resolvedBy: adminId,
-        resolverName: admin.full_name,
-        decision: resolutionData.decision,
-        message: resolutionData.message,
-        resolvedAt: new Date(),
-      };
-
-      report.resolution = resolution;
-      report.status = 'RESOLVED';
-      await report.save();
-
       // Get both parties to notify
       const learningClass = await LearningClass.findById(report.classId);
       if (!learningClass) {
@@ -537,6 +524,36 @@ class SessionReportService {
 
       const studentId = learningClass.studentId.toString();
       const tutorId = learningClass.tutorId.toString();
+
+      // Determine violator IDs based on decision
+      const violatorUserIds: string[] = [];
+      switch (resolutionData.decision) {
+        case 'STUDENT_FAULT':
+          violatorUserIds.push(studentId);
+          break;
+        case 'TUTOR_FAULT':
+          violatorUserIds.push(tutorId);
+          break;
+        case 'BOTH_FAULT':
+          violatorUserIds.push(studentId, tutorId);
+          break;
+        // NO_FAULT and DISMISSED: no violators
+      }
+
+      // Create resolution
+      const resolution: IReportResolution = {
+        resolvedBy: adminId,
+        resolverName: admin.full_name,
+        decision: resolutionData.decision,
+        message: resolutionData.message,
+        resolvedAt: new Date(),
+        violatorUserIds,
+      };
+
+      report.resolution = resolution;
+      report.status = 'RESOLVED';
+      report.violatorUserIds = violatorUserIds; // Cache for quick query
+      await report.save();
 
       // Notify both student and tutor about the resolution
       await Promise.all([

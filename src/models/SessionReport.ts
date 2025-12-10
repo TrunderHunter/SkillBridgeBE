@@ -29,6 +29,7 @@ export interface IReportResolution {
   message: string;
   resolvedAt: Date;
   notifiedAt?: Date;
+  violatorUserIds?: string[]; // User IDs of violators (for BOTH_FAULT case)
 }
 
 // Admin notes for tracking investigation
@@ -53,6 +54,7 @@ export interface ISessionReport extends Document {
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   resolution?: IReportResolution;
   adminNotes: IAdminNote[];
+  violatorUserIds?: string[]; // Cached violator user IDs for quick query
   createdAt: Date;
   updatedAt: Date;
 }
@@ -98,6 +100,7 @@ const reportResolutionSchema = new Schema<IReportResolution>(
     message: { type: String, required: true },
     resolvedAt: { type: Date, required: true },
     notifiedAt: { type: Date },
+    violatorUserIds: { type: [String], default: [] },
   },
   { _id: false }
 );
@@ -137,6 +140,7 @@ const sessionReportSchema = new Schema<ISessionReport>(
     },
     resolution: { type: reportResolutionSchema },
     adminNotes: { type: [adminNoteSchema], default: [] },
+    violatorUserIds: { type: [String], default: [], index: true },
   },
   {
     timestamps: true,
@@ -147,6 +151,7 @@ const sessionReportSchema = new Schema<ISessionReport>(
 // Indexes for efficient querying
 sessionReportSchema.index({ classId: 1, sessionNumber: 1 });
 sessionReportSchema.index({ 'reportedBy.userId': 1 });
+sessionReportSchema.index({ violatorUserIds: 1 }); // Index for violation counting
 sessionReportSchema.index({ status: 1, priority: -1, createdAt: -1 });
 sessionReportSchema.index({ createdAt: -1 });
 
