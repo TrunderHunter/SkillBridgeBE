@@ -16,7 +16,8 @@ export class CronScheduler {
 
     // Schedule deadline reminder check every 30 minutes
     // Giúp bắt được các deadline tương đối gần mà không bỏ sót
-    const deadlineReminderJob = cron.schedule('*/30 * * * *', async () => {
+    // */10 * * * * *     */30 * * * *
+    const deadlineReminderJob = cron.schedule('*/10 * * * * *', async () => {
       try {
         logger.info('⏰ Running deadline reminder check...');
         await AssignmentReminderService.processDeadlineReminders(24); // Check for deadlines within 24 hours

@@ -132,7 +132,7 @@ THÔNG TIN GIA SƯ:
 
 ĐỘ PHÙHỢP: ${(matchScore * 100).toFixed(0)}%
 
-Hãy viết 1-2 câu ngắn gọn (tối đa 150 ký tự) giải thích TẠI SAO gia sư này phù hợp.
+Hãy viết 3-4 câu ngắn gọn (tối đa 300 ký tự) giải thích TẠI SAO gia sư này phù hợp.
 Tập trung vào điểm MẠNH và sự KHỚP với yêu cầu.
 Không cần nói "Gia sư này" hay "Học viên cần", chỉ nêu lý do trực tiếp.
 
@@ -140,7 +140,7 @@ VÍ DỤ TỐT:
 - "Có 3 năm kinh nghiệm dạy Vật Lý lớp 12, chuyên luyện thi đại học"
 - "Chuyên môn cao về Hóa học hữu cơ, phương pháp giảng dạy dễ hiểu"
 
-Giải thích (tối đa 150 ký tự):`;
+Giải thích (tối đa 300 ký tự):`;
 
       const result = await model.generateContent(prompt);
       const response = await result.response;
