@@ -65,8 +65,13 @@ class VNPayService {
       // So just pass the amount in VND directly
       const vnpAmount = amount;
 
+      // Get current time in Vietnam timezone (UTC+7)
+      const vnTime = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })
+      );
+
       // Set expiration time (30 minutes from now)
-      const expireDate = new Date();
+      const expireDate = new Date(vnTime);
       expireDate.setMinutes(expireDate.getMinutes() + 30);
 
       // Build return URL: BASE_URL + /api/v1/payments/vnpay/return
@@ -82,7 +87,7 @@ class VNPayService {
         vnp_OrderType: ProductCode.Other,
         vnp_ReturnUrl: vnpReturnUrl,
         vnp_Locale: locale === 'vn' ? VnpLocale.VN : VnpLocale.EN,
-        vnp_CreateDate: dateFormat(new Date()),
+        vnp_CreateDate: dateFormat(vnTime),
         vnp_ExpireDate: dateFormat(expireDate),
       });
 
