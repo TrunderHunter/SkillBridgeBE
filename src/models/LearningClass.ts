@@ -9,6 +9,37 @@ export interface ISessionAttendance {
   studentAttendedAt?: Date;
 }
 
+// NEW: Automatic participation tracking (replaces manual attendance)
+export interface ISessionParticipation {
+  // Tutor participation
+  tutorJoinedAt?: Date;
+  tutorLeftAt?: Date;
+  tutorDuration?: number; // Total minutes participated
+  tutorJoinCount?: number; // Number of times joined (for reconnections)
+  
+  // Student participation
+  studentJoinedAt?: Date;
+  studentLeftAt?: Date;
+  studentDuration?: number; // Total minutes participated
+  studentJoinCount?: number; // Number of times joined (for reconnections)
+  
+  // Recording metadata
+  recording?: {
+    enabled: boolean;
+    recordingId?: string;
+    recordingUrl?: string;
+    recordingStartedAt?: Date;
+    recordingEndedAt?: Date;
+    duration?: number; // Recording duration in minutes
+    fileSize?: number; // In bytes
+    status?: 'RECORDING' | 'PROCESSING' | 'READY' | 'FAILED';
+  };
+  
+  // Completion criteria (both joined and minimum duration met)
+  bothParticipated?: boolean;
+  completedAt?: Date;
+}
+
 // Homework for each session
 export interface ISessionHomeworkSubmission {
   _id: string;
@@ -153,8 +184,11 @@ export interface ILearningSession {
   paymentStatus: 'UNPAID' | 'PENDING' | 'PAID';
   paymentRequired: boolean; // Whether payment is required to access this session
 
-  // NEW: Attendance tracking
-  attendance: ISessionAttendance;
+  // DEPRECATED: Old manual attendance tracking (kept for backward compatibility)
+  attendance?: ISessionAttendance;
+
+  // NEW: Automatic participation tracking
+  participation?: ISessionParticipation;
 
   // NEW: Homework management
   homework?: ISessionHomework;
@@ -325,12 +359,39 @@ const LearningSessionSchema = new Schema<ILearningSession>(
     actualEndTime: Date,
     notes: { type: String, maxlength: 1000 },
 
-    // NEW: Attendance tracking
+    // DEPRECATED: Old manual attendance tracking
     attendance: {
       tutorAttended: { type: Boolean, default: false },
       tutorAttendedAt: Date,
       studentAttended: { type: Boolean, default: false },
       studentAttendedAt: Date,
+    },
+
+    // NEW: Automatic participation tracking
+    participation: {
+      tutorJoinedAt: Date,
+      tutorLeftAt: Date,
+      tutorDuration: { type: Number, default: 0 },
+      tutorJoinCount: { type: Number, default: 0 },
+      studentJoinedAt: Date,
+      studentLeftAt: Date,
+      studentDuration: { type: Number, default: 0 },
+      studentJoinCount: { type: Number, default: 0 },
+      recording: {
+        enabled: { type: Boolean, default: false },
+        recordingId: String,
+        recordingUrl: String,
+        recordingStartedAt: Date,
+        recordingEndedAt: Date,
+        duration: Number,
+        fileSize: Number,
+        status: {
+          type: String,
+          enum: ['RECORDING', 'PROCESSING', 'READY', 'FAILED'],
+        },
+      },
+      bothParticipated: { type: Boolean, default: false },
+      completedAt: Date,
     },
 
     // NEW: Homework management

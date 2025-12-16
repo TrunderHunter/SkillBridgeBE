@@ -2759,6 +2759,340 @@ class ClassService {
       throw new Error(error.message || 'Không thể hủy lớp học');
     }
   }
+
+  /**
+   * Track user joining a session (automatic participation tracking)
+   */
+  async trackUserJoinSession(
+    classId: string,
+    sessionNumber: number,
+    userId: string,
+    userRole: 'TUTOR' | 'STUDENT'
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Verify user authorization
+      const isTutor = learningClass.tutorId.toString() === userId;
+      const isStudent = learningClass.studentId.toString() === userId;
+
+      if (!isTutor && !isStudent) {
+        throw new Error('Bạn không có quyền tham gia lớp học này');
+      }
+
+      const session = learningClass.sessions.find(
+        (s) => s.sessionNumber === sessionNumber
+      );
+
+      if (!session) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      // Initialize participation if not exists
+      if (!session.participation) {
+        session.participation = {
+          tutorDuration: 0,
+          tutorJoinCount: 0,
+          studentDuration: 0,
+          studentJoinCount: 0,
+          bothParticipated: false,
+        };
+      }
+
+      const now = new Date();
+
+      // Track join time
+      if (userRole === 'TUTOR') {
+        if (!session.participation.tutorJoinedAt) {
+          session.participation.tutorJoinedAt = now;
+        }
+        session.participation.tutorJoinCount = 
+          (session.participation.tutorJoinCount || 0) + 1;
+      } else if (userRole === 'STUDENT') {
+        if (!session.participation.studentJoinedAt) {
+          session.participation.studentJoinedAt = now;
+        }
+        session.participation.studentJoinCount = 
+          (session.participation.studentJoinCount || 0) + 1;
+      }
+
+      // Update session start time if first join
+      if (!session.actualStartTime) {
+        session.actualStartTime = now;
+      }
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Đã ghi nhận tham gia buổi học',
+        data: {
+          participation: session.participation,
+        },
+      };
+    } catch (error: any) {
+      logger.error('Track user join session error:', error);
+      throw new Error(error.message || 'Không thể ghi nhận tham gia');
+    }
+  }
+
+  /**
+   * Track user leaving a session (automatic participation tracking)
+   */
+  async trackUserLeaveSession(
+    classId: string,
+    sessionNumber: number,
+    userId: string,
+    userRole: 'TUTOR' | 'STUDENT'
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      const session = learningClass.sessions.find(
+        (s) => s.sessionNumber === sessionNumber
+      );
+
+      if (!session || !session.participation) {
+        throw new Error('Không tìm thấy thông tin tham gia buổi học');
+      }
+
+      const now = new Date();
+
+      // Calculate duration and update leave time
+      if (userRole === 'TUTOR' && session.participation.tutorJoinedAt) {
+        session.participation.tutorLeftAt = now;
+        const duration = Math.floor(
+          (now.getTime() - session.participation.tutorJoinedAt.getTime()) / 60000
+        );
+        session.participation.tutorDuration = 
+          (session.participation.tutorDuration || 0) + duration;
+      } else if (userRole === 'STUDENT' && session.participation.studentJoinedAt) {
+        session.participation.studentLeftAt = now;
+        const duration = Math.floor(
+          (now.getTime() - session.participation.studentJoinedAt.getTime()) / 60000
+        );
+        session.participation.studentDuration = 
+          (session.participation.studentDuration || 0) + duration;
+      }
+
+      // Check if both participated sufficiently (e.g., 50% of session duration)
+      const minDuration = session.duration * 0.5; // 50% of scheduled duration
+      const tutorParticipated = 
+        (session.participation.tutorDuration || 0) >= minDuration;
+      const studentParticipated = 
+        (session.participation.studentDuration || 0) >= minDuration;
+
+      if (tutorParticipated && studentParticipated && session.status === 'SCHEDULED') {
+        session.participation.bothParticipated = true;
+        session.participation.completedAt = now;
+        session.status = 'COMPLETED';
+        session.actualEndTime = now;
+
+        // Update completed sessions count
+        learningClass.completedSessions = learningClass.sessions.filter(
+          (s) => s.status === 'COMPLETED'
+        ).length;
+
+        // Auto-complete class if all sessions completed
+        if (
+          learningClass.completedSessions === learningClass.totalSessions &&
+          learningClass.status !== 'COMPLETED'
+        ) {
+          learningClass.status = 'COMPLETED';
+          learningClass.actualEndDate = now;
+        }
+      }
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Đã ghi nhận rời khỏi buổi học',
+        data: {
+          participation: session.participation,
+          sessionCompleted: session.status === 'COMPLETED',
+        },
+      };
+    } catch (error: any) {
+      logger.error('Track user leave session error:', error);
+      throw new Error(error.message || 'Không thể ghi nhận rời khỏi');
+    }
+  }
+
+  /**
+   * Update recording metadata for a session
+   */
+  async updateSessionRecording(
+    classId: string,
+    sessionNumber: number,
+    recordingData: {
+      recordingId?: string;
+      recordingUrl?: string;
+      recordingStartedAt?: Date;
+      recordingEndedAt?: Date;
+      duration?: number;
+      fileSize?: number;
+      status?: 'RECORDING' | 'PROCESSING' | 'READY' | 'FAILED';
+    }
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      const session = learningClass.sessions.find(
+        (s) => s.sessionNumber === sessionNumber
+      );
+
+      if (!session) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      // Initialize participation if not exists
+      if (!session.participation) {
+        session.participation = {
+          tutorDuration: 0,
+          tutorJoinCount: 0,
+          studentDuration: 0,
+          studentJoinCount: 0,
+          bothParticipated: false,
+        };
+      }
+
+      // Update or create recording metadata
+      if (!session.participation.recording) {
+        session.participation.recording = {
+          enabled: true,
+        };
+      }
+
+      Object.assign(session.participation.recording, recordingData);
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Đã cập nhật thông tin recording',
+        data: {
+          recording: session.participation.recording,
+        },
+      };
+    } catch (error: any) {
+      logger.error('Update session recording error:', error);
+      throw new Error(error.message || 'Không thể cập nhật recording');
+    }
+  }
+
+  /**
+   * Check if user can join session (based on time, not attendance)
+   */
+  async canJoinSession(
+    classId: string,
+    sessionNumber: number,
+    userId: string
+  ): Promise<{
+    canJoin: boolean;
+    reason?: string;
+    meetingLink?: string;
+  }> {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        return { canJoin: false, reason: 'Không tìm thấy lớp học' };
+      }
+
+      // Verify user authorization
+      const isTutor = learningClass.tutorId.toString() === userId;
+      const isStudent = learningClass.studentId.toString() === userId;
+
+      if (!isTutor && !isStudent) {
+        return { canJoin: false, reason: 'Bạn không có quyền tham gia lớp học này' };
+      }
+
+      const session = learningClass.sessions.find(
+        (s) => s.sessionNumber === sessionNumber
+      );
+
+      if (!session) {
+        return { canJoin: false, reason: 'Không tìm thấy buổi học' };
+      }
+
+      // Check if session is cancelled
+      if (session.status === 'CANCELLED') {
+        return { canJoin: false, reason: 'Buổi học đã bị hủy' };
+      }
+
+      // NEW: Check if session is already completed
+      if (session.status === 'COMPLETED') {
+        return { 
+          canJoin: false, 
+          reason: 'Buổi học đã hoàn thành. Không thể tham gia lại.' 
+        };
+      }
+
+      // NEW: Check if both users already participated (50%+ each)
+      if (session.participation?.bothParticipated) {
+        return { 
+          canJoin: false, 
+          reason: 'Buổi học đã hoàn thành. Cả giáo viên và học viên đã tham gia đủ thời lượng.' 
+        };
+      }
+
+      // Check payment status
+      if (session.paymentRequired && session.paymentStatus !== 'PAID') {
+        return { 
+          canJoin: false, 
+          reason: 'Buổi học chưa được thanh toán' 
+        };
+      }
+
+      // Check time: Allow joining 15 minutes before until session end
+      const now = new Date();
+      const scheduledDate = new Date(session.scheduledDate);
+      const canJoinTime = new Date(scheduledDate.getTime() - 15 * 60000);
+      const sessionEndTime = new Date(
+        scheduledDate.getTime() + session.duration * 60000
+      );
+
+      if (now < canJoinTime) {
+        return { 
+          canJoin: false, 
+          reason: 'Chưa đến giờ học. Bạn có thể vào lớp từ 15 phút trước giờ học.' 
+        };
+      }
+
+      if (now > sessionEndTime) {
+        return { 
+          canJoin: false, 
+          reason: 'Buổi học đã kết thúc' 
+        };
+      }
+
+      // For online classes, return meeting link
+      if (learningClass.learningMode === 'ONLINE') {
+        return {
+          canJoin: true,
+          meetingLink: learningClass.onlineInfo?.meetingLink,
+        };
+      }
+
+      return { canJoin: true };
+    } catch (error: any) {
+      logger.error('Check can join session error:', error);
+      return { canJoin: false, reason: 'Lỗi hệ thống' };
+    }
+  }
 }
 
 export const classService = new ClassService();

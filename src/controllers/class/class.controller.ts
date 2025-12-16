@@ -819,4 +819,119 @@ export class ClassController {
       });
     }
   }
+
+  /**
+   * Track user joining session (automatic participation tracking)
+   */
+  static async trackJoinSession(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const userRole = req.user!.role as 'TUTOR' | 'STUDENT';
+
+      const result = await classService.trackUserJoinSession(
+        classId,
+        parseInt(sessionNumber),
+        userId,
+        userRole
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Track join session controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể ghi nhận tham gia',
+      });
+    }
+  }
+
+  /**
+   * Track user leaving session (automatic participation tracking)
+   */
+  static async trackLeaveSession(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+      const userRole = req.user!.role as 'TUTOR' | 'STUDENT';
+
+      const result = await classService.trackUserLeaveSession(
+        classId,
+        parseInt(sessionNumber),
+        userId,
+        userRole
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Track leave session controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể ghi nhận rời khỏi',
+      });
+    }
+  }
+
+  /**
+   * Update session recording metadata
+   */
+  static async updateRecording(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId, sessionNumber } = req.params;
+      const recordingData = req.body;
+
+      const result = await classService.updateSessionRecording(
+        classId,
+        parseInt(sessionNumber),
+        recordingData
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Update recording controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể cập nhật recording',
+      });
+    }
+  }
+
+  /**
+   * Check if user can join session
+   */
+  static async checkCanJoin(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+
+      const result = await classService.canJoinSession(
+        classId,
+        parseInt(sessionNumber),
+        userId
+      );
+      res.json({
+        success: result.canJoin,
+        ...result,
+      });
+    } catch (error: any) {
+      logger.error('Check can join controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể kiểm tra quyền tham gia',
+      });
+    }
+  }
 }

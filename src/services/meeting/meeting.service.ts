@@ -7,6 +7,8 @@ interface ProvisionContext {
     title: string;
     startDate: Date;
     schedule: { dayOfWeek: number[]; startTime: string; endTime: string };
+    classId?: string; // Optional: for webhook tracking
+    sessionNumber?: number; // Optional: for webhook tracking
 }
 
 interface OnlineInfo {
@@ -40,7 +42,7 @@ async function tryProvisionJitsi(context: ProvisionContext): Promise<OnlineInfo 
     const publicEnabled = (process.env.JITSI_PUBLIC_ENABLED || '').toLowerCase() === 'true';
     const publicBaseUrl = process.env.JITSI_PUBLIC_BASE_URL || 'https://meet.jit.si';
 
-    const roomName = generateReadableRoomName(context.title);
+    const roomName = generateReadableRoomName(context.title, context.classId, context.sessionNumber);
 
     // PUBLIC MODE (no moderator/login required): use meet.jit.si when enabled or tenant missing
     if (publicEnabled || !tenant) {
@@ -66,7 +68,14 @@ async function tryProvisionJitsi(context: ProvisionContext): Promise<OnlineInfo 
     };
 }
 
-function generateReadableRoomName(title: string): string {
+function generateReadableRoomName(title: string, classId?: string, sessionNumber?: number): string {
+    // If classId and sessionNumber provided, use format: skillbridge-{classId}-{sessionNumber}
+    // This format allows webhook to parse and track participation
+    if (classId && sessionNumber) {
+        return `skillbridge-${classId}-${sessionNumber}`;
+    }
+    
+    // Fallback to old format for backwards compatibility
     const normalized = (title || 'skillbridge-class')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')

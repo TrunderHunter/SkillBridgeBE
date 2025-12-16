@@ -122,6 +122,31 @@ router.post(
   ClassController.markAttendance
 );
 
+// NEW: Automatic participation tracking
+router.post(
+  '/:classId/sessions/:sessionNumber/track/join',
+  authenticateToken,
+  ClassController.trackJoinSession
+);
+
+router.post(
+  '/:classId/sessions/:sessionNumber/track/leave',
+  authenticateToken,
+  ClassController.trackLeaveSession
+);
+
+router.post(
+  '/:classId/sessions/:sessionNumber/recording',
+  requireTutorRole,
+  ClassController.updateRecording
+);
+
+router.get(
+  '/:classId/sessions/:sessionNumber/can-join',
+  authenticateToken,
+  ClassController.checkCanJoin
+);
+
 // Homework management
 router.post(
   '/:classId/sessions/:sessionNumber/homework/assign',
