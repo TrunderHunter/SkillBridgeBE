@@ -23,7 +23,6 @@ import sessionReportRoutes from './sessionReport.routes';
 import adminSessionReportRoutes from './admin-sessionReport.routes';
 import adminUserRoutes from './admin-user.routes';
 import adminPaymentRoutes from '../admin-payment.routes';
-import webhookRoutes from './webhook.routes';
 
 const router = express.Router();
 
@@ -87,8 +86,5 @@ router.use('/payments', paymentRoutes);
 
 // Session report routes
 router.use('/session-reports', sessionReportRoutes);
-
-// Webhook routes (no auth required - external services)
-router.use('/webhooks', webhookRoutes);
 
 export default router;
