@@ -498,9 +498,9 @@ class ClassService {
       // Update tutor rating summary for search ranking
       const tutorId =
         typeof learningClass.tutorId === 'object' &&
-        learningClass.tutorId !== null
+          learningClass.tutorId !== null
           ? (learningClass.tutorId as any)._id?.toString() ||
-            String(learningClass.tutorId)
+          String(learningClass.tutorId)
           : String(learningClass.tutorId);
 
       await this.updateTutorRatingSummary(tutorId, rating, previousRating);
@@ -655,17 +655,17 @@ class ClassService {
 
       const tutorName =
         typeof learningClass.tutorId === 'object' &&
-        learningClass.tutorId !== null
+          learningClass.tutorId !== null
           ? (learningClass.tutorId as any).full_name ||
-            (learningClass.tutorId as any).email ||
-            'Gia sư'
+          (learningClass.tutorId as any).email ||
+          'Gia sư'
           : 'Gia sư';
       const studentName =
         typeof learningClass.studentId === 'object' &&
-        learningClass.studentId !== null
+          learningClass.studentId !== null
           ? (learningClass.studentId as any).full_name ||
-            (learningClass.studentId as any).email ||
-            'Học viên'
+          (learningClass.studentId as any).email ||
+          'Học viên'
           : 'Học viên';
 
       const persistentAssignments = (learningClass.assignments || []).map(
@@ -695,19 +695,19 @@ class ClassService {
           const grade = assignment.grade;
           const derivedSubmission = submission
             ? [
-                {
-                  _id: `SESSION-${session.sessionNumber}-${assignmentEntityId || uuidv4()}`,
-                  studentId,
-                  studentName,
-                  note: submission.notes,
-                  fileUrl: submission.fileUrl,
-                  fileName: undefined,
-                  fileSize: undefined,
-                  mimeType: undefined,
-                  submittedAt: submission.submittedAt,
-                  updatedAt: submission.submittedAt,
-                },
-              ]
+              {
+                _id: `SESSION-${session.sessionNumber}-${assignmentEntityId || uuidv4()}`,
+                studentId,
+                studentName,
+                note: submission.notes,
+                fileUrl: submission.fileUrl,
+                fileName: undefined,
+                fileSize: undefined,
+                mimeType: undefined,
+                submittedAt: submission.submittedAt,
+                updatedAt: submission.submittedAt,
+              },
+            ]
             : [];
 
           return {
@@ -716,8 +716,8 @@ class ClassService {
             instructions: assignment.description,
             attachment: assignment.fileUrl
               ? {
-                  fileUrl: assignment.fileUrl,
-                }
+                fileUrl: assignment.fileUrl,
+              }
               : undefined,
             dueDate: assignment.deadline,
             createdBy: {
@@ -1640,6 +1640,9 @@ class ClassService {
             const canAttendTime = new Date(sessionDate.getTime() - 15 * 60000);
 
             const canAttend = now >= canAttendTime && now <= sessionEndTime;
+            // Use participation-based completion rather than legacy attendance
+            const bothParticipated = session.participation?.bothParticipated === true;
+            // Fallback to legacy attendance only if participation not available
             const bothAttended =
               session.attendance?.tutorAttended &&
               session.attendance?.studentAttended;
@@ -1661,8 +1664,8 @@ class ClassService {
               meetingLink: learningClass.onlineInfo?.meetingLink,
               location: learningClass.location
                 ? {
-                    details: (learningClass.location as any).address,
-                  }
+                  details: (learningClass.location as any).address,
+                }
                 : undefined,
               attendance: session.attendance || {
                 tutorAttended: false,
@@ -1674,7 +1677,8 @@ class ClassService {
               paymentStatus: session.paymentStatus || 'UNPAID',
               paymentRequired: session.paymentRequired !== false, // Default true if not specified
               canAttend,
-              canJoin: bothAttended,
+              // Unlock post-session actions (homework, etc.) when both participated
+              canJoin: bothParticipated || bothAttended,
               tutor: learningClass.tutorId,
               student: learningClass.studentId,
             });
@@ -2604,9 +2608,8 @@ class ClassService {
           if (!finalOnlineInfo || !finalOnlineInfo.meetingLink) {
             finalOnlineInfo = {
               platform: 'OTHER',
-              meetingLink: `https://8x8.vc/${
-                process.env.JITSI_TENANT || 'skillbridge'
-              }/skillbridge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              meetingLink: `https://8x8.vc/${process.env.JITSI_TENANT || 'skillbridge'
+                }/skillbridge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             } as any;
           }
         }
@@ -2810,13 +2813,13 @@ class ClassService {
         if (!session.participation.tutorJoinedAt) {
           session.participation.tutorJoinedAt = now;
         }
-        session.participation.tutorJoinCount = 
+        session.participation.tutorJoinCount =
           (session.participation.tutorJoinCount || 0) + 1;
       } else if (userRole === 'STUDENT') {
         if (!session.participation.studentJoinedAt) {
           session.participation.studentJoinedAt = now;
         }
-        session.participation.studentJoinCount = 
+        session.participation.studentJoinCount =
           (session.participation.studentJoinCount || 0) + 1;
       }
 
@@ -2872,25 +2875,27 @@ class ClassService {
         const duration = Math.floor(
           (now.getTime() - session.participation.tutorJoinedAt.getTime()) / 60000
         );
-        session.participation.tutorDuration = 
+        session.participation.tutorDuration =
           (session.participation.tutorDuration || 0) + duration;
       } else if (userRole === 'STUDENT' && session.participation.studentJoinedAt) {
         session.participation.studentLeftAt = now;
         const duration = Math.floor(
           (now.getTime() - session.participation.studentJoinedAt.getTime()) / 60000
         );
-        session.participation.studentDuration = 
+        session.participation.studentDuration =
           (session.participation.studentDuration || 0) + duration;
       }
 
-      // Check if both participated sufficiently (e.g., 50% of session duration)
-      const minDuration = session.duration * 0.5; // 50% of scheduled duration
-      const tutorParticipated = 
-        (session.participation.tutorDuration || 0) >= minDuration;
-      const studentParticipated = 
-        (session.participation.studentDuration || 0) >= minDuration;
+      // Check if both have joined and left (participated)
+      const tutorHasParticipated =
+        session.participation.tutorJoinedAt &&
+        session.participation.tutorLeftAt;
+      const studentHasParticipated =
+        session.participation.studentJoinedAt &&
+        session.participation.studentLeftAt;
 
-      if (tutorParticipated && studentParticipated && session.status === 'SCHEDULED') {
+      // Mark session as completed when both have participated (no minimum duration required)
+      if (tutorHasParticipated && studentHasParticipated && session.status === 'SCHEDULED') {
         session.participation.bothParticipated = true;
         session.participation.completedAt = now;
         session.status = 'COMPLETED';
@@ -2924,6 +2929,100 @@ class ClassService {
     } catch (error: any) {
       logger.error('Track user leave session error:', error);
       throw new Error(error.message || 'Không thể ghi nhận rời khỏi');
+    }
+  }
+
+  /**
+   * Manual mark session as completed (for tutor when auto-tracking fails)
+   * Only allowed after scheduled end time
+   */
+  async markSessionAsCompleted(
+    classId: string,
+    sessionNumber: number,
+    userId: string
+  ) {
+    try {
+      const learningClass = await LearningClass.findById(classId);
+
+      if (!learningClass) {
+        throw new Error('Không tìm thấy lớp học');
+      }
+
+      // Only tutor can mark as completed
+      if (learningClass.tutorId.toString() !== userId) {
+        throw new Error('Chỉ gia sư mới có thể đánh dấu hoàn thành buổi học');
+      }
+
+      const session = learningClass.sessions.find(
+        (s) => s.sessionNumber === sessionNumber
+      );
+
+      if (!session) {
+        throw new Error('Không tìm thấy buổi học');
+      }
+
+      // Check if session is already completed
+      if (session.status === 'COMPLETED') {
+        return {
+          success: true,
+          message: 'Buổi học đã được đánh dấu hoàn thành trước đó',
+          data: { session },
+        };
+      }
+
+      // Check if scheduled start time has passed (allow marking complete after session starts)
+      const scheduledStart = new Date(session.scheduledDate);
+      const now = new Date();
+
+      if (now < scheduledStart) {
+        throw new Error('Chỉ có thể đánh dấu hoàn thành sau khi buổi học đã bắt đầu');
+      }
+
+      // Mark as completed
+      session.status = 'COMPLETED';
+      session.actualEndTime = now;
+
+      // Initialize participation if not exists
+      if (!session.participation) {
+        session.participation = {
+          tutorDuration: 0,
+          tutorJoinCount: 0,
+          studentDuration: 0,
+          studentJoinCount: 0,
+          bothParticipated: false,
+        };
+      }
+      session.participation.bothParticipated = true;
+      session.participation.completedAt = now;
+
+      // Update completed sessions count
+      learningClass.completedSessions = learningClass.sessions.filter(
+        (s) => s.status === 'COMPLETED'
+      ).length;
+
+      // Auto-complete class if all sessions completed
+      if (
+        learningClass.completedSessions === learningClass.totalSessions &&
+        learningClass.status !== 'COMPLETED'
+      ) {
+        learningClass.status = 'COMPLETED';
+        learningClass.actualEndDate = now;
+      }
+
+      await learningClass.save();
+
+      return {
+        success: true,
+        message: 'Đã đánh dấu hoàn thành buổi học',
+        data: {
+          sessionNumber,
+          status: session.status,
+          completedAt: session.participation.completedAt,
+        },
+      };
+    } catch (error: any) {
+      logger.error('Mark session as completed error:', error);
+      throw new Error(error.message || 'Không thể đánh dấu hoàn thành');
     }
   }
 
@@ -3035,25 +3134,25 @@ class ClassService {
 
       // NEW: Check if session is already completed
       if (session.status === 'COMPLETED') {
-        return { 
-          canJoin: false, 
-          reason: 'Buổi học đã hoàn thành. Không thể tham gia lại.' 
+        return {
+          canJoin: false,
+          reason: 'Buổi học đã hoàn thành. Không thể tham gia lại.'
         };
       }
 
       // NEW: Check if both users already participated (50%+ each)
       if (session.participation?.bothParticipated) {
-        return { 
-          canJoin: false, 
-          reason: 'Buổi học đã hoàn thành. Cả giáo viên và học viên đã tham gia đủ thời lượng.' 
+        return {
+          canJoin: false,
+          reason: 'Buổi học đã hoàn thành. Cả giáo viên và học viên đã tham gia đủ thời lượng.'
         };
       }
 
       // Check payment status
       if (session.paymentRequired && session.paymentStatus !== 'PAID') {
-        return { 
-          canJoin: false, 
-          reason: 'Buổi học chưa được thanh toán' 
+        return {
+          canJoin: false,
+          reason: 'Buổi học chưa được thanh toán'
         };
       }
 
@@ -3066,16 +3165,16 @@ class ClassService {
       );
 
       if (now < canJoinTime) {
-        return { 
-          canJoin: false, 
-          reason: 'Chưa đến giờ học. Bạn có thể vào lớp từ 15 phút trước giờ học.' 
+        return {
+          canJoin: false,
+          reason: 'Chưa đến giờ học. Bạn có thể vào lớp từ 15 phút trước giờ học.'
         };
       }
 
       if (now > sessionEndTime) {
-        return { 
-          canJoin: false, 
-          reason: 'Buổi học đã kết thúc' 
+        return {
+          canJoin: false,
+          reason: 'Buổi học đã kết thúc'
         };
       }
 

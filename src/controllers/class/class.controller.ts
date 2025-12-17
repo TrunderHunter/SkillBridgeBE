@@ -879,6 +879,33 @@ export class ClassController {
   }
 
   /**
+   * Manual mark session as completed (for tutor)
+   */
+  static async markSessionCompleted(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { classId, sessionNumber } = req.params;
+      const userId = req.user!.id;
+
+      const result = await classService.markSessionAsCompleted(
+        classId,
+        parseInt(sessionNumber),
+        userId
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error('Mark session completed controller error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Không thể đánh dấu hoàn thành',
+      });
+    }
+  }
+
+  /**
    * Update session recording metadata
    */
   static async updateRecording(

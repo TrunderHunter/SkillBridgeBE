@@ -135,6 +135,13 @@ router.post(
   ClassController.trackLeaveSession
 );
 
+// Manual mark session as completed (for tutor)
+router.post(
+  '/:classId/sessions/:sessionNumber/complete',
+  requireTutorRole,
+  ClassController.markSessionCompleted
+);
+
 router.post(
   '/:classId/sessions/:sessionNumber/recording',
   requireTutorRole,
